@@ -3405,7 +3405,8 @@ function buildListFilters() {
     html += '<button class="lp-chip' + srcActive + '" onclick="setSourceFilter(\'all\')">All sources</button>';
     sourceKeys.forEach(function(src) {
       var srcAct = sourceFilter === src ? ' active' : '';
-      html += '<button class="lp-chip' + srcAct + '" style="--chip-color:#818cf8;--chip-bg:rgba(129,140,248,0.1)" onclick="setSourceFilter(\'' + src.replace(/'/g, "\\'") + '\')">';
+      var safeSrc = src.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      html += '<button class="lp-chip' + srcAct + '" style="--chip-color:#818cf8;--chip-bg:rgba(129,140,248,0.1)" onclick="setSourceFilter(\'' + safeSrc + '\')">';
       html += src + '<span class="lp-chip-count">' + sources[src] + '</span></button>';
     });
   }
