@@ -42,8 +42,10 @@ export async function callLLM(systemPrompt: string, userPrompt: string, model?: 
     // Treat api.anthropic.com and its subdomains as Anthropic endpoints
     isAnthropic = hostname === "api.anthropic.com" || hostname.endsWith(".api.anthropic.com");
   } catch {
-    // If URL parsing fails, fall back to legacy substring check
-    isAnthropic = LLM_URL.includes("anthropic.com");
+    // If URL parsing fails, conservatively treat it as non-Anthropic
+    // but allow exact known Anthropic endpoint strings for backward compatibility.
+    const urlLower = LLM_URL.toLowerCase();
+    isAnthropic = urlLower === "https://api.anthropic.com" || urlLower === "https://api.anthropic.com/";
   }
 
   if (isAnthropic) {
