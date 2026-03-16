@@ -6,6 +6,7 @@
 
 import { LLM_URL, LLM_API_KEY, LLM_MODEL, RERANKER_ENABLED, RERANKER_TOP_K } from "../config/index.ts";
 import { log } from "../config/logger.ts";
+import { postProcessNewFacts } from "../intelligence/temporal.ts";
 
 interface FactExtractionResult {
   facts: Array<{
@@ -120,6 +121,21 @@ Respond with ONLY valid JSON (no markdown, no backticks):
     }
   ],
   "tags": ["lowercase", "keyword", "tags"],
+  "structured_facts": [
+    {
+      "subject": "who (user/assistant/entity name)",
+      "verb": "what action",
+      "object": "what was acted upon",
+      "quantity": null,
+      "unit": null,
+      "date_ref": "relative date if mentioned (yesterday, last week)",
+      "date_approx": "YYYY-MM-DD if determinable",
+      "location": "where it happened (city/building/server/null)",
+      "context": "why/how - brief causal context (null if not applicable)"
+    }
+  ],
+  "preferences": [{"domain": "category", "preference": "likes/dislikes X"}],
+  "state_updates": [{"key": "current_role|current_location|etc", "value": "new value"}],
   "relation_to_existing": {
     "type": "none|updates|extends|duplicate|contradicts|caused_by|prerequisite_for|corrects",
     "existing_memory_id": number_or_null,
@@ -139,7 +155,8 @@ Rules:
 - 1-3 key facts per content
 - Extract BOTH user facts AND assistant actions. If the assistant recommended, implemented, fixed, diagnosed, or produced something, extract that as a fact too (e.g. "assistant implemented FSRS-6 spaced repetition", "assistant recommended using WAL mode").
 - Include "tags": 2-5 lowercase keywords
-- Include "structured_facts", "preferences", "state_updates" if applicable`;
+- For structured_facts: decompose into atomic WHAT/WHEN/WHERE/WHO/WHY dimensions. WHO = subject, WHAT = verb+object, WHEN = date_ref/date_approx, WHERE = location, WHY = context. Include as many dimensions as the content provides.
+- Include "preferences", "state_updates" if applicable`;
 
 export async function extractFacts(
   content: string,
@@ -290,13 +307,24 @@ export function processExtractionResult(
 
   if ((result as any).structured_facts?.length) {
     const insertSF = db.prepare(
-      `INSERT INTO structured_facts (memory_id, subject, verb, object, quantity, unit, date_ref, date_approx, user_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO structured_facts (memory_id, subject, verb, object, quantity, unit, date_ref, date_approx, location, context, user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     for (const sf of (result as any).structured_facts) {
       try { insertSF.run(newMemoryId, sf.subject || "user", sf.verb || "unknown", sf.object || null,
-        sf.quantity != null ? Number(sf.quantity) : null, sf.unit || null, sf.date_ref || null, sf.date_approx || null, ownerId); } catch {}
+        sf.quantity != null ? Number(sf.quantity) : null, sf.unit || null, sf.date_ref || null, sf.date_approx || null,
+        sf.location || null, sf.context || null, ownerId); } catch {}
     }
+    // Stamp episode provenance from the parent memory onto LLM-extracted facts
+    try {
+      const mem = db.prepare("SELECT episode_id FROM memories WHERE id = ?").get(newMemoryId) as { episode_id: number | null } | undefined;
+      if (mem?.episode_id) {
+        db.prepare("UPDATE structured_facts SET episode_id = ? WHERE memory_id = ? AND episode_id IS NULL")
+          .run(mem.episode_id, newMemoryId);
+      }
+    } catch {}
+    // Bi-temporal: set valid_at and detect contradictions for LLM-extracted facts
+    postProcessNewFacts(newMemoryId, ownerId);
   }
 
   if ((result as any).preferences?.length) {

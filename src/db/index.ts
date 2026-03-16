@@ -387,6 +387,22 @@ migrate(`
     CREATE INDEX IF NOT EXISTS idx_sf_user ON structured_facts(user_id);
 `);
 
+// v5.8 — Fact decomposition dimensions (from Hindsight WHAT/WHEN/WHERE/WHO/WHY pattern)
+migrate("ALTER TABLE structured_facts ADD COLUMN location TEXT DEFAULT NULL");
+migrate("ALTER TABLE structured_facts ADD COLUMN context TEXT DEFAULT NULL");
+migrate("ALTER TABLE structured_facts ADD COLUMN episode_id INTEGER DEFAULT NULL");
+migrate("CREATE INDEX IF NOT EXISTS idx_sf_episode ON structured_facts(episode_id) WHERE episode_id IS NOT NULL");
+migrate("CREATE INDEX IF NOT EXISTS idx_sf_location ON structured_facts(location COLLATE NOCASE) WHERE location IS NOT NULL");
+
+// v5.8 — Bi-temporal fact tracking (from Graphiti/Zep pattern)
+// valid_at = when fact became true, invalid_at = when superseded/contradicted
+migrate("ALTER TABLE structured_facts ADD COLUMN valid_at TEXT DEFAULT NULL");
+migrate("ALTER TABLE structured_facts ADD COLUMN invalid_at TEXT DEFAULT NULL");
+migrate("ALTER TABLE structured_facts ADD COLUMN invalidated_by INTEGER DEFAULT NULL");
+migrate("CREATE INDEX IF NOT EXISTS idx_sf_valid ON structured_facts(valid_at) WHERE valid_at IS NOT NULL");
+migrate("CREATE INDEX IF NOT EXISTS idx_sf_invalid ON structured_facts(invalid_at) WHERE invalid_at IS NOT NULL");
+migrate("CREATE INDEX IF NOT EXISTS idx_sf_subject_verb ON structured_facts(subject COLLATE NOCASE, verb, user_id)");
+
 migrate(`
     CREATE TABLE IF NOT EXISTS current_state (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -422,6 +438,26 @@ migrate(`
 `);
 
 
+
+// v5.8 — Entity cooccurrence tracking (from Hindsight pattern)
+migrate(`
+    CREATE TABLE IF NOT EXISTS entity_cooccurrences (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entity_a_id INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+      entity_b_id INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+      cooccurrence_count INTEGER NOT NULL DEFAULT 1,
+      score REAL NOT NULL DEFAULT 0.0,
+      last_memory_id INTEGER REFERENCES memories(id) ON DELETE SET NULL,
+      user_id INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(entity_a_id, entity_b_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_ec_entity_a ON entity_cooccurrences(entity_a_id);
+    CREATE INDEX IF NOT EXISTS idx_ec_entity_b ON entity_cooccurrences(entity_b_id);
+    CREATE INDEX IF NOT EXISTS idx_ec_score ON entity_cooccurrences(score DESC);
+    CREATE INDEX IF NOT EXISTS idx_ec_user ON entity_cooccurrences(user_id);
+`);
 
 // v4.5 — Digests, Reflections, Contradiction tracking
 migrate(`
@@ -841,7 +877,15 @@ export function updateDecayScores(userId?: number): number {
     : db.prepare(query).all()) as Array<any>;
 
   let updated = 0;
+  let promoted = 0;
   const updateDecay = db.prepare(`UPDATE memories SET decay_score = ? WHERE id = ?`);
+  const promoteToStatic = db.prepare(`UPDATE memories SET is_static = 1 WHERE id = ?`);
+
+  // Core memory auto-promotion thresholds (from Letta/MemGPT pattern)
+  // A memory qualifies for core tier if it's accessed frequently AND reinforced by multiple sources
+  const PROMOTE_ACCESS_THRESHOLD = 8;   // accessed 8+ times
+  const PROMOTE_SOURCE_THRESHOLD = 3;   // stored by 3+ different sources
+  const PROMOTE_STABILITY_THRESHOLD = 5; // FSRS stability > 5 (well-learned)
 
   const batch = db.transaction(() => {
     for (const m of memories) {
@@ -851,9 +895,21 @@ export function updateDecayScores(userId?: number): number {
       );
       updateDecay.run(Math.round(score * 1000) / 1000, m.id);
       updated++;
+
+      // Auto-promote to core memory if not already static and meets thresholds
+      if (!m.is_static && m.access_count >= PROMOTE_ACCESS_THRESHOLD
+          && m.source_count >= PROMOTE_SOURCE_THRESHOLD
+          && (m.fsrs_stability || 0) >= PROMOTE_STABILITY_THRESHOLD) {
+        promoteToStatic.run(m.id);
+        promoted++;
+      }
     }
   });
   batch();
+
+  if (promoted > 0) {
+    log.info({ msg: "core_memory_auto_promoted", count: promoted });
+  }
 
   return updated;
 }
@@ -1429,4 +1485,64 @@ export const getProjectForUser = db.prepare(
   `SELECT p.*, GROUP_CONCAT(DISTINCT mp.memory_id) as memory_ids
    FROM projects p LEFT JOIN memory_projects mp ON mp.project_id = p.id
    WHERE p.id = ? AND p.user_id = ? GROUP BY p.id`
+);
+
+// ============================================================================
+// PERSONALITY ENGINE — signals + cached profiles
+// ============================================================================
+
+migrate(`
+  CREATE TABLE IF NOT EXISTS personality_signals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    memory_id INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL DEFAULT 1,
+    signal_type TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    valence TEXT NOT NULL,
+    intensity REAL DEFAULT 0.5,
+    reasoning TEXT,
+    source_text TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_personality_signals_user ON personality_signals(user_id);
+  CREATE INDEX IF NOT EXISTS idx_personality_signals_type ON personality_signals(signal_type);
+  CREATE INDEX IF NOT EXISTS idx_personality_signals_memory ON personality_signals(memory_id);
+
+  CREATE TABLE IF NOT EXISTS personality_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL UNIQUE,
+    profile TEXT NOT NULL,
+    signal_count INTEGER NOT NULL DEFAULT 0,
+    is_stale BOOLEAN NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_personality_profiles_user ON personality_profiles(user_id);
+`);
+
+export const insertPersonalitySignal = db.prepare(
+  `INSERT INTO personality_signals (memory_id, user_id, signal_type, subject, valence, intensity, reasoning, source_text)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+);
+
+export const getPersonalitySignals = db.prepare(
+  `SELECT * FROM personality_signals WHERE user_id = ? ORDER BY created_at DESC`
+);
+
+export const getPersonalitySignalCount = db.prepare(
+  `SELECT COUNT(*) as count FROM personality_signals WHERE user_id = ?`
+);
+
+export const getCachedPersonalityProfile = db.prepare(
+  `SELECT * FROM personality_profiles WHERE user_id = ? AND is_stale = 0`
+);
+
+export const upsertPersonalityProfile = db.prepare(
+  `INSERT INTO personality_profiles (user_id, profile, signal_count, is_stale, updated_at)
+   VALUES (?, ?, ?, 0, datetime('now'))
+   ON CONFLICT(user_id) DO UPDATE SET profile = excluded.profile, signal_count = excluded.signal_count, is_stale = 0, updated_at = datetime('now')`
+);
+
+export const invalidatePersonalityProfile = db.prepare(
+  `UPDATE personality_profiles SET is_stale = 1 WHERE user_id = ?`
 );

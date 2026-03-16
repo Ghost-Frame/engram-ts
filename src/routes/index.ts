@@ -65,6 +65,12 @@ import {
 import { hybridSearch, autoLink } from "../memory/search.ts";
 import { generateProfile } from "../memory/profile.ts";
 
+// SimHash near-duplicate detection
+import { checkSimHashDuplicate, storeSimHash, boostDuplicate } from "../memory/simhash.ts";
+
+// Entity cooccurrence graph
+import { updateCooccurrences } from "../graph/cooccurrence.ts";
+
 // FSRS
 import { fsrsProcessReview, fsrsRetrievability, fsrsNextInterval, FSRSRating, calculateDecayScore as fsrsCalculateDecayScore } from "../fsrs/index.ts";
 
@@ -75,6 +81,8 @@ import { callLLM, extractFacts, processExtractionResult, rerank, isLLMAvailable 
 import { crossEncoderRerank, isRerankerReady } from "../reranker/index.ts";
 import { fastExtractFacts } from "../intelligence/extraction.ts";
 import { runConsolidationSweep, consolidateCluster } from "../intelligence/consolidation.ts";
+import { extractPersonalitySignals, synthesizePersonalityProfile, getCachedProfile } from "../intelligence/personality.ts";
+import { getPersonalitySignalCount } from "../db/index.ts";
 
 // Platform
 import { emitWebhookEvent } from "../platform/webhooks.ts";
@@ -719,7 +727,7 @@ async function fetchHandler(req: Request): Promise<Response> {
         "causal_chains", "temporal_patterns", "scratchpad", "reflections",
         "digests", "webhooks", "structured_facts", "current_state",
         "user_preferences", "consolidations", "episodes", "entities",
-        "projects", "conversations",
+        "projects", "conversations", "personality_signals", "personality_profiles",
       ];
       let wiped = 0;
       // First: delete junction/child rows that reference this user's memories
@@ -1786,6 +1794,8 @@ Only include pairs that are actual contradictions.`;
           include_preferences,
           include_structured_facts,
           include_working_memory,
+          // Progressive disclosure: depth controls how many layers to load
+          depth: disclosureDepth,
         } = body;
 
         if (!query || typeof query !== "string") return errorResponse("query (string) required");
@@ -1793,16 +1803,23 @@ Only include pairs that are actual contradictions.`;
         // Accept token_budget, budget, OR max_tokens (MCP sends token_budget)
         const rawBudget = Number(max_tokens) || Number(tokenBudgetAlt) || Number(budget) || 8000;
         const tokenBudget = Math.min(rawBudget, 64000);
-        const includeStatic = include_static !== false;
-        const includeRecent = include_recent !== false;
-        const doIncludeEpisodes = include_episodes !== false;
-        const doIncludeLinked = include_linked !== false;
-        const doIncludeInference = include_inference !== false;
-        const doIncludeCurrentState = include_current_state !== false;
-        const doIncludePreferences = include_preferences !== false;
-        const doIncludeStructuredFacts = include_structured_facts !== false;
-        const doIncludeWorkingMemory = include_working_memory !== false;
         const contextStrategy = strategy || "balanced"; // balanced | precision | breadth
+
+        // Progressive disclosure: depth 1 = core only, 2 = + semantic, 3 = full (default)
+        // depth=1: static facts + current_state only (fast, minimal tokens)
+        // depth=2: + semantic search results + preferences (standard)
+        // depth=3: + episodes + linked + inferences + working memory + structured facts (full)
+        const depth = Math.max(1, Math.min(3, Number(disclosureDepth) || 3));
+
+        const includeStatic = include_static !== false && depth >= 1;
+        const includeRecent = include_recent !== false && depth >= 2;
+        const doIncludeEpisodes = include_episodes !== false && depth >= 3;
+        const doIncludeLinked = include_linked !== false && depth >= 3;
+        const doIncludeInference = include_inference !== false && depth >= 3;
+        const doIncludeCurrentState = include_current_state !== false && depth >= 1;
+        const doIncludePreferences = include_preferences !== false && depth >= 2;
+        const doIncludeStructuredFacts = include_structured_facts !== false && depth >= 2;
+        const doIncludeWorkingMemory = include_working_memory !== false && depth >= 3;
         const workingMemorySession = typeof body.session === "string" && body.session.trim() ? body.session.trim() : null;
 
         const estimateTokens = (text: string) => Math.ceil(text.length / 4);
@@ -2078,16 +2095,17 @@ Only include pairs that are actual contradictions.`;
             if (memIds.length > 0) {
               const placeholders = memIds.map(() => "?").join(",");
               const sfRows = db.prepare(
-                `SELECT subject, verb, object, quantity, unit, date_ref, date_approx
-                 FROM structured_facts WHERE memory_id IN (${placeholders})
-                 ORDER BY date_approx DESC NULLS LAST`
+                `SELECT subject, verb, object, quantity, unit, date_ref, date_approx, valid_at, invalid_at
+                 FROM structured_facts WHERE memory_id IN (${placeholders}) AND invalid_at IS NULL
+                 ORDER BY valid_at DESC NULLS LAST, date_approx DESC NULLS LAST`
               ).all(...memIds) as any[];
               if (sfRows.length > 0) {
                 const sfLines = sfRows.map((sf: any) => {
                   let line = `- ${sf.subject} ${sf.verb}`;
                   if (sf.object) line += ` ${sf.object}`;
                   if (sf.quantity != null) line += ` (qty: ${sf.quantity}${sf.unit ? " " + sf.unit : ""})`;
-                  if (sf.date_approx) line += ` [${sf.date_approx}]`;
+                  if (sf.valid_at) line += ` [${sf.valid_at}]`;
+                  else if (sf.date_approx) line += ` [${sf.date_approx}]`;
                   else if (sf.date_ref) line += ` [${sf.date_ref}]`;
                   return line;
                 });
@@ -2442,6 +2460,20 @@ Return JSON:
           }
         }
 
+        // SimHash near-duplicate check (before embedding to save compute)
+        const simhashResult = checkSimHashDuplicate(content.trim(), auth.user_id);
+        if (simhashResult.isDuplicate && simhashResult.existingId) {
+          boostDuplicate(simhashResult.existingId);
+          log.info({ msg: "simhash_duplicate_detected", existing_id: simhashResult.existingId, distance: simhashResult.distance });
+          return json({
+            stored: false,
+            duplicate: true,
+            existing_id: simhashResult.existingId,
+            distance: simhashResult.distance,
+            boosted: true,
+          });
+        }
+
         let embBuffer: Buffer | null = null;
         let embArray: Float32Array | null = null;
         try {
@@ -2478,8 +2510,14 @@ Return JSON:
         // Link to entities and projects if provided
         const entityIds = body.entity_ids as number[] | undefined;
         const projectIds = body.project_ids as number[] | undefined;
-        for (const eid of getOwnedEntityIds(entityIds, auth)) linkMemoryEntity.run(result.id, eid);
+        const ownedEntityIds = getOwnedEntityIds(entityIds, auth);
+        for (const eid of ownedEntityIds) linkMemoryEntity.run(result.id, eid);
         for (const pid of getOwnedProjectIds(projectIds, auth)) linkMemoryProject.run(result.id, pid);
+
+        // Update entity cooccurrence graph if entities were linked
+        if (ownedEntityIds.length >= 2) {
+          updateCooccurrences(result.id, auth.user_id);
+        }
 
         // Update episode memory count
         if (episodeId) {
@@ -2496,6 +2534,9 @@ Return JSON:
           initFSRS.last_review_at, result.id
         );
 
+        // Store SimHash fingerprint for future dedup checks
+        storeSimHash(result.id, simhashResult.simhash);
+
         // Emit webhook event (sync, fast)
         emitWebhookEvent("memory.created", {
           id: result.id, content: content.trim(), category: category || "general",
@@ -2503,7 +2544,7 @@ Return JSON:
         }, auth.user_id);
 
         // Synchronous fast extraction (regex-based, no LLM, instant)
-        fastExtractFacts(content.trim(), result.id, auth.user_id);
+        fastExtractFacts(content.trim(), result.id, auth.user_id, episodeId);
 
         // Return response IMMEDIATELY — vector indexing + autoLink + fact extraction happen async
         const response = json({
@@ -2572,6 +2613,16 @@ Return JSON:
                 } catch (e: any) {
                   log.error({ msg: "fact_extraction_failed", id: capturedMemId, error: e.message });
                 }
+              }
+
+              // 4. Personality signal extraction (async, non-blocking)
+              try {
+                const pSignals = await extractPersonalitySignals(capturedContent, capturedMemId, auth.user_id);
+                if (pSignals.length > 0) {
+                  log.debug({ msg: "personality_extraction_done", id: capturedMemId, signals: pSignals.length });
+                }
+              } catch (e: any) {
+                log.error({ msg: "personality_extraction_failed", id: capturedMemId, error: e.message });
               }
             } catch (e: any) {
               log.error({ msg: "store_pipeline_failed", id: capturedMemId, error: e.message });
@@ -3378,6 +3429,32 @@ Return JSON:
         return json(profile);
       } catch (e: any) {
         return safeError("Profile generation", e);
+      }
+    }
+
+    // ========================================================================
+    // PROFILE SYNTHESIZE — personality narrative from accumulated signals
+    // ========================================================================
+
+    if (url.pathname === "/profile/synthesize" && method === "POST") {
+      try {
+        const body = await req.json().catch(() => ({})) as any;
+        const force = !!body.force;
+
+        // Check cache first unless force
+        if (!force) {
+          const cached = getCachedProfile(auth.user_id);
+          if (cached) {
+            const signalCount = (getPersonalitySignalCount.get(auth.user_id) as { count: number }).count;
+            return json({ profile: cached, signal_count: signalCount, cached: true });
+          }
+        }
+
+        const profile = await synthesizePersonalityProfile(auth.user_id);
+        const signalCount = (getPersonalitySignalCount.get(auth.user_id) as { count: number }).count;
+        return json({ profile, signal_count: signalCount, cached: false });
+      } catch (e: any) {
+        return safeError("Profile synthesis", e);
       }
     }
 
@@ -5431,19 +5508,109 @@ If no meaningful inferences, return {"derived": []}`;
       try {
         const subject = url.searchParams.get("subject");
         const verb = url.searchParams.get("verb");
+        const includeInvalid = url.searchParams.get("include_invalid") === "true";
+        const validAt = url.searchParams.get("valid_at"); // filter: facts valid at this date
         const limit = Math.min(Number(url.searchParams.get("limit")) || 50, 200);
 
         let query = "SELECT * FROM structured_facts WHERE user_id = ?";
         const params: any[] = [auth.user_id];
         if (subject) { query += " AND subject LIKE ?"; params.push(`%${subject}%`); }
         if (verb) { query += " AND verb = ?"; params.push(verb); }
-        query += " ORDER BY created_at DESC LIMIT ?";
+        if (!includeInvalid) { query += " AND invalid_at IS NULL"; }
+        if (validAt) {
+          // Facts that were valid at the given point in time
+          query += " AND (valid_at IS NULL OR valid_at <= ?) AND (invalid_at IS NULL OR invalid_at > ?)";
+          params.push(validAt, validAt);
+        }
+        query += " ORDER BY valid_at DESC NULLS LAST, created_at DESC LIMIT ?";
         params.push(limit);
 
         const facts = db.prepare(query).all(...params);
         return json({ facts, count: (facts as any[]).length });
       } catch (e: any) {
         return safeError("Facts query", e);
+      }
+    }
+
+    // ========================================================================
+    // ENTITY COOCCURRENCES — query entity co-mention graph
+    // ========================================================================
+    if (url.pathname.match(/^\/entities\/(\d+)\/cooccurrences$/) && method === "GET") {
+      try {
+        const entityId = parseInt(url.pathname.split("/")[2]);
+        const limit = Math.min(Number(url.searchParams.get("limit")) || 10, 50);
+        const { getCooccurringEntities } = await import("../graph/cooccurrence.ts");
+        const cooccurrences = getCooccurringEntities(entityId, auth.user_id, limit);
+        return json({ entity_id: entityId, cooccurrences, count: cooccurrences.length });
+      } catch (e: any) {
+        return safeError("Entity cooccurrences", e);
+      }
+    }
+
+    // ========================================================================
+    // FACT VALIDITY BACKFILL — populate valid_at for existing facts
+    // ========================================================================
+    if (url.pathname === "/admin/backfill-facts" && method === "POST") {
+      if (!hasScope(auth, "admin")) return errorResponse("Admin scope required", 403);
+      try {
+        const { backfillFactValidity } = await import("../intelligence/temporal.ts");
+        const filled = backfillFactValidity(auth.user_id);
+        return json({ backfilled: filled });
+      } catch (e: any) {
+        return safeError("Fact backfill", e);
+      }
+    }
+
+    // ========================================================================
+    // COOCCURRENCE REBUILD — rebuild entity cooccurrence graph from scratch
+    // ========================================================================
+    if (url.pathname === "/admin/rebuild-cooccurrences" && method === "POST") {
+      if (!hasScope(auth, "admin")) return errorResponse("Admin scope required", 403);
+      try {
+        const { rebuildCooccurrences } = await import("../graph/cooccurrence.ts");
+        const pairs = rebuildCooccurrences(auth.user_id);
+        return json({ rebuilt_pairs: pairs });
+      } catch (e: any) {
+        return safeError("Cooccurrence rebuild", e);
+      }
+    }
+
+    // ========================================================================
+    // COMMUNITY DETECTION — label propagation clustering on memory graph
+    // ========================================================================
+    if (url.pathname === "/admin/detect-communities" && method === "POST") {
+      if (!hasScope(auth, "admin")) return errorResponse("Admin scope required", 403);
+      try {
+        const { detectCommunities } = await import("../graph/communities.ts");
+        const result = detectCommunities(auth.user_id);
+        return json(result);
+      } catch (e: any) {
+        return safeError("Community detection", e);
+      }
+    }
+
+    // ========================================================================
+    // COMMUNITY STATS + MEMBERS — query detected communities
+    // ========================================================================
+    if (url.pathname === "/communities" && method === "GET") {
+      try {
+        const { getCommunityStats } = await import("../graph/communities.ts");
+        const stats = getCommunityStats(auth.user_id);
+        return json({ communities: stats, count: stats.length });
+      } catch (e: any) {
+        return safeError("Community stats", e);
+      }
+    }
+
+    if (url.pathname.match(/^\/communities\/(\d+)$/) && method === "GET") {
+      try {
+        const communityId = parseInt(url.pathname.split("/")[2]);
+        const limit = Math.min(Number(url.searchParams.get("limit")) || 50, 200);
+        const { getCommunityMembers } = await import("../graph/communities.ts");
+        const members = getCommunityMembers(communityId, auth.user_id, limit);
+        return json({ community_id: communityId, members, count: members.length });
+      } catch (e: any) {
+        return safeError("Community members", e);
       }
     }
 

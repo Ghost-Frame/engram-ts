@@ -4,8 +4,9 @@
 
 import { db } from "../db/index.ts";
 import { log } from "../config/logger.ts";
+import { postProcessNewFacts } from "./temporal.ts";
 
-export function fastExtractFacts(content: string, memoryId: number, userId: number): void {
+export function fastExtractFacts(content: string, memoryId: number, userId: number, episodeId?: number | null): void {
   try {
     const insertSF = db.prepare(
       `INSERT INTO structured_facts (memory_id, subject, verb, object, quantity, unit, date_ref, date_approx, user_id)
@@ -140,6 +141,18 @@ export function fastExtractFacts(content: string, memoryId: number, userId: numb
 
     if (factCount + prefCount + stateCount > 0) {
       log.debug({ msg: "fast_extract", id: memoryId, facts: factCount, prefs: prefCount, state: stateCount });
+    }
+
+    // Bi-temporal post-processing: set valid_at and detect contradictions
+    if (factCount > 0) {
+      // Stamp episode provenance on newly extracted facts
+      if (episodeId) {
+        try {
+          db.prepare("UPDATE structured_facts SET episode_id = ? WHERE memory_id = ? AND episode_id IS NULL")
+            .run(episodeId, memoryId);
+        } catch {}
+      }
+      postProcessNewFacts(memoryId, userId);
     }
   } catch (e: any) {
     log.debug({ msg: "fast_extract_error", error: e.message });
