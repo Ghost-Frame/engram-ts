@@ -47,6 +47,11 @@ export const CONSOLIDATION_INTERVAL = 30 * 60 * 1000;
 // Reranker config
 export const RERANKER_ENABLED = process.env.RERANKER !== "0";
 export const RERANKER_TOP_K = Number(process.env.RERANKER_TOP_K || 20);
+export const SEARCH_FACT_VECTOR_FLOOR = Number(process.env.ENGRAM_SEARCH_FACT_VECTOR_FLOOR || 0.22);
+export const SEARCH_PREFERENCE_VECTOR_FLOOR = Number(process.env.ENGRAM_SEARCH_PREFERENCE_VECTOR_FLOOR || 0.12);
+export const SEARCH_REASONING_VECTOR_FLOOR = Number(process.env.ENGRAM_SEARCH_REASONING_VECTOR_FLOOR || 0.10);
+export const SEARCH_GENERALIZATION_VECTOR_FLOOR = Number(process.env.ENGRAM_SEARCH_GENERALIZATION_VECTOR_FLOOR || 0.08);
+export const SEARCH_PERSONALITY_MIN_SCORE = Number(process.env.ENGRAM_SEARCH_PERSONALITY_MIN_SCORE || 0.30);
 
 // API key config
 export const API_KEY_PREFIX = "eg_";

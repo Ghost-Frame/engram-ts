@@ -15,6 +15,9 @@ import { db, updateMemoryEmbedding, writeVec, purgeExpiredScratchpad } from "./s
 // Embeddings
 import { initEmbedder, embed, refreshEmbeddingCache, embeddingCacheLatest, embeddingToBuffer, embeddingToVectorJSON } from "./src/embeddings/index.ts";
 
+// Cross-encoder reranker
+import { initReranker } from "./src/reranker/index.ts";
+
 // GUI (importing triggers HMAC secret init)
 import { reloadGuiHtml } from "./src/gui/index.ts";
 
@@ -33,6 +36,7 @@ import { processScheduledDigests } from "./src/platform/digest.ts";
 // ============================================================================
 
 await initEmbedder();
+await initReranker();
 
 // Pre-warm: load embedding cache + JIT-compile ONNX model
 {
@@ -223,4 +227,4 @@ setInterval(async () => {
   }
 }, 5 * 60 * 1000);
 
-log.info({ msg: "server_started", version: "5.7.1", host: HOST, port: PORT, open_access: OPEN_ACCESS, cors: CORS_ORIGIN, log_level: process.env.ENGRAM_LOG_LEVEL || "info", allowed_ips: ALLOWED_IPS.length || "any" });
+log.info({ msg: "server_started", version: "5.7.2", host: HOST, port: PORT, open_access: OPEN_ACCESS, cors: CORS_ORIGIN, log_level: process.env.ENGRAM_LOG_LEVEL || "info", allowed_ips: ALLOWED_IPS.length || "any" });
