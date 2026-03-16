@@ -70,6 +70,9 @@ import { fsrsProcessReview, fsrsRetrievability, fsrsNextInterval, FSRSRating, ca
 
 // LLM + extraction
 import { callLLM, extractFacts, processExtractionResult, rerank, isLLMAvailable } from "../llm/index.ts";
+
+// Cross-encoder reranker
+import { crossEncoderRerank, isRerankerReady } from "../reranker/index.ts";
 import { fastExtractFacts } from "../intelligence/extraction.ts";
 import { runConsolidationSweep, consolidateCluster } from "../intelligence/consolidation.ts";
 
@@ -92,7 +95,7 @@ import {
 
 // GUI
 import {
-  GUI_PASSWORD, GUI_COOKIE_MAX_AGE,
+  GUI_PASSWORD, GUI_AUTH_CONFIGURED, GUI_COOKIE_ATTRIBUTES, GUI_COOKIE_MAX_AGE,
   guiSignCookie, guiAuthed, getGuiHtml, getLoginHtml, reloadGuiHtml,
 } from "../gui/index.ts";
 
@@ -100,6 +103,19 @@ import {
 function getAuthOrDefault(req: Request): AuthContext | AuthError | null {
   return _getAuthOrDefault(req, guiAuthed);
 }
+
+const GUI_CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "frame-ancestors 'none'",
+  "object-src 'none'",
+  "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com",
+  "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob:",
+  "connect-src 'self'",
+  "form-action 'self'",
+].join("; ");
 
 type ScratchEntryRow = {
   session: string;
@@ -349,6 +365,10 @@ async function fetchHandler(req: Request): Promise<Response> {
     // WEB GUI AUTH
     // ========================================================================
     if (url.pathname === "/gui/auth" && method === "POST") {
+      if (!GUI_AUTH_CONFIGURED || !GUI_PASSWORD) {
+        log.error({ msg: "gui_auth_unconfigured", rid: requestId });
+        return json({ error: "GUI password is not configured" }, 503);
+      }
       // Rate limit GUI auth attempts
       const now = Date.now();
       const ga = guiAuthAttempts.get(clientIp);
@@ -364,10 +384,10 @@ async function fetchHandler(req: Request): Promise<Response> {
         if (pwMatch) {
           const cookie = guiSignCookie(Math.floor(Date.now() / 1000));
           return new Response(JSON.stringify({ ok: true }), {
-            headers: {
+            headers: securityHeaders({
               "Content-Type": "application/json",
-              "Set-Cookie": `engram_auth=${cookie}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${GUI_COOKIE_MAX_AGE}`
-            }
+              "Set-Cookie": `engram_auth=${cookie}; ${GUI_COOKIE_ATTRIBUTES}; Max-Age=${GUI_COOKIE_MAX_AGE}`,
+            })
           });
         }
         const att = guiAuthAttempts.get(clientIp) || { count: 0, first: Date.now(), locked_until: 0 };
@@ -382,7 +402,11 @@ async function fetchHandler(req: Request): Promise<Response> {
 
     if (url.pathname === "/gui/logout" && method === "GET") {
       return new Response(await getLoginHtml(), {
-        headers: securityHeaders({ "Content-Type": "text/html; charset=utf-8", "Set-Cookie": "engram_auth=; Path=/; HttpOnly; Max-Age=0" })
+        headers: securityHeaders({
+          "Content-Type": "text/html; charset=utf-8",
+          "Content-Security-Policy": GUI_CONTENT_SECURITY_POLICY,
+          "Set-Cookie": `engram_auth=; ${GUI_COOKIE_ATTRIBUTES}; Max-Age=0`,
+        })
       });
     }
 
@@ -391,9 +415,19 @@ async function fetchHandler(req: Request): Promise<Response> {
     // ========================================================================
     if ((url.pathname === "/" || url.pathname === "/gui") && method === "GET") {
       if (OPEN_ACCESS || guiAuthed(req)) {
-        return new Response(await getGuiHtml(), { headers: securityHeaders({ "Content-Type": "text/html; charset=utf-8" }) });
+        return new Response(await getGuiHtml(), {
+          headers: securityHeaders({
+            "Content-Type": "text/html; charset=utf-8",
+            "Content-Security-Policy": GUI_CONTENT_SECURITY_POLICY,
+          })
+        });
       }
-      return new Response(await getLoginHtml(), { headers: securityHeaders({ "Content-Type": "text/html; charset=utf-8" }) });
+      return new Response(await getLoginHtml(), {
+        headers: securityHeaders({
+          "Content-Type": "text/html; charset=utf-8",
+          "Content-Security-Policy": GUI_CONTENT_SECURITY_POLICY,
+        })
+      });
     }
 
     // ========================================================================
@@ -562,20 +596,18 @@ async function fetchHandler(req: Request): Promise<Response> {
       if (format === "jsonl") {
         const lines = mems.map(m => JSON.stringify(m)).join("\n");
         return new Response(lines, {
-          headers: {
+          headers: securityHeaders({
             "Content-Type": "application/x-ndjson",
             "Content-Disposition": "attachment; filename=engram-export.jsonl",
-            "Access-Control-Allow-Origin": CORS_ORIGIN,
-          },
+          }),
         });
       }
 
       return new Response(JSON.stringify(exportData, null, 2), {
-        headers: {
+        headers: securityHeaders({
           "Content-Type": "application/json",
           "Content-Disposition": "attachment; filename=engram-export.json",
-          "Access-Control-Allow-Origin": CORS_ORIGIN,
-        },
+        }),
       });
     }
 
@@ -831,6 +863,7 @@ async function fetchHandler(req: Request): Promise<Response> {
           projects: true,
           scoped_search: true,
           reranker: RERANKER_ENABLED && isLLMAvailable(),
+          cross_encoder: isRerankerReady(),
           conversation_extraction: isLLMAvailable(),
           derived_memories: isLLMAvailable(),
           graph: true,
@@ -1846,7 +1879,12 @@ Only include pairs that are actual contradictions.`;
         // ---- Phase 2: Semantic search (core relevance) ----
         const semanticCeiling = overrideSemanticCeiling != null ? Number(overrideSemanticCeiling) : (contextStrategy === "precision" ? 0.75 : contextStrategy === "breadth" ? 0.82 : 0.70);
         const semanticLimit = overrideSemanticLimit != null ? Number(overrideSemanticLimit) : (contextStrategy === "precision" ? 40 : contextStrategy === "breadth" ? 100 : 80);
-        const semanticResults = await hybridSearch(query, semanticLimit, false, true, true, auth.user_id);
+        let semanticResults = await hybridSearch(query, semanticLimit, false, true, true, auth.user_id);
+
+        // Cross-encoder rerank: reorder semantic results so best matches get budget priority
+        if (isRerankerReady() && semanticResults.length > 3) {
+          semanticResults = await crossEncoderRerank(query, semanticResults);
+        }
 
         for (const r of semanticResults) {
           if (seenIds.has(r.id)) continue;
@@ -2751,10 +2789,14 @@ Return JSON:
         }
 
         // Rerank results for better precision
-        const doRerank = body.rerank === true; // opt-in: pass rerank: true to enable LLM reranking
-        if (doRerank && results.length > 3) {
+        // Cross-encoder: auto-on when loaded (disable per-request with rerank: false)
+        // LLM reranker: opt-in fallback (rerank: true when cross-encoder unavailable)
+        const explicitOff = body.rerank === false;
+        if (!explicitOff && isRerankerReady() && results.length > 3) {
+          results = await crossEncoderRerank(query, results) as typeof results;
+          results = results.slice(0, Math.min(limit || 10, 50));
+        } else if (body.rerank === true && results.length > 3) {
           results = await rerank(query, results) as typeof results;
-          // Re-trim to requested limit after reranking
           results = results.slice(0, Math.min(limit || 10, 50));
         }
 

@@ -55,7 +55,7 @@ export const RATE_WINDOW_MS = 60_000;
 
 // Security config
 export const OPEN_ACCESS = process.env.ENGRAM_OPEN_ACCESS === "1";
-export const CORS_ORIGIN = process.env.ENGRAM_CORS_ORIGIN || "*";
+export const CORS_ORIGIN = process.env.ENGRAM_CORS_ORIGIN?.trim() || "";
 export const MAX_BODY_SIZE = Number(process.env.ENGRAM_MAX_BODY_SIZE || 1_048_576);
 export const MAX_CONTENT_SIZE = Number(process.env.ENGRAM_MAX_CONTENT_SIZE || 102_400);
 export const ALLOWED_IPS = (process.env.ENGRAM_ALLOWED_IPS || "").split(",").map(s => s.trim()).filter(Boolean);

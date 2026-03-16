@@ -12,7 +12,7 @@ services:
       - ENGRAM_HOST=0.0.0.0
       # - ENGRAM_OPEN_ACCESS=1         # Uncomment for no-auth mode
       # - ENGRAM_HMAC_SECRET=changeme  # GUI session secret
-      # - ENGRAM_GUI_PASSWORD=changeme # GUI login password
+      # - ENGRAM_GUI_PASSWORD=replace-me # Required unless ENGRAM_OPEN_ACCESS=1
       # - LLM_URL=                     # Optional LLM for reranking
       # - LLM_API_KEY=
       # - LLM_MODEL=

@@ -580,10 +580,10 @@ Engram includes a WebGL graph visualization at `/gui`. Login with your `ENGRAM_G
 |----------|---------|-------------|
 | `ENGRAM_PORT` | `4200` | Server port |
 | `ENGRAM_HOST` | `0.0.0.0` | Bind address |
-| `ENGRAM_GUI_PASSWORD` | `changeme` | GUI login password |
+| `ENGRAM_GUI_PASSWORD` | required | GUI login password unless `ENGRAM_OPEN_ACCESS=1` |
 | `ENGRAM_OPEN_ACCESS` | `0` | Set `1` for unauthenticated single-user mode |
 | `ENGRAM_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error`, `none` |
-| `ENGRAM_CORS_ORIGIN` | `*` | Pin to your domain in production |
+| `ENGRAM_CORS_ORIGIN` | unset | Optional allowed browser origin for cross-origin access |
 | `ENGRAM_MAX_BODY_SIZE` | `1048576` | Max request body (bytes) |
 | `ENGRAM_MAX_CONTENT_SIZE` | `102400` | Max memory content (bytes) |
 | `ENGRAM_ALLOWED_IPS` | - | Comma-separated IP allowlist |

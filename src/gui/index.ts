@@ -19,9 +19,12 @@ export const GUI_PASSWORD = (() => {
     log.warn({ msg: "deprecated_env", var: "MEGAMIND_GUI_PASSWORD", use: "ENGRAM_GUI_PASSWORD" });
     return process.env.MEGAMIND_GUI_PASSWORD;
   }
-  log.warn({ msg: "WARNING_default_gui_password", detail: "ENGRAM_GUI_PASSWORD not set — using 'changeme'. Set a strong password for production!" });
-  return "changeme";
+  log.error({ msg: "gui_password_missing", detail: "ENGRAM_GUI_PASSWORD is required unless ENGRAM_OPEN_ACCESS=1." });
+  return null;
 })();
+
+export const GUI_AUTH_CONFIGURED = GUI_PASSWORD !== null;
+export const GUI_COOKIE_ATTRIBUTES = "Path=/; HttpOnly; Secure; SameSite=Strict";
 
 // HMAC secret for cookie signing (top-level await)
 const GUI_HMAC_SECRET = await (async () => {
@@ -59,6 +62,7 @@ export function guiVerifyCookie(cookie: string): boolean {
 }
 
 export function guiAuthed(req: Request): boolean {
+  if (!GUI_AUTH_CONFIGURED) return false;
   const ck = (req.headers.get("cookie") || "")
     .split(";").map(c => c.trim())
     .find(c => c.startsWith("engram_auth="));

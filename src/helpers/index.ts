@@ -6,6 +6,19 @@ import { CORS_ORIGIN } from "../config/index.ts";
 import { log } from "../config/logger.ts";
 import { resolve as dnsResolve } from "dns/promises";
 
+const DEFAULT_CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "frame-ancestors 'none'",
+  "object-src 'none'",
+  "script-src 'self' https://cdn.jsdelivr.net https://unpkg.com",
+  "style-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob:",
+  "connect-src 'self'",
+  "form-action 'self'",
+].join("; ");
+
 // ── SSRF protection ──────────────────────────────────────────────────
 
 export function isPrivateHostname(hostname: string): boolean {
@@ -71,8 +84,7 @@ export async function validatePublicUrlWithDNS(rawUrl: string, label: string): P
 }
 
 export function securityHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  return {
-    "Access-Control-Allow-Origin": CORS_ORIGIN,
+  const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "GET, POST, PATCH, PUT, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Space, X-Engram-Space, X-Request-Id",
     "X-Content-Type-Options": "nosniff",
@@ -80,9 +92,15 @@ export function securityHeaders(extra: Record<string, string> = {}): Record<stri
     "X-XSS-Protection": "0",
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
-    "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'",
-    ...extra,
+    "Content-Security-Policy": DEFAULT_CONTENT_SECURITY_POLICY,
   };
+
+  if (CORS_ORIGIN) {
+    headers["Access-Control-Allow-Origin"] = CORS_ORIGIN;
+    headers["Vary"] = "Origin";
+  }
+
+  return { ...headers, ...extra };
 }
 
 export function json(data: unknown, status = 200, extra: Record<string, string> = {}) {
