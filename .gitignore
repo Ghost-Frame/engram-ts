@@ -37,3 +37,11 @@ sync-to-fallback.sh
 import-opencode.py
 backup-debug-*/
 backup-auditfix-*/
+
+# Never commit
+evaluation/
+cookies.txt
+backups/
+SPRINT-SESSION-*.md
+COMMIT_INSTRUCTIONS.txt
+UsersZan*
