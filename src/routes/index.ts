@@ -792,7 +792,7 @@ async function fetchHandler(req: Request): Promise<Response> {
       }
       const isAuthed = !!healthAuth;
       if (!isAuthed) {
-        return json({ status: "ok", version: "5.7.2" });
+        return json({ status: "ok", version: "5.8.0" });
       }
       // Full health for authenticated users — tenant-scoped for non-admins
       const uid = healthAuth.user_id;
@@ -828,7 +828,7 @@ async function fetchHandler(req: Request): Promise<Response> {
       const dbSize = statSync(DB_PATH).size;
       return json({
         status: "ok",
-        version: "5.7.2",
+        version: "5.8.0",
         memories: scopedMemCount.count,
         embedded: embCount.count,
         unembedded: noEmbCount2,
