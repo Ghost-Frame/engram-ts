@@ -8,7 +8,7 @@ Store, search, recall, and link memories with automatic embeddings,
 fact extraction, versioning, deduplication, and graph visualization.
 
 [![License: Elastic-2.0](https://img.shields.io/badge/License-Elastic--2.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-5.7.2-gold.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-5.8.0-gold.svg)](CHANGELOG.md)
 
 [Quick Start](#quick-start) · [API Reference](#api-reference) · [SDKs](#sdks) · [MCP Server](#mcp-server) · [CLI](#cli) · [Self-Host](#self-hosting) · [GUI](#gui)
 
@@ -18,7 +18,7 @@ fact extraction, versioning, deduplication, and graph visualization.
 
 ## What is Engram?
 
-Engram gives your AI agents **long-term memory**. Instead of losing context between sessions, agents store what they learn and recall it when relevant - automatically.
+Engram gives your AI agents **long-term memory**. Instead of losing context between sessions, agents store what they learn and recall it when relevant, automatically.
 
 ```bash
 # Store what the agent learns
@@ -39,21 +39,25 @@ curl -X POST http://localhost:4200/recall \
 
 - 🧠 **FSRS-6 spaced repetition** - cognitive science-backed memory decay using power-law forgetting curves (ported from [open-spaced-repetition](https://github.com/open-spaced-repetition/fsrs4anki))
 - 💪 **Dual-strength memory model** - Bjork & Bjork (1992) storage strength (never decays) + retrieval strength (decays via power law)
-- 🧬 **Hybrid semantic + full-text search** - BGE-large 1024-dim embeddings via raw ONNX inference (no external APIs) combined with FTS5 full-text search
+- 🧬 **Reciprocal Rank Fusion search** - four-channel RRF scoring across vector similarity, FTS5 full-text, personality signals, and graph relationships
 - 🔗 **Auto-linking** - memories automatically connect via cosine similarity, forming a knowledge graph
+- 🧹 **SimHash deduplication** - 64-bit locality-sensitive hashing detects near-duplicates before embedding, saving compute
+- 🕐 **Bi-temporal fact tracking** - structured facts carry temporal validity windows with automatic contradiction-based invalidation
+- 🧩 **Entity cooccurrence graph** - entities that appear together build weighted relationships automatically
+- 🏘️ **Community detection** - label propagation groups related memories into discoverable clusters
+- 🔬 **Cross-encoder reranker** - BGE-reranker-base (quantized INT8) reranks search results for semantic precision
+- 🎭 **Personality engine** - extracts preferences, values, motivations, decisions, emotions, and identity signals from memories
 - 📊 **Graph visualization** - explore your memory space in a WebGL galaxy
 - 🔄 **Versioning** - update memories without losing history
-- 🧹 **Auto-deduplication** - detects and merges near-duplicate memories
 - ⏰ **Implicit spaced repetition** - every access is an FSRS review, building stability over time
 - 🔍 **Fact extraction & auto-tagging** - LLM extracts facts, classifies, tags (optional, requires LLM)
 - 💬 **Conversation extraction** - feed chat logs, get structured memories
 - ⚡ **Contradiction detection** - find and resolve conflicting memories
 - ⏪ **Time-travel queries** - query what you knew at any point in time
-- 🎯 **Smart context builder** - token-budget-aware RAG context assembly
+- 🎯 **Smart context builder** - token-budget-aware RAG context assembly with progressive depth (1/2/3-hop)
 - 💭 **Reflections** - periodic meta-analysis that becomes searchable memory
 - 🧬 **Derived memories** - inference engine finds patterns across memories
 - 🗜️ **Auto-consolidation** - summarize large memory clusters automatically
-- 🏆 **LLM reranker** - search results reranked for semantic precision (optional)
 - 👥 **Multi-tenant** - isolated memory per user with API keys
 - 📖 **Episodic memory** - store conversation episodes as embedded, searchable narratives with temporal + semantic search. Facts link to source episodes.
 - 🚫 **Abstention** - search returns `abstained: true` when confidence is below threshold. The system knows when it doesn't know.
@@ -78,40 +82,98 @@ curl -X POST http://localhost:4200/recall \
 
 ---
 
-## What's New in v5.7
+## What's New in v5.8
 
-### BGE-large 1024-dim Embeddings
-Replaced MiniLM-L6-v2 (384-dim) with **BGE-large-en-v1.5** (1024-dim) using raw `onnxruntime-node` and a hand-written BERT WordPiece tokenizer. 1024 dimensions, 512-token context, quantized INT8 (337MB, sub-200ms on CPU). Auto-migration re-embeds existing vectors on first startup.
+### Reciprocal Rank Fusion (RRF) Search
+Replaced simple weighted-sum scoring with **RRF across four channels**: vector similarity (BGE-large), FTS5 full-text, personality signal matching, and graph-based relationships. Type-aware link weighting gives causal links 2x multiplier, updates/corrections 1.5x, and extensions/contradictions 1.3x.
 
-### Episodic Memory
-Conversation episodes as first-class embedded, searchable objects - BGE-large embeddings, FTS5 search, temporal date-range queries, semantic search, `POST /episodes/:id/finalize` for narrative summaries, FSRS decay, and automatic `/context` injection.
+Question-type-aware scoring adapts retrieval strategy based on intent:
+- `fact_recall` (default), `preference`, `reasoning`, `generalization`, `temporal`
+- Temporal queries get date-aware Gaussian proximity boosts
 
-### Multi-Tenant Data Isolation
-Complete security audit of all cross-tenant boundaries. User-scoped embedding cache, ownership checks on all endpoints, conversation isolation, write scope enforcement, user-scoped stats, and user-filtered graph BFS.
+### SimHash Deduplication
+64-bit locality-sensitive hashing via FNV-1a tokenization. Hamming distance <= 3 flags near-duplicates **before** embedding, saving compute. Matching memories get boosted instead of re-embedded.
 
-Webhook and digest destinations now share the same public-URL validation, `/sync/receive` resolves by `sync_id` within the authenticated user only, and `/stats` no longer exposes the database path.
+### Bi-Temporal Fact Tracking
+Structured facts now carry temporal validity windows (`valid_at`, `invalid_at`) with automatic contradiction-based invalidation. When a new fact contradicts an existing one on the same subject+verb, the old fact is automatically marked invalid. Relative date resolution handles phrases like "last Tuesday" or "3 weeks ago."
 
-### Guardrails
-`POST /guard` - agents submit proposed actions, Engram checks stored rules for conflicts. Returns `allow`, `warn`, or `block` with matched rule context.
+### Entity Cooccurrence Graph
+Entities appearing together in memories build weighted relationships scored by name similarity (0.2), cooccurrence frequency (0.5), and temporal proximity (0.3). Relationships above 0.6 threshold are auto-created. Incremental updates on each memory store.
 
-### Benchmark Features
-Abstention (`ENGRAM_SEARCH_MIN_SCORE`), assistant recall (LLM + regex extraction of AI actions), temporal sort, 2-hop graph traversal, implicit connection inference in `/context`.
+### Community Detection
+Label propagation algorithm on the memory links graph groups related memories into communities. Type-aware edge weights match the search multipliers. Run via `POST /admin/detect-communities`, browse via `GET /communities`.
 
-### Architecture Refactor
-Monolith `server.ts` replaced by `server-split.ts` + modular `src/routes/`.
+### Cross-Encoder Reranker
+BGE-reranker-base (XLM-RoBERTa) with hand-written SentencePiece tokenizer (zero deps). Quantized INT8, ~337MB model, sub-100ms inference. Auto-downloads from Hugging Face on startup. Disable with `ENGRAM_CROSS_ENCODER=0`.
+
+### Personality Engine
+Extracts six signal types from memories: preference, value, motivation, decision, emotion, and identity. Each signal captures subject, valence (positive/negative/neutral/mixed), intensity (0.0-1.0), reasoning, and source text. Synthesizes a coherent personality profile via LLM covering core values, decision-making patterns, emotional tendencies, and growth trajectory. Integrated into search scoring when `includePersonalitySignals` is true.
+
+### Context Depth
+`/context` now supports a `depth` parameter (1/2/3):
+- **Depth 1:** Direct matches only
+- **Depth 2:** 1-hop relationships
+- **Depth 3:** 2-hop relationships with source memories
+
+### New Endpoints
+- `GET /facts` - query structured facts with filtering
+- `GET /communities` - list and browse memory communities
+- `GET /preferences` - get stored user preferences
+- `GET /state` - get current user state
+- `POST /profile/synthesize` - synthesize personality profile from signals
+- `POST /admin/backfill-facts` - re-extract facts from all memories
+- `POST /admin/rebuild-cooccurrences` - rebuild entity cooccurrence graph
+- `POST /admin/detect-communities` - run community detection
+
+### Search & Context Overrides
+`POST /search` accepts optional body parameters: `vector_floor` (minimum similarity threshold), `question_type` (fact_recall/preference/reasoning/generalization/temporal).
+
+`POST /context` supports 12 overrides: `max_memory_tokens`, `dedup_threshold`, `min_relevance`, `semantic_ceiling`, `semantic_limit`, and 7 layer toggles (`episodes`, `linked`, `inference`, `current_state`, `preferences`, `structured_facts`, `working_memory`).
+
+#### v5.8 - Intelligence Pipeline Overhaul
+
+**Reciprocal Rank Fusion** - Replaced weighted-sum scoring with RRF across 4 search channels (vector, FTS5, personality, graph). More robust ranking with less parameter tuning.
+
+**SimHash Deduplication** - 64-bit locality-sensitive hashing detects near-duplicate memories before embedding, saving compute. Hamming distance threshold of 3 bits. Existing memories get source_count boosted instead of creating duplicates.
+
+**Bi-Temporal Fact Tracking** - Structured facts now carry valid_at/invalid_at windows inspired by Graphiti/Zep. Old facts are never deleted, just invalidated. Contradiction detection auto-invalidates predecessor facts on the same subject+verb.
+
+**Entity Cooccurrence Graph** - Tracks entity co-mentions with composite scoring (name similarity, frequency, temporal proximity). Auto-creates relationships above threshold.
+
+**Community Detection** - Label propagation on the memory_links graph with type-aware edge weights. Detects memory clusters for browsing and context enrichment.
+
+**Temporal Retrieval** - New "temporal" question type with date-aware Gaussian proximity boost. Resolves relative dates ("last Tuesday", "two weeks ago") against query context.
+
+**Progressive Disclosure** - `/context` accepts depth=1 (core only), depth=2 (+ semantic/preferences), depth=3 (full context). Reduces token usage for simple queries.
+
+**Cross-Encoder Reranker** - Optional re-ranking pass for search results using a cross-encoder model.
+
+**Core Memory Auto-Promotion** - Memories automatically promoted to static when they exceed access, source, and stability thresholds.
 
 <details>
 <summary><strong>Previous releases</strong></summary>
 
+#### v5.7 - BGE-large, Episodic Memory, Multi-Tenant Isolation
+
+**BGE-large 1024-dim Embeddings** - Replaced MiniLM-L6-v2 (384-dim) with BGE-large-en-v1.5 (1024-dim) using raw `onnxruntime-node` and a hand-written BERT WordPiece tokenizer. 1024 dimensions, 512-token context, quantized INT8 (337MB, sub-200ms on CPU). Auto-migration re-embeds existing vectors on first startup.
+
+**Episodic Memory** - Conversation episodes as first-class embedded, searchable objects. BGE-large embeddings, FTS5 search, temporal date-range queries, semantic search, `POST /episodes/:id/finalize` for narrative summaries, FSRS decay, and automatic `/context` injection.
+
+**Multi-Tenant Data Isolation** - Complete security audit of all cross-tenant boundaries. User-scoped embedding cache, ownership checks on all endpoints, conversation isolation, write scope enforcement, user-scoped stats, and user-filtered graph BFS.
+
+**Guardrails** - `POST /guard` checks proposed actions against stored rules. Returns `allow`, `warn`, or `block` with matched rule context.
+
+**Benchmark Features** - Abstention (`ENGRAM_SEARCH_MIN_SCORE`), assistant recall (LLM + regex extraction of AI actions), temporal sort, 2-hop graph traversal, implicit connection inference in `/context`.
+
 #### v5.6 - Node.js 22, Graph Intelligence
 - Node.js 22+ as primary runtime (`--experimental-strip-types`), Bun maintained for compatibility
-- Optimized MCP server (529 → 168 lines), vitest framework (76+ tests)
-- Graphology knowledge graph - centrality, shortest paths, community detection, relationship inference
+- Optimized MCP server (529 to 168 lines), vitest framework (76+ tests)
+- Graphology knowledge graph: centrality, shortest paths, community detection, relationship inference
 
 #### v5.5 - Intelligence Layer
 - LLM fact extraction, auto-tagging, relationship classification
 - Conversation extraction, URL ingest, reflections, derived memories, auto-consolidation
-- MCP server improvements - error handling, streaming, tool introspection
+- MCP server improvements: error handling, streaming, tool introspection
 
 #### v5.3 - Security Hardening
 - Auth required by default, rate limit fix, body size limits
@@ -376,9 +438,9 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/store` | Store a memory |
-| `POST` | `/search` | Semantic + full-text search |
+| `POST` | `/search` | RRF search across vector, FTS5, personality, and graph channels |
 | `POST` | `/recall` | Contextual recall (agent-optimized) |
-| `POST` | `/context` | Smart context builder (token-budget RAG) |
+| `POST` | `/context` | Smart context builder (token-budget RAG with depth 1/2/3) |
 | `GET` | `/list` | List recent memories |
 | `GET` | `/profile` | User profile (static facts + recent) |
 | `GET` | `/graph` | Full memory graph (nodes + edges) |
@@ -417,6 +479,19 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 | `GET` | `/contradictions` | Find conflicting memories |
 | `POST` | `/contradictions/resolve` | Resolve a contradiction |
 | `POST` | `/timetravel` | Query memory state at a past time |
+| `GET` | `/facts` | Query structured facts with filtering |
+| `GET` | `/preferences` | Get stored user preferences |
+| `GET` | `/state` | Get current user state |
+| `POST` | `/profile/synthesize` | Synthesize personality profile from signals |
+
+### Graph & Communities
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/communities` | List and browse memory communities |
+| `POST` | `/admin/detect-communities` | Run community detection (admin) |
+| `POST` | `/admin/rebuild-cooccurrences` | Rebuild entity cooccurrence graph (admin) |
+| `POST` | `/admin/backfill-facts` | Re-extract facts from all memories (admin) |
 
 ### Organization
 
@@ -503,54 +578,66 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 
 ### Memory Lifecycle
 
-1. **Store** - Memory content is embedded using BGE-large-en-v1.5 (1024-dim vectors, runs locally via ONNX) and stored in libsql with FTS5 full-text indexing.
+1. **Store** - Memory content is checked for near-duplicates via SimHash (Hamming distance <= 3). If unique, it is embedded using BGE-large-en-v1.5 (1024-dim vectors, runs locally via ONNX) and stored in libsql with FTS5 full-text indexing.
 
 2. **Auto-link** - New memories are compared against existing ones via in-memory cosine similarity. Memories above 0.7 similarity are linked with typed relationships (similarity, updates, extends, contradicts, caused_by, prerequisite_for).
 
 3. **FSRS-6 initialization** - Each new memory gets initial FSRS state: stability, difficulty, storage strength, retrieval strength. The power-law forgetting curve starts tracking retrievability.
 
-4. **Fact extraction** - If an LLM is configured, Engram analyzes new memories, extracts static facts, auto-tags with keywords, classifies importance, and detects relationships to existing memories.
+4. **Fact extraction** - If an LLM is configured, Engram analyzes new memories, extracts structured facts with temporal validity windows (valid_at, invalid_at), auto-tags with keywords, classifies importance, and detects relationships to existing memories. Contradicting facts automatically invalidate predecessors.
 
-5. **Recall** - Four retrieval strategies combined: static facts (always), semantic matches (cosine similarity), high-importance (weighted by FSRS retrievability), recent (temporal). Every recalled memory gets an implicit FSRS review, building stability.
+5. **Entity cooccurrence** - Entities appearing in the same memory update the cooccurrence graph, building weighted relationships based on frequency, name similarity, and temporal proximity.
 
-6. **Spaced repetition** - Each access is an FSRS-6 review graded as "Good". Archived/forgotten memories receive an "Again" grade. Stability grows with successful recalls - frequently accessed memories can have stability measured in months or years.
+6. **Personality extraction** - The personality engine scans for preference, value, motivation, decision, emotion, and identity signals, building a profile over time.
 
-7. **Dual-strength decay** - Storage strength (0-10) accumulates over time, representing deep consolidation. Retrieval strength (0-1) decays via power law, representing current accessibility. Together they produce a retention score: `0.7 × retrieval + 0.3 × (storage/10)`.
+7. **Recall** - Reciprocal Rank Fusion combines four channels: vector similarity, FTS5 full-text, personality signals, and graph relationships. Question-type detection adapts scoring strategy. Cross-encoder reranker refines the final ordering. Every recalled memory gets an implicit FSRS review, building stability.
 
-8. **Contradiction detection** - Scans for memories that conflict. LLM verification eliminates false positives. Contradictions can be resolved by keeping one side, both, or merging.
+8. **Spaced repetition** - Each access is an FSRS-6 review graded as "Good". Archived/forgotten memories receive an "Again" grade. Stability grows with successful recalls; frequently accessed memories can have stability measured in months or years.
 
-9. **Consolidation** - Large clusters of related memories get summarized into a single dense memory. Originals are archived, links preserved.
+9. **Dual-strength decay** - Storage strength (0-10) accumulates over time, representing deep consolidation. Retrieval strength (0-1) decays via power law, representing current accessibility. Together they produce a retention score: `0.7 * retrieval + 0.3 * (storage/10)`.
 
-10. **Reflection** - On-demand meta-analysis generates insights about themes, progress, and patterns. Reflections become searchable memories themselves.
+10. **Contradiction detection** - Scans for memories that conflict. LLM verification eliminates false positives. Contradictions can be resolved by keeping one side, both, or merging.
+
+11. **Consolidation** - Large clusters of related memories get summarized into a single dense memory. Originals are archived, links preserved.
+
+12. **Community detection** - Label propagation groups related memories into communities via type-aware edge weights. Communities are browsable and searchable.
+
+13. **Reflection** - On-demand meta-analysis generates insights about themes, progress, and patterns. Reflections become searchable memories themselves.
 
 ### Architecture
 
 ```
-┌─────────────────────────────────────────────┐
-│                  Engram Server               │
-│                                              │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  │
-│  │  FSRS-6  │  │ Cosine   │  │  FTS5    │  │
-│  │  Engine   │  │ Sim.     │  │  Search  │  │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  │
-│       │              │              │        │
-│  ┌────┴──────────────┴──────────────┴────┐  │
-│  │    libsql (SQLite + vector columns)   │  │
-│  │      FLOAT32(1024) + FTS5             │  │
-│  └───────────────────────────────────────┘  │
-│                                              │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  │
-│  │ BGE-large│  │  LLM     │  │  Graph   │  │
-│  │  Embedder │  │  (opt.)  │  │  Engine  │  │
-│  └──────────┘  └──────────┘  └──────────┘  │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│                    Engram Server                      │
+│                                                       │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
+│  │  FSRS-6  │  │   RRF    │  │  FTS5    │           │
+│  │  Engine   │  │  Scorer  │  │  Search  │           │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘           │
+│       │              │              │                 │
+│  ┌────┴──────────────┴──────────────┴────┐           │
+│  │    libsql (SQLite + vector columns)   │           │
+│  │      FLOAT32(1024) + FTS5             │           │
+│  └───────────────────────────────────────┘           │
+│                                                       │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
+│  │ BGE-large│  │ Reranker │  │  Graph   │           │
+│  │  Embedder │  │ (BGE-rr) │  │  Engine  │           │
+│  └──────────┘  └──────────┘  └──────────┘           │
+│                                                       │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
+│  │ SimHash  │  │Personality│  │ Temporal │           │
+│  │  Dedup   │  │  Engine   │  │  Facts   │           │
+│  └──────────┘  └──────────┘  └──────────┘           │
+└──────────────────────────────────────────────────────┘
 ```
 
 - **Runtime:** Node.js 22+ (primary, with `--experimental-strip-types`) or Bun
 - **Database:** libsql (SQLite fork with vector column support)
 - **Embeddings:** BGE-large-en-v1.5 (1024-dim, runs locally via raw ONNX inference)
-- **Search:** In-memory cosine similarity + FTS5 full-text hybrid
-- **LLM:** Optional, for fact extraction / reranking / consolidation
+- **Reranker:** BGE-reranker-base (XLM-RoBERTa, quantized INT8, optional)
+- **Search:** Reciprocal Rank Fusion across vector, FTS5, personality, and graph channels
+- **LLM:** Optional, for fact extraction / personality / consolidation
 - **Decay:** FSRS-6 (21-parameter power-law forgetting curve)
 
 ---
@@ -586,9 +673,22 @@ Engram includes a WebGL graph visualization at `/gui`. Login with your `ENGRAM_G
 | `ENGRAM_MAX_CONTENT_SIZE` | `102400` | Max memory content (bytes) |
 | `ENGRAM_ALLOWED_IPS` | - | Comma-separated IP allowlist |
 | `ENGRAM_HOT_RELOAD` | `0` | Set `1` to reload GUI from disk each request |
+| `ENGRAM_CROSS_ENCODER` | `1` | Set `0` to disable the cross-encoder reranker |
+| `ENGRAM_RERANKER_FP32` | `0` | Set `1` for full-precision reranker instead of quantized INT8 |
 | `LLM_URL` | - | OpenAI-compatible API URL |
 | `LLM_API_KEY` | - | API key for LLM |
 | `LLM_MODEL` | - | Model name (e.g., `gpt-4o`, `claude-sonnet-4-20250514`) |
+
+#### Search Tuning
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SEARCH_FACT_VECTOR_FLOOR` | - | Min vector score for fact_recall queries |
+| `SEARCH_PREFERENCE_VECTOR_FLOOR` | - | Min vector score for preference queries |
+| `SEARCH_REASONING_VECTOR_FLOOR` | - | Min vector score for reasoning queries |
+| `SEARCH_GENERALIZATION_VECTOR_FLOOR` | - | Min vector score for generalization queries |
+| `SEARCH_PERSONALITY_MIN_SCORE` | - | Min score for personality signal matching |
+| `AUTO_LINK_MAX` | `6` | Max auto-links created per memory |
 
 ### Storage
 
