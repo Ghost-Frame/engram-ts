@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Engram — Persistent Memory for AI Agents</title>
+<title>Engram - Persistent Memory for AI Agents</title>
 <meta name="description" content="Give your AI agents long-term memory with FSRS-6 spaced repetition, hybrid semantic search, knowledge graphs, and a full developer platform. Self-hosted, zero external APIs.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -160,23 +160,22 @@ nav .links a:hover{color:var(--text);text-decoration:none}
 
 <!-- Hero -->
 <section class="hero">
-  <div class="hero-badge"><span class="dot"></span> v5.7 — Open Source</div>
+  <div class="hero-badge"><span class="dot"></span> v5.8 - Open Source</div>
   <h1>Memory for<br><span>AI agents</span></h1>
   <p>Persistent, searchable, self-organizing memory with FSRS-6 spaced repetition. Store what agents learn. Recall it when it matters. No external APIs.</p>
   <div class="hero-actions">
     <a href="https://github.com/zanfiel/engram" class="btn btn-primary">Get Started →</a>
     <a href="https://demo.engram.lol/gui" class="btn btn-secondary">Try Live Demo</a>
   </div>
-  <a href="https://www.elastic.co/licensing/elastic-license" style="display:inline-block;margin-top:1.25rem;opacity:0.7;transition:opacity 0.2s" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'"><img src="https://img.shields.io/badge/License-Elastic%202.0-blue?style=flat-square" alt="License: Elastic 2.0" height="20"></a>
   <div class="hero-code">
     <span class="tag">TypeScript</span>
     <span class="kw">import</span> { <span class="fn">Engram</span> } <span class="kw">from</span> <span class="str">"@engram/sdk"</span>;<br><br>
     <span class="kw">const</span> mem = <span class="kw">new</span> <span class="fn">Engram</span>({ url: <span class="str">"http://localhost:4200"</span> });<br><br>
-    <span class="cm">// Store — embeddings generated locally, no API key needed</span><br>
+    <span class="cm">// Store - embeddings generated locally, no API key needed</span><br>
     <span class="kw">await</span> mem.<span class="fn">store</span>(<span class="str">"Deployed auth migration to production"</span>, {<br>
     &nbsp;&nbsp;category: <span class="str">"state"</span>, importance: <span class="num">9</span>,<br>
     });<br><br>
-    <span class="cm">// In a new session — five-layer contextual recall</span><br>
+    <span class="cm">// In a new session - multi-layer contextual recall</span><br>
     <span class="kw">const</span> ctx = <span class="kw">await</span> mem.<span class="fn">recall</span>(<span class="str">"current production state"</span>);<br>
     <span class="cm">// → Weighted by FSRS-6 retrievability, assembled into context</span>
   </div>
@@ -195,7 +194,7 @@ nav .links a:hover{color:var(--text);text-decoration:none}
         <div class="feature highlight">
           <div class="feature-icon" style="background:rgba(196,162,101,0.15);color:var(--accent)">⏱️</div>
           <h3>FSRS-6 Spaced Repetition</h3>
-          <p>21-parameter algorithm trained on millions of Anki reviews. Power-law forgetting curves. Every access is an implicit review — stability grows over time.</p>
+          <p>21-parameter algorithm trained on millions of Anki reviews. Power-law forgetting curves. Every access is an implicit review. Stability grows over time.</p>
         </div>
         <div class="feature highlight">
           <div class="feature-icon" style="background:rgba(176,176,190,0.15);color:var(--accent2)">💪</div>
@@ -210,7 +209,7 @@ nav .links a:hover{color:var(--text);text-decoration:none}
         <div class="feature">
           <div class="feature-icon" style="background:rgba(34,211,238,0.1);color:var(--cyan)">🧹</div>
           <h3>Auto-Deduplication</h3>
-          <p>Detects near-identical memories and merges them. Source count tracks how often something was mentioned — signal, not noise.</p>
+          <p>SimHash 64-bit locality-sensitive hashing detects near-identical memories and merges them. Source count tracks how often something was mentioned.</p>
         </div>
         <div class="feature">
           <div class="feature-icon" style="background:rgba(251,191,36,0.1);color:var(--amber)">⏰</div>
@@ -231,7 +230,7 @@ nav .links a:hover{color:var(--text);text-decoration:none}
         <div class="feature highlight">
           <div class="feature-icon" style="background:rgba(34,211,238,0.15);color:var(--cyan)">🧠</div>
           <h3>Hybrid Semantic + FTS5</h3>
-          <p>BGE-large 1024-dim embeddings via raw ONNX inference, combined with libsql FTS5 full-text search. Meaning and keywords — no OpenAI key required.</p>
+          <p>4-channel Reciprocal Rank Fusion: BGE-large vector similarity, FTS5 full-text, personality signals, and graph relationships. Cross-encoder reranking (BGE-reranker-base INT8). No OpenAI key required.</p>
         </div>
         <div class="feature">
           <div class="feature-icon" style="background:rgba(244,114,182,0.1);color:var(--pink)">🔍</div>
@@ -261,15 +260,24 @@ nav .links a:hover{color:var(--text);text-decoration:none}
         <div class="feature highlight">
           <div class="feature-icon" style="background:rgba(196,162,101,0.15);color:var(--accent)">🚫</div>
           <h3>Abstention</h3>
-          <p>Search returns <code>abstained: true</code> when confidence is below threshold. The system knows what it doesn't know — no more false positives on unrelated queries.</p>
+          <p>Search returns <code>abstained: true</code> when confidence is below threshold. The system knows what it doesn't know. No more false positives on unrelated queries.</p>
         </div>
         <div class="feature">
           <div class="feature-icon" style="background:rgba(90,158,126,0.1);color:var(--green)">🤖</div>
           <h3>Assistant Recall</h3>
-          <p>Extracts what the AI said, recommended, and produced — not just user facts. LLM + regex patterns capture assistant actions as structured facts.</p>
+          <p>Extracts what the AI said, recommended, and produced, not just user facts. LLM + regex patterns capture assistant actions as structured facts.</p>
+        </div>
+        <div class="feature highlight">
+          <div class="feature-icon" style="background:rgba(244,114,182,0.15);color:var(--pink)">🎭</div>
+          <h3>Personality Engine</h3>
+          <p>Extracts six signal types from conversations: preferences, values, motivations, decisions, emotions, identity. LLM synthesizes a coherent profile that shapes future recall scoring.</p>
+        </div>
+        <div class="feature highlight">
+          <div class="feature-icon" style="background:rgba(248,113,113,0.15);color:var(--red)">🛡️</div>
+          <h3>Guardrails</h3>
+          <p>Agents call <code>/guard</code> before destructive actions. Engram checks stored rules for conflicts and returns allow/warn/block, preventing repeated mistakes before they happen.</p>
         </div>
       </div>
-<div class="feature highlight">          <div class="feature-icon" style="background:rgba(248,113,113,0.15);color:var(--red)">🛡️</div>          <h3>Guardrails</h3>          <p>Agents call <code>/guard</code> before destructive actions. Engram checks stored rules for conflicts and returns allow/warn/block — preventing repeated mistakes before they happen.</p>        </div>
     </div>
 
     <div class="feature-group">
@@ -278,7 +286,7 @@ nav .links a:hover{color:var(--text);text-decoration:none}
         <div class="feature highlight">
           <div class="feature-icon" style="background:rgba(34,211,238,0.15);color:var(--cyan)">🔧</div>
           <h3>MCP Server</h3>
-          <p>Native Model Context Protocol — JSON-RPC 2.0 stdio. Works with Claude Desktop, Cursor, and Windsurf out of the box. 8 tools, 3 resources.</p>
+          <p>Native Model Context Protocol. JSON-RPC 2.0 stdio. Works with Claude Desktop, Cursor, and Windsurf out of the box. 8 tools, 3 resources.</p>
         </div>
         <div class="feature highlight">
           <div class="feature-icon" style="background:rgba(52,211,153,0.15);color:var(--green)">⌨️</div>
@@ -303,7 +311,12 @@ nav .links a:hover{color:var(--text);text-decoration:none}
         <div class="feature">
           <div class="feature-icon" style="background:rgba(248,113,113,0.1);color:var(--red)">📋</div>
           <h3>Audit Trail & Structured Logging</h3>
-          <p>Every mutation logged — who, what, when, from where, with request IDs. Queryable via <code>/audit</code>. JSON logs throughout.</p>
+          <p>Every mutation logged: who, what, when, from where, with request IDs. Queryable via <code>/audit</code>. JSON logs throughout.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon" style="background:rgba(251,191,36,0.1);color:var(--amber)">📝</div>
+          <h3>Scratchpad / Working Memory</h3>
+          <p>Ephemeral per-session storage with TTL auto-purge. Promote entries to permanent memories when they prove valuable. Injected into <code>/context</code> as a working memory layer.</p>
         </div>
       </div>
     </div>
@@ -329,12 +342,17 @@ nav .links a:hover{color:var(--text);text-decoration:none}
         <div class="feature">
           <div class="feature-icon" style="background:rgba(251,191,36,0.1);color:var(--amber)">🧩</div>
           <h3>Entities & Projects</h3>
-          <p>Track people, servers, tools, and projects as first-class objects with scoped search and relationship tracking.</p>
+          <p>Track people, servers, tools, and projects as first-class objects. Entity cooccurrence graph with composite scoring surfaces hidden relationships automatically.</p>
         </div>
         <div class="feature">
           <div class="feature-icon" style="background:rgba(176,176,190,0.1);color:var(--accent2)">📥</div>
           <h3>Review Queue / Inbox</h3>
           <p>Auto-detected memories land in inbox for review. Approve, reject, or edit before they enter recall. Bulk operations supported.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon" style="background:rgba(90,158,126,0.1);color:var(--green)">🏘️</div>
+          <h3>Community Detection</h3>
+          <p>Label propagation on the memory graph surfaces clusters of related memories. Type-aware edge weighting. Browse and explore communities via API.</p>
         </div>
         <div class="feature">
           <div class="feature-icon" style="background:rgba(244,114,182,0.1);color:var(--pink)">⏪</div>
@@ -353,7 +371,7 @@ nav .links a:hover{color:var(--text);text-decoration:none}
   <div class="container" style="text-align:center">
     <div class="section-label">Try It Now</div>
     <h2 class="section-title">See your memory space</h2>
-    <p class="section-desc" style="margin-left:auto;margin-right:auto">Engram includes a built-in WebGL graph visualization. Explore connections between memories, search, create, edit — all from the browser.</p>
+    <p class="section-desc" style="margin-left:auto;margin-right:auto">Engram includes a built-in WebGL graph visualization. Explore connections between memories, search, create, edit, all from the browser.</p>
     <div style="margin:2rem auto;max-width:800px;background:var(--bg);border:1px solid rgba(255,255,255,0.06);border-radius:var(--radius);overflow:hidden">
       <div style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;gap:8px">
         <span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span>
@@ -383,7 +401,7 @@ nav .links a:hover{color:var(--text);text-decoration:none}
   <div class="container">
     <div class="section-label">How It Works</div>
     <h2 class="section-title">The memory lifecycle</h2>
-    <p class="section-desc">From store to recall — what happens to every memory.</p>
+    <p class="section-desc">From store to recall: what happens to every memory.</p>
     <div class="steps">
       <div class="step">
         <div class="step-num">01</div>
@@ -413,7 +431,7 @@ nav .links a:hover{color:var(--text);text-decoration:none}
         <div class="step-num">06</div>
         <div class="step-icon">🎯</div>
         <h3>Recall</h3>
-        <p>Five layers combined: static facts, semantic matches, episodic context, linked memories (graph expansion), and recent activity.</p>
+        <p>Multi-layer context assembly: static facts, semantic matches, episodic context, graph expansion, recent activity, working memory, personality signals, and implicit inference.</p>
       </div>
       <div class="step">
         <div class="step-num">06</div>
@@ -511,7 +529,7 @@ nav .links a:hover{color:var(--text);text-decoration:none}
   <div class="container">
     <div class="section-label">MCP Server</div>
     <h2 class="section-title">Works with your AI tools</h2>
-    <p class="section-desc">Native Model Context Protocol — drop Engram into Claude Desktop, Cursor, or Windsurf in under a minute.</p>
+    <p class="section-desc">Native Model Context Protocol. Drop Engram into Claude Desktop, Cursor, or Windsurf in under a minute.</p>
 
     <div class="mcp-grid">
       <div class="code-block">
@@ -535,13 +553,11 @@ nav .links a:hover{color:var(--text);text-decoration:none}
         <div class="feature" style="margin:0">
           <h3 style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--dim);margin-bottom:14px">Tools</h3>
           <div class="mcp-list">
-            <div class="mcp-item"><code style="color:var(--cyan);background:rgba(34,211,238,0.06)">memory_store</code><span>Store a memory</span></div>
-            <div class="mcp-item"><code style="color:var(--cyan);background:rgba(34,211,238,0.06)">memory_recall</code><span>Agent-optimized contextual recall</span></div>
-            <div class="mcp-item"><code style="color:var(--cyan);background:rgba(34,211,238,0.06)">memory_search</code><span>Semantic + full-text search</span></div>
-            <div class="mcp-item"><code style="color:var(--cyan);background:rgba(34,211,238,0.06)">memory_pack</code><span>Token-budget context packing</span></div>
-            <div class="mcp-item"><code style="color:var(--cyan);background:rgba(34,211,238,0.06)">memory_update</code><span>Create a new version</span></div>
-            <div class="mcp-item"><code style="color:var(--cyan);background:rgba(34,211,238,0.06)">memory_forget</code><span>Soft-delete a memory</span></div>
+            <div class="mcp-item"><code style="color:var(--cyan);background:rgba(34,211,238,0.06)">memory_store</code><span>Store a persistent memory</span></div>
+            <div class="mcp-item"><code style="color:var(--cyan);background:rgba(34,211,238,0.06)">memory_recall</code><span>Semantic similarity search</span></div>
+            <div class="mcp-item"><code style="color:var(--cyan);background:rgba(34,211,238,0.06)">memory_context</code><span>Token-budgeted context blob</span></div>
             <div class="mcp-item"><code style="color:var(--cyan);background:rgba(34,211,238,0.06)">memory_list</code><span>List recent memories</span></div>
+            <div class="mcp-item"><code style="color:var(--cyan);background:rgba(34,211,238,0.06)">memory_delete</code><span>Delete a memory by ID</span></div>
           </div>
         </div>
         <div class="feature" style="margin:0">
