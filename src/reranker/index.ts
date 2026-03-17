@@ -15,7 +15,7 @@ const DATA_DIR = process.env.ENGRAM_DATA_DIR
   : resolve(import.meta.dirname || ".", "../../data");
 export const CROSS_ENCODER_ENABLED = process.env.ENGRAM_CROSS_ENCODER !== "0";
 const CROSS_ENCODER_DIR = resolve(DATA_DIR, "models", "bge-reranker-base");
-const CROSS_ENCODER_MAX_SEQ = 512;
+const CROSS_ENCODER_MAX_SEQ = Number(process.env.ENGRAM_RERANKER_MAX_SEQ || 512);
 const CROSS_ENCODER_FP32 = process.env.ENGRAM_RERANKER_FP32 === "1";
 const CROSS_ENCODER_ONNX = CROSS_ENCODER_FP32 ? "model.onnx" : "model_quantized.onnx";
 const CROSS_ENCODER_URLS: Record<string, string> = {
@@ -269,6 +269,48 @@ async function scorePair(query: string, document: string): Promise<number> {
 }
 
 // ============================================================================
+// BATCH SCORING — single ONNX inference for N pairs
+// ============================================================================
+
+async function scoreBatch(query: string, documents: string[]): Promise<number[]> {
+  if (!session || !tok) throw new Error("Reranker not loaded");
+  const n = documents.length;
+  if (n === 0) return [];
+  // For single item, use the simpler path
+  if (n === 1) return [await scorePair(query, documents[0])];
+
+  // Tokenize all pairs and pack into batch tensors
+  const batchInputIds = new BigInt64Array(n * CROSS_ENCODER_MAX_SEQ);
+  const batchAttentionMask = new BigInt64Array(n * CROSS_ENCODER_MAX_SEQ);
+  const batchTokenTypeIds = new BigInt64Array(n * CROSS_ENCODER_MAX_SEQ);
+
+  for (let i = 0; i < n; i++) {
+    const { input_ids, attention_mask, token_type_ids } = tok.encodePair(query, documents[i]);
+    const offset = i * CROSS_ENCODER_MAX_SEQ;
+    batchInputIds.set(input_ids, offset);
+    batchAttentionMask.set(attention_mask, offset);
+    batchTokenTypeIds.set(token_type_ids, offset);
+  }
+
+  const feeds: Record<string, ort.Tensor> = {
+    input_ids: new ort.Tensor("int64", batchInputIds, [n, CROSS_ENCODER_MAX_SEQ]),
+    attention_mask: new ort.Tensor("int64", batchAttentionMask, [n, CROSS_ENCODER_MAX_SEQ]),
+  };
+  if (hasTokenTypeIds) {
+    feeds.token_type_ids = new ort.Tensor("int64", batchTokenTypeIds, [n, CROSS_ENCODER_MAX_SEQ]);
+  }
+
+  const out = await session.run(feeds);
+  const logits = out[session.outputNames[0]].data as Float32Array;
+
+  const scores: number[] = [];
+  for (let i = 0; i < n; i++) {
+    scores.push(1 / (1 + Math.exp(-logits[i])));
+  }
+  return scores;
+}
+
+// ============================================================================
 // BATCH RERANKING
 // ============================================================================
 
@@ -284,15 +326,25 @@ export async function crossEncoderRerank<T extends { id: number; content: string
   const rest = candidates.slice(k);
 
   const t0 = Date.now();
-  const scored: Array<{ index: number; ceScore: number }> = [];
-  for (let i = 0; i < toRerank.length; i++) {
-    try {
-      const ceScore = await scorePair(query, toRerank[i].content);
-      scored.push({ index: i, ceScore });
-    } catch {
-      scored.push({ index: i, ceScore: 0 });
+  let scored: Array<{ index: number; ceScore: number }> = [];
+
+  try {
+    // Batch inference: single ONNX call for all candidates
+    const documents = toRerank.map(c => c.content);
+    const batchScores = await scoreBatch(query, documents);
+    scored = batchScores.map((ceScore, index) => ({ index, ceScore }));
+  } catch {
+    // Fallback to sequential scoring if batch fails
+    for (let i = 0; i < toRerank.length; i++) {
+      try {
+        const ceScore = await scorePair(query, toRerank[i].content);
+        scored.push({ index: i, ceScore });
+      } catch {
+        scored.push({ index: i, ceScore: 0 });
+      }
     }
   }
+
   scored.sort((a, b) => b.ceScore - a.ceScore);
   const rerankerMs = Date.now() - t0;
   const candidateCount = Math.max(

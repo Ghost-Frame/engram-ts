@@ -12,7 +12,7 @@ import { htmlToText } from "html-to-text";
 // Config
 import {
   PORT, HOST, OPEN_ACCESS, CORS_ORIGIN, MAX_BODY_SIZE, MAX_CONTENT_SIZE,
-  ALLOWED_IPS, LLM_URL, LLM_API_KEY, LLM_MODEL, AUTO_LINK_THRESHOLD, AUTO_LINK_MAX,
+  ALLOWED_IPS, LLM_URL, LLM_API_KEY, LLM_MODEL, LLM_PROVIDERS, AUTO_LINK_THRESHOLD, AUTO_LINK_MAX,
   DEFAULT_IMPORTANCE, RERANKER_ENABLED, RERANKER_TOP_K, DATA_DIR, DB_PATH, EMBEDDING_MODEL,
   CONSOLIDATION_THRESHOLD, RATE_WINDOW_MS, OPEN_ACCESS_RATE_LIMIT, DEFAULT_RATE_LIMIT,
   GUI_AUTH_MAX_ATTEMPTS, GUI_AUTH_WINDOW_MS, GUI_AUTH_LOCKOUT_MS,
@@ -49,8 +49,9 @@ import {
   insertAgent, getAgent as getAgentById, getAgentByName, listAgents, updateAgentTrust,
   revokeAgent, getAgentByKeyId, linkKeyToAgent, getAgentExecutions,
   updateEpisodeForUser, assignToEpisodeForUser,
-  upsertScratchEntry, listScratchEntries, listScratchEntriesForContext,
+  upsertScratchEntry, upsertScratchEntryWithTTL, listScratchEntries, listScratchEntriesForContext,
   deleteScratchSession, deleteScratchSessionKey, purgeExpiredScratchpad,
+  getScratchSessionAll,
   updateDecayScores,
 } from "../db/index.ts";
 
@@ -849,6 +850,7 @@ async function fetchHandler(req: Request): Promise<Response> {
         messages: msgCount.count,
         embedding_model: EMBEDDING_MODEL,
         llm_model: LLM_MODEL,
+        llm_providers: LLM_PROVIDERS.filter(p => p.key).map(p => p.name),
         llm_configured: isLLMAvailable(),
         features: {
           decay: "fsrs6",
@@ -928,6 +930,8 @@ async function fetchHandler(req: Request): Promise<Response> {
         const agent = String(body.agent || "").trim();
         const model = String(body.model || "").trim();
         const entries = Array.isArray(body.entries) ? body.entries : [];
+        // TTL in minutes: default 30, max 1440 (24h)
+        const ttl = Math.max(1, Math.min(1440, Number(body.ttl) || 30));
         if (!session) return errorResponse("session is required");
         if (!agent) return errorResponse("agent is required");
         if (!model) return errorResponse("model is required");
@@ -940,9 +944,10 @@ async function fetchHandler(req: Request): Promise<Response> {
         }));
         if (cleaned.some((entry: any) => !entry.key)) return errorResponse("each scratch entry needs a key");
 
+        const ttlStr = String(ttl);
         const tx = db.transaction(() => {
           for (const entry of cleaned) {
-            upsertScratchEntry.run(auth.user_id, session, agent, model, entry.key, entry.value);
+            upsertScratchEntryWithTTL.run(auth.user_id, session, agent, model, entry.key, entry.value, ttlStr, ttlStr);
           }
         });
         tx();
@@ -978,9 +983,53 @@ async function fetchHandler(req: Request): Promise<Response> {
       try {
         const session = decodeURIComponent(url.pathname.split("/")[2] || "").trim();
         if (!session) return errorResponse("session is required");
+
+        // Auto-summarize on session end if LLM is available and entries exist
+        let summarized = false;
+        let summaryId: number | null = null;
+        if (isLLMAvailable()) {
+          const rows = getScratchSessionAll.all(auth.user_id, session) as ScratchEntryRow[];
+          if (rows.length >= 2) { // only summarize if there's meaningful content
+            try {
+              const agent = rows[0].agent;
+              const model = rows[0].model;
+              const entriesText = rows.map(r =>
+                `[${r.entry_key}] ${r.value || "(empty)"}`
+              ).join("\n");
+
+              const summary = await callLLM(
+                `You extract lasting knowledge from agent work sessions. Given an agent's scratchpad entries, identify facts worth remembering long-term (infrastructure details, endpoints, architectural decisions, bugs found, solutions). Ignore transient state. If nothing is worth keeping, say "nothing". Be concise.`,
+                `Agent: ${agent}\nModel: ${model}\n\nEntries:\n${entriesText}`
+              );
+
+              if (summary && summary.toLowerCase().trim() !== "nothing") {
+                const content = `[Session summary: ${agent}/${model} #${session.slice(0, 8)}] ${summary.trim()}`;
+                const result = insertMemory.get(content, "discovery", agent, null, 5, null, 1, 1, null, null, 1, 0, 0, null, null, 0, model) as { id: number; created_at: string };
+                db.prepare("UPDATE memories SET user_id = ? WHERE id = ?").run(auth.user_id, result.id);
+                summaryId = result.id;
+                try {
+                  const emb = await embed(content);
+                  updateMemoryEmbedding.run(embeddingToBuffer(emb), summaryId);
+                  try { updateMemoryVec.run(embeddingToVectorJSON(emb), summaryId); } catch {}
+                  addToEmbeddingCache({ id: summaryId, embedding: emb, content, category: "discovery", importance: 5, is_static: 0, source_count: 1, user_id: auth.user_id, is_latest: 1, is_forgotten: 0 } as any);
+                  await autoLink(summaryId, emb, auth.user_id);
+                } catch {}
+                summarized = true;
+              }
+            } catch (e: any) {
+              log.warn({ msg: "scratch_auto_summarize_failed", session, error: e.message });
+            }
+          }
+        }
+
         deleteScratchSession.run(auth.user_id, session);
-        audit(auth.user_id, "scratch_delete_session", "scratchpad", null, JSON.stringify({ session }), clientIp, requestId, auth.agent_id ?? null);
-        return json({ deleted: true, session });
+        audit(auth.user_id, "scratch_delete_session", "scratchpad", summaryId,
+          JSON.stringify({ session, auto_summarized: summarized }),
+          clientIp, requestId, auth.agent_id ?? null);
+        const result: Record<string, any> = { deleted: true, session };
+        if (summarized) { result.summarized = true; result.memory_id = summaryId; }
+        else if (!isLLMAvailable()) { result.summarized = false; result.reason = "llm_not_available"; }
+        return json(result);
       } catch (e: any) {
         return safeError("Scratch delete", e);
       }
@@ -998,6 +1047,156 @@ async function fetchHandler(req: Request): Promise<Response> {
         return json({ deleted: true, session, key });
       } catch (e: any) {
         return safeError("Scratch delete key", e);
+      }
+    }
+
+    // ========================================================================
+    // SCRATCH PROMOTE — push scratchpad entries to permanent memories
+    // POST /scratch/:session/promote
+    // Optionally filter by keys. Creates one memory per entry (or one combined).
+    // ========================================================================
+
+    if (url.pathname.match(/^\/scratch\/[^/]+\/promote$/) && method === "POST") {
+      if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
+      try {
+        const session = decodeURIComponent(url.pathname.split("/")[2] || "").trim();
+        if (!session) return errorResponse("session is required");
+
+        const body = await req.json().catch(() => ({})) as any;
+        const filterKeys: string[] | null = Array.isArray(body.keys) ? body.keys : null;
+        const combine = body.combine === true; // combine all entries into one memory
+        const category = body.category || "discovery";
+
+        // Get all entries for this session (including expired - they're still in DB until purge)
+        const rows = getScratchSessionAll.all(auth.user_id, session) as ScratchEntryRow[];
+        if (rows.length === 0) return errorResponse("No entries found for session", 404);
+
+        const filtered = filterKeys
+          ? rows.filter(r => filterKeys.includes(r.entry_key))
+          : rows;
+        if (filtered.length === 0) return errorResponse("No matching entries for specified keys", 404);
+
+        const promoted: number[] = [];
+
+        if (combine) {
+          // Single combined memory
+          const lines = filtered.map(r => `[${r.agent}] ${r.entry_key}: ${r.value || ""}`);
+          const content = `Session ${session.slice(0, 8)} (${filtered[0].agent}): ${lines.join("; ")}`;
+
+          const result = insertMemory.get(
+            content, category, filtered[0].agent, null, 5,
+            null, 1, 1, null, null, 1, 0, 0, null, null, 0, null
+          ) as { id: number; created_at: string };
+          db.prepare("UPDATE memories SET user_id = ? WHERE id = ?").run(auth.user_id, result.id);
+          const newId = result.id;
+          promoted.push(newId);
+
+          // Embed async
+          try {
+            const emb = await embed(content);
+            updateMemoryEmbedding.run(embeddingToBuffer(emb), newId);
+            try { updateMemoryVec.run(embeddingToVectorJSON(emb), newId); } catch {}
+            addToEmbeddingCache({ id: newId, embedding: emb, content, category, importance: 5, is_static: 0, source_count: 1, user_id: auth.user_id, is_latest: 1, is_forgotten: 0 } as any);
+            await autoLink(newId, emb, auth.user_id);
+          } catch {}
+        } else {
+          // One memory per entry
+          for (const r of filtered) {
+            const content = `${r.entry_key}: ${r.value || ""}`;
+            const result = insertMemory.get(
+              content, category, r.agent, null, 5,
+              null, 1, 1, null, null, 1, 0, 0, null, null, 0, null
+            ) as { id: number; created_at: string };
+            db.prepare("UPDATE memories SET user_id = ? WHERE id = ?").run(auth.user_id, result.id);
+            const newId = result.id;
+            promoted.push(newId);
+
+            try {
+              const emb = await embed(content);
+              updateMemoryEmbedding.run(embeddingToBuffer(emb), newId);
+              try { updateMemoryVec.run(embeddingToVectorJSON(emb), newId); } catch {}
+              addToEmbeddingCache({ id: newId, embedding: emb, content, category, importance: 5, is_static: 0, source_count: 1, user_id: auth.user_id, is_latest: 1, is_forgotten: 0 } as any);
+              await autoLink(newId, emb, auth.user_id);
+            } catch {}
+          }
+        }
+
+        audit(auth.user_id, "scratch_promote", "scratchpad", null,
+          JSON.stringify({ session, promoted: promoted.length, combine }),
+          clientIp, requestId, auth.agent_id ?? null);
+
+        return json({ promoted: true, session, memory_ids: promoted, count: promoted.length });
+      } catch (e: any) {
+        return safeError("Scratch promote", e);
+      }
+    }
+
+    // ========================================================================
+    // SCRATCH SUMMARIZE — LLM-summarize session and store as permanent memory
+    // POST /scratch/:session/summarize
+    // Best called at session end before DELETE. Creates a single summary memory.
+    // ========================================================================
+
+    if (url.pathname.match(/^\/scratch\/[^/]+\/summarize$/) && method === "POST") {
+      if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
+      try {
+        const session = decodeURIComponent(url.pathname.split("/")[2] || "").trim();
+        if (!session) return errorResponse("session is required");
+
+        const body = await req.json().catch(() => ({})) as any;
+        const deleteAfter = body.delete !== false; // default: clean up after summarizing
+
+        const rows = getScratchSessionAll.all(auth.user_id, session) as ScratchEntryRow[];
+        if (rows.length === 0) return errorResponse("No entries found for session", 404);
+
+        const agent = rows[0].agent;
+        const model = rows[0].model;
+        const entriesText = rows.map(r =>
+          `[${r.entry_key}] ${r.value || "(empty)"} (set ${r.created_at}, updated ${r.updated_at})`
+        ).join("\n");
+
+        let summary: string;
+
+        if (isLLMAvailable()) {
+          summary = await callLLM(
+            `You extract lasting knowledge from agent work sessions. Given an agent's scratchpad entries from a session, identify facts, decisions, or discoveries worth remembering long-term. Ignore transient state (files being edited, tasks in progress). Focus on: infrastructure details, credentials/endpoints, architectural decisions, bugs found, solutions applied. If nothing is worth keeping, say "nothing". Be concise - one line per fact.`,
+            `Agent: ${agent}\nModel: ${model}\nSession: ${session}\n\nEntries:\n${entriesText}`
+          );
+        } else {
+          // No LLM: just combine entries as-is
+          summary = rows.map(r => `${r.entry_key}: ${r.value || ""}`).join("\n");
+        }
+
+        if (!summary || summary.toLowerCase().trim() === "nothing") {
+          if (deleteAfter) deleteScratchSession.run(auth.user_id, session);
+          return json({ summarized: true, session, stored: false, reason: "nothing worth keeping" });
+        }
+
+        const content = `[Session summary: ${agent}/${model} #${session.slice(0, 8)}] ${summary.trim()}`;
+        const result = insertMemory.get(
+          content, "discovery", agent, null, 5,
+          null, 1, 1, null, null, 1, 0, 0, null, null, 0, model
+        ) as { id: number; created_at: string };
+        db.prepare("UPDATE memories SET user_id = ? WHERE id = ?").run(auth.user_id, result.id);
+        const newId = result.id;
+
+        try {
+          const emb = await embed(content);
+          updateMemoryEmbedding.run(embeddingToBuffer(emb), newId);
+          try { updateMemoryVec.run(embeddingToVectorJSON(emb), newId); } catch {}
+          addToEmbeddingCache({ id: newId, embedding: emb, content, category: "discovery", importance: 5, is_static: 0, source_count: 1, user_id: auth.user_id, is_latest: 1, is_forgotten: 0 } as any);
+          await autoLink(newId, emb, auth.user_id);
+        } catch {}
+
+        if (deleteAfter) deleteScratchSession.run(auth.user_id, session);
+
+        audit(auth.user_id, "scratch_summarize", "scratchpad", newId,
+          JSON.stringify({ session, entries: rows.length, delete_after: deleteAfter }),
+          clientIp, requestId, auth.agent_id ?? null);
+
+        return json({ summarized: true, session, stored: true, memory_id: newId, content });
+      } catch (e: any) {
+        return safeError("Scratch summarize", e);
       }
     }
 
@@ -1815,7 +2014,7 @@ Only include pairs that are actual contradictions.`;
         const includeRecent = include_recent !== false && depth >= 2;
         const doIncludeEpisodes = include_episodes !== false && depth >= 3;
         const doIncludeLinked = include_linked !== false && depth >= 3;
-        const doIncludeInference = include_inference !== false && depth >= 3;
+        const doIncludeInference = include_inference === true && depth >= 3;
         const doIncludeCurrentState = include_current_state !== false && depth >= 1;
         const doIncludePreferences = include_preferences !== false && depth >= 2;
         const doIncludeStructuredFacts = include_structured_facts !== false && depth >= 2;
@@ -1848,10 +2047,13 @@ Only include pairs that are actual contradictions.`;
         const blocks: ContextBlock[] = [];
         let usedTokens = 0;
         const seenIds = new Set<number>();
+        const t0 = Date.now();
+        const timing: Record<string, number> = {};
 
         // Embed query for ranking statics + dedup
         let queryEmb: Float32Array | null = null;
         try { queryEmb = await embed(query); } catch {}
+        timing.embed_ms = Date.now() - t0;
 
         // Build embedding lookup for dedup + static ranking
         const allCached = getCachedEmbeddings(true, auth.user_id);
@@ -1893,14 +2095,23 @@ Only include pairs that are actual contradictions.`;
           }
         }
 
+        timing.static_ms = Date.now() - t0 - (timing.embed_ms || 0);
+
         // ---- Phase 2: Semantic search (core relevance) ----
-        const semanticCeiling = overrideSemanticCeiling != null ? Number(overrideSemanticCeiling) : (contextStrategy === "precision" ? 0.75 : contextStrategy === "breadth" ? 0.82 : 0.70);
-        const semanticLimit = overrideSemanticLimit != null ? Number(overrideSemanticLimit) : (contextStrategy === "precision" ? 40 : contextStrategy === "breadth" ? 100 : 80);
-        let semanticResults = await hybridSearch(query, semanticLimit, false, true, true, auth.user_id);
+        const semanticCeiling = overrideSemanticCeiling != null ? Number(overrideSemanticCeiling) : (contextStrategy === "precision" ? 0.82 : contextStrategy === "breadth" ? 0.90 : 0.80);
+        const semanticLimit = overrideSemanticLimit != null ? Number(overrideSemanticLimit) : (contextStrategy === "precision" ? 30 : contextStrategy === "breadth" ? 80 : 50);
+        // Skip relationship expansion here - Phase 3 handles graph expansion separately
+        // This avoids the N+1 link queries in hybridSearch which is the biggest latency cost
+        const tSearch = Date.now();
+        let semanticResults = await hybridSearch(query, semanticLimit, false, false, true, auth.user_id, undefined, queryEmb);
+        timing.search_ms = Date.now() - tSearch;
 
         // Cross-encoder rerank: reorder semantic results so best matches get budget priority
+        // Use smaller batch (8) for /context since other phases provide diversity
         if (isRerankerReady() && semanticResults.length > 3) {
-          semanticResults = await crossEncoderRerank(query, semanticResults);
+          const tRerank = Date.now();
+          semanticResults = await crossEncoderRerank(query, semanticResults, 8);
+          timing.rerank_ms = Date.now() - tRerank;
         }
 
         for (const r of semanticResults) {
@@ -1920,10 +2131,11 @@ Only include pairs that are actual contradictions.`;
             if (isDupe) continue;
           }
 
-          // Minimum relevance threshold
-          const minRelev = overrideMinRelevance != null ? Number(overrideMinRelevance) : 0.15;
-          const rawScore = r.combined_score || r.semantic_score || r.score || 0;
-          if (rawScore < minRelev) continue;
+          // Minimum relevance threshold (use semantic_score for quality, not RRF combined_score)
+          const minRelev = overrideMinRelevance != null ? Number(overrideMinRelevance) : 0.55;
+          const rawSemanticScore = r.semantic_score || r.score || 0;
+          if (rawSemanticScore < minRelev) continue;
+          const rawScore = r.combined_score || rawSemanticScore;
 
           // Recency boost: last 48h get +10%
           let score = rawScore;
@@ -1942,7 +2154,42 @@ Only include pairs that are actual contradictions.`;
           if (cached) blockEmbeddings.push(cached.embedding);
         }
 
-        // ---- Phase 2.5: Episode context ----
+        timing.semantic_ms = Date.now() - t0 - Object.values(timing).reduce((a, b) => a + b, 0);
+
+        // ---- Phase 2.5a: Version chain context (preference evolution tracking) ----
+        // Surface version chains for semantic results that have prior versions,
+        // so the LLM can see how preferences/facts evolved over time
+        if (depth >= 2 && usedTokens < tokenBudget * 0.72) {
+          const semanticIds = blocks.filter(b => b.source === "semantic").slice(0, 8);
+          for (const b of semanticIds) {
+            if (usedTokens >= tokenBudget * 0.72) break;
+            const mem = getMemoryWithoutEmbedding.get(b.id) as any;
+            if (!mem) continue;
+            const rootId = mem.root_memory_id || mem.id;
+            const chain = getVersionChainForUser.all(rootId, rootId, auth.user_id) as Array<{
+              id: number; content: string; category: string; version: number; is_latest: boolean; created_at: string;
+            }>;
+            // Only include if there's actual evolution (2+ versions)
+            if (chain.length < 2) continue;
+            // Build a compact evolution summary
+            const evolutionLines = chain.map(c =>
+              `v${c.version} (${c.created_at?.slice(0, 10) || "?"}): ${c.content}`
+            );
+            const evolutionText = `[Evolution of memory #${rootId}]\n` + evolutionLines.join("\n");
+            const truncated = truncateContent(evolutionText);
+            const tokens = estimateTokens(truncated);
+            if (usedTokens + tokens > tokenBudget * 0.75) break;
+            blocks.push({
+              id: -rootId, content: truncated, category: "evolution",
+              score: 70, source: "evolution", tokens, created_at: chain[chain.length - 1].created_at,
+            });
+            // Mark all chain IDs as seen to avoid re-including them
+            for (const c of chain) seenIds.add(c.id);
+            usedTokens += tokens;
+          }
+        }
+
+        // ---- Phase 2.5b: Episode context ----
         const seenEpisodeIds = new Set<number>();
         if (doIncludeEpisodes && usedTokens < tokenBudget * 0.75) {
           for (const b of blocks.filter(b => b.source === "semantic").slice(0, 5)) {
@@ -1996,14 +2243,15 @@ Only include pairs that are actual contradictions.`;
           }
         }
 
-        // ---- Phase 4: Recent memories (temporal context) ----
-        if (includeRecent && usedTokens < tokenBudget * 0.95) {
-          const recent = getRecentDynamicMemories.all(auth.user_id, 10) as any[];
+        // ---- Phase 4: Recent memories (temporal context, capped at 12% of budget) ----
+        const recentCeiling = tokenBudget * 0.93;
+        if (includeRecent && usedTokens < recentCeiling) {
+          const recent = getRecentDynamicMemories.all(auth.user_id, 5) as any[];
           for (const r of recent) {
             if (seenIds.has(r.id)) continue;
             const truncated = truncateContent(r.content);
             const tokens = estimateTokens(truncated);
-            if (usedTokens + tokens > tokenBudget) break;
+            if (usedTokens + tokens > recentCeiling) break;
 
             const cachedR = embMap.get(r.id);
             if (cachedR && blockEmbeddings.length > 0) {
@@ -2044,6 +2292,9 @@ Only include pairs that are actual contradictions.`;
           } catch {}
         }
 
+        timing.remaining_ms = Date.now() - t0 - Object.values(timing).reduce((a, b) => a + b, 0);
+        timing.total_ms = Date.now() - t0;
+
         // Defer access tracking to after response
         const blockIds = blocks.filter(b => b.id > 0).map(b => b.id);
         setTimeout(() => { try { const batch = db.transaction(() => { for (const id of blockIds) trackAccessWithFSRS(id); }); batch(); } catch {} }, 0);
@@ -2079,7 +2330,7 @@ Only include pairs that are actual contradictions.`;
         if (doIncludePreferences) {
           try {
             const prefRows = db.prepare(
-              "SELECT domain, preference, strength FROM user_preferences WHERE user_id = ? ORDER BY strength DESC LIMIT 20"
+              "SELECT domain, preference, strength FROM user_preferences WHERE user_id = ? AND strength >= 1.5 ORDER BY strength DESC LIMIT 15"
             ).all(auth.user_id) as any[];
             if (prefRows.length > 0) {
               const prefLines = prefRows.map((p: any) => `- [${p.domain}] ${p.preference}`);
@@ -2129,6 +2380,10 @@ Only include pairs that are actual contradictions.`;
         if (semanticBlocks.length > 0) {
           contextParts.push("## Relevant Memories\n" + semanticBlocks.map(b => `- [${b.category}] ${b.content}${attrib(b)}`).join("\n"));
         }
+        const evolutionBlocks = blocks.filter(b => b.source === "evolution");
+        if (evolutionBlocks.length > 0) {
+          contextParts.push("## Preference/Fact Evolution\n" + evolutionBlocks.map(b => b.content).join("\n\n"));
+        }
         const episodeBlocks = blocks.filter(b => b.source === "episode");
         if (episodeBlocks.length > 0) {
           contextParts.push("## Episode Context\n" + episodeBlocks.map(b => `- [${b.created_at || ""}] ${b.content}${attrib(b)}`).join("\n"));
@@ -2154,11 +2409,13 @@ Only include pairs that are actual contradictions.`;
           breakdown: {
             static: staticBlocks.length,
             semantic: semanticBlocks.length,
+            evolution: evolutionBlocks.length,
             episode: episodeBlocks.length,
             linked: linkedBlocks.length,
             recent: recentBlocks.length,
             inference: inferenceBlocks.length,
           },
+          timing,
         });
       } catch (e: any) {
         return safeError("Context build", e);
@@ -5724,6 +5981,7 @@ If no meaningful inferences, return {"derived": []}`;
         agents,
         embedding_model: EMBEDDING_MODEL,
         llm_model: LLM_MODEL,
+        llm_providers: LLM_PROVIDERS.filter(p => p.key).map(p => p.name),
         llm_configured: isLLMAvailable(),
         db_size_mb: Math.round(dbSize / 1048576 * 100) / 100,
       });

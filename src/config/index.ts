@@ -31,10 +31,27 @@ export const SEARCH_MIN_SCORE = Number(process.env.ENGRAM_SEARCH_MIN_SCORE || 0.
 export const AUTO_LINK_MAX = Number(process.env.AUTO_LINK_MAX ?? 6);
 export const DEFAULT_IMPORTANCE = 5;
 
-// LLM config (for fact extraction)
+// LLM config (for fact extraction) — provider chain with fallbacks
 export const LLM_URL = process.env.LLM_URL || "http://127.0.0.1:4100/v1/chat/completions";
 export const LLM_API_KEY = process.env.LLM_API_KEY || "";
-export const LLM_MODEL = process.env.LLM_MODEL || "claude-sonnet-4-20250514";
+export const LLM_MODEL = process.env.LLM_MODEL || "gemini-2.5-flash";
+
+export interface LLMProvider { url: string; key: string; model: string; name: string }
+export const LLM_PROVIDERS: LLMProvider[] = [
+  { url: LLM_URL, key: LLM_API_KEY, model: LLM_MODEL, name: "primary" },
+  ...(process.env.LLM_FALLBACK1_URL ? [{
+    url: process.env.LLM_FALLBACK1_URL,
+    key: process.env.LLM_FALLBACK1_KEY || "",
+    model: process.env.LLM_FALLBACK1_MODEL || "llama-3.1-70b-versatile",
+    name: "fallback1",
+  }] : []),
+  ...(process.env.LLM_FALLBACK2_URL ? [{
+    url: process.env.LLM_FALLBACK2_URL,
+    key: process.env.LLM_FALLBACK2_KEY || "",
+    model: process.env.LLM_FALLBACK2_MODEL || "deepseek-chat",
+    name: "fallback2",
+  }] : []),
+];
 
 // Auto-forget sweep interval (every 5 minutes)
 export const FORGET_SWEEP_INTERVAL = 5 * 60 * 1000;
@@ -46,11 +63,11 @@ export const CONSOLIDATION_INTERVAL = 30 * 60 * 1000;
 
 // Reranker config
 export const RERANKER_ENABLED = process.env.RERANKER !== "0";
-export const RERANKER_TOP_K = Number(process.env.RERANKER_TOP_K || 20);
+export const RERANKER_TOP_K = Number(process.env.RERANKER_TOP_K || 12);
 export const SEARCH_FACT_VECTOR_FLOOR = Number(process.env.ENGRAM_SEARCH_FACT_VECTOR_FLOOR || 0.22);
 export const SEARCH_PREFERENCE_VECTOR_FLOOR = Number(process.env.ENGRAM_SEARCH_PREFERENCE_VECTOR_FLOOR || 0.12);
 export const SEARCH_REASONING_VECTOR_FLOOR = Number(process.env.ENGRAM_SEARCH_REASONING_VECTOR_FLOOR || 0.10);
-export const SEARCH_GENERALIZATION_VECTOR_FLOOR = Number(process.env.ENGRAM_SEARCH_GENERALIZATION_VECTOR_FLOOR || 0.08);
+export const SEARCH_GENERALIZATION_VECTOR_FLOOR = Number(process.env.ENGRAM_SEARCH_GENERALIZATION_VECTOR_FLOOR || 0.12);
 export const SEARCH_PERSONALITY_MIN_SCORE = Number(process.env.ENGRAM_SEARCH_PERSONALITY_MIN_SCORE || 0.30);
 
 // API key config

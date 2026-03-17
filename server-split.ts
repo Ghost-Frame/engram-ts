@@ -166,8 +166,11 @@ setInterval(() => {
   if (updated > 0) log.info({ msg: "decay_refresh", updated });
 }, 15 * 60 * 1000);
 
+// Probe LLM reachability (sets cached flag for isLLMAvailable)
+import { isLLMAvailable, probeLLM } from "./src/llm/index.ts";
+await probeLLM();
+
 // Auto-consolidation sweep (if LLM configured)
-import { isLLMAvailable } from "./src/llm/index.ts";
 if (isLLMAvailable()) {
   setInterval(async () => {
     try {

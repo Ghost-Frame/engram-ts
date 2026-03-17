@@ -129,12 +129,12 @@ const QUESTION_STRATEGIES: Record<QuestionType, SearchStrategy> = {
     ftsLimitMultiplier: 4,
     expandRelationships: true,
     relationshipSeedLimit: 5,
-    hop1Limit: 8,
-    hop2Limit: 4,
+    hop1Limit: 6,
+    hop2Limit: 2,
     relationshipMultiplier: 1.0,
     includePersonalitySignals: true,
     personalityLimit: 24,
-    personalityWeight: 0.18,
+    personalityWeight: 0.22,
   },
   reasoning: {
     vectorFloor: SEARCH_REASONING_VECTOR_FLOOR,
@@ -143,9 +143,9 @@ const QUESTION_STRATEGIES: Record<QuestionType, SearchStrategy> = {
     candidateMultiplier: 4,
     ftsLimitMultiplier: 5,
     expandRelationships: true,
-    relationshipSeedLimit: 6,
-    hop1Limit: 10,
-    hop2Limit: 6,
+    relationshipSeedLimit: 5,
+    hop1Limit: 8,
+    hop2Limit: 2,
     relationshipMultiplier: 1.2,
     includePersonalitySignals: true,
     personalityLimit: 30,
@@ -155,16 +155,16 @@ const QUESTION_STRATEGIES: Record<QuestionType, SearchStrategy> = {
     vectorFloor: SEARCH_GENERALIZATION_VECTOR_FLOOR,
     vectorWeight: 0.48,
     ftsWeight: 0.24,
-    candidateMultiplier: 5,
-    ftsLimitMultiplier: 6,
+    candidateMultiplier: 4,
+    ftsLimitMultiplier: 5,
     expandRelationships: true,
-    relationshipSeedLimit: 8,
-    hop1Limit: 12,
-    hop2Limit: 8,
-    relationshipMultiplier: 1.35,
+    relationshipSeedLimit: 6,
+    hop1Limit: 8,
+    hop2Limit: 2,
+    relationshipMultiplier: 1.2,
     includePersonalitySignals: true,
     personalityLimit: 36,
-    personalityWeight: 0.2,
+    personalityWeight: 0.24,
   },
   temporal: {
     vectorFloor: 0.10,             // low floor: cast wide net
@@ -173,9 +173,9 @@ const QUESTION_STRATEGIES: Record<QuestionType, SearchStrategy> = {
     candidateMultiplier: 4,
     ftsLimitMultiplier: 5,
     expandRelationships: true,     // follow chains to find temporal sequences
-    relationshipSeedLimit: 6,
-    hop1Limit: 10,
-    hop2Limit: 4,
+    relationshipSeedLimit: 5,
+    hop1Limit: 8,
+    hop2Limit: 2,
     relationshipMultiplier: 1.2,
     includePersonalitySignals: false,
     personalityLimit: 0,
@@ -377,8 +377,12 @@ export function extractQueryDate(query: string): string | null {
 export function classifyQuestion(query: string): QuestionType {
   const q = query.toLowerCase();
 
-  // Temporal queries: explicit time references or sequence questions
+  // Temporal queries: explicit time references, evolution, change tracking
   if (/\b(when did|when was|what happened (?:on|in|during|before|after)|timeline|sequence|history of|over the past|between .* and|from .* to|at what time|how long ago|since when)\b/.test(q)) {
+    return "temporal";
+  }
+  // Evolution/change tracking is temporal: "how has X changed", "used to", "originally", "progression"
+  if (/\b(how ha(?:s|ve) .* changed|used to|originally|evolution of|progression|over time|changed (?:from|since|to)|shift(?:ed|ing)|transition(?:ed)?)\b/.test(q)) {
     return "temporal";
   }
   // Also temporal if the query contains a date reference
@@ -386,19 +390,37 @@ export function classifyQuestion(query: string): QuestionType {
     return "temporal";
   }
 
+  // Fact recall: specific facts, events, attributes
   if (/\b(recently|attended|joined|last time|went to|visited|started|stopped|what happened first|what happened after)\b/.test(q)) {
     return "fact_recall";
   }
-  if (/\b(why did|what made|decided|reasons?|because|why do|why does)\b/.test(q)) {
+  if (/\b(what (?:is|are|was|were) (?:my|the|their)|tell me about|do (?:i|they) (?:have|own|use)|what did (?:i|they)|where (?:do|did|does)|who (?:is|was|did))\b/.test(q)) {
+    return "fact_recall";
+  }
+
+  // Reasoning: why/because questions, decision analysis
+  if (/\b(why did|what made|decided|reasons?|because|why do|why does|motivation|what led)\b/.test(q)) {
     return "reasoning";
   }
-  if (/\b(should i|do you think|considering|would i|could i|is it .* for me|does it make sense for me)\b/.test(q)) {
+
+  // Generalization: advice-seeking, suitability assessment
+  if (/\b(should i|do you think|considering|would i|could i|is it .* for me|does it make sense for me|good fit|worth it)\b/.test(q)) {
     return "generalization";
   }
+
+  // Preference: recommendations, suggestions, likes/dislikes, personal taste
   if (/\b(suggest|recommend|what would|ideas|what .* try|what .* explore|weekend|fit me|aligned)\b/.test(q)) {
     return "preference";
   }
-  return "preference";
+  if (/\b(favorite|prefer|like most|enjoy|love|hate|dislike|interested in|passionate about|into)\b/.test(q)) {
+    return "preference";
+  }
+  if (/\b(what (?:kind|type|sort) of|taste in|style of|based on (?:my|what))\b/.test(q)) {
+    return "preference";
+  }
+
+  // Default: fact_recall is the safest default (tightest retrieval, least noise)
+  return "fact_recall";
 }
 
 export async function hybridSearch(
@@ -409,7 +431,9 @@ export async function hybridSearch(
   latestOnly: boolean = true,
   userId: number = 1,
   vectorFloorOrOptions: number | HybridSearchOptions = DEFAULT_VECTOR_FLOOR,
+  precomputedEmbedding?: Float32Array | null,
 ): Promise<SearchResult[]> {
+  const _t0 = performance.now();
   const results = new Map<number, SearchResult>();
   const { questionType, strategy } = mergeSearchOptions(expandRelationships, vectorFloorOrOptions, query);
   const candidateTarget = Math.max(
@@ -426,7 +450,7 @@ export async function hybridSearch(
 
   // 1. Vector search - in-memory cosine similarity (<1ms for 800 memories)
   try {
-    const queryEmb = await embed(query);
+    const queryEmb = precomputedEmbedding || await embed(query);
     const cached = getCachedEmbeddings(latestOnly, userId);
     for (const mem of cached) {
       if (mem.user_id !== userId) continue;
@@ -567,11 +591,31 @@ export async function hybridSearch(
   // Temporal boost: extract date from query for temporal question types
   const queryDate = questionType === "temporal" ? extractQueryDate(query) : null;
 
+  // Pre-fetch decay scores from DB for all candidates (avoids recalculating per result)
+  const decayScoreCache = new Map<number, number>();
+  {
+    const ids = Array.from(results.keys());
+    if (ids.length > 0) {
+      try {
+        const placeholders = ids.map(() => "?").join(",");
+        const rows = db.prepare(
+          `SELECT id, decay_score, importance, is_static FROM memories WHERE id IN (${placeholders})`
+        ).all(...ids) as Array<{ id: number; decay_score: number | null; importance: number; is_static: number }>;
+        for (const row of rows) {
+          // Use pre-computed decay_score if available and valid, otherwise calculate
+          if (row.decay_score != null && row.decay_score > 0) {
+            decayScoreCache.set(row.id, row.is_static ? row.importance : row.decay_score);
+          }
+        }
+      } catch {}
+    }
+  }
+
   // Apply RRF scores + decay/importance boosts
   for (const r of results.values()) {
     const rrf = rrfScores.get(r.id) || 0;
 
-    const decayScore = calculateDecayScore(
+    const decayScore = decayScoreCache.get(r.id) ?? calculateDecayScore(
       r.importance,
       r.created_at,
       (r as any).access_count || 0,
@@ -793,6 +837,11 @@ export async function hybridSearch(
         }));
       }
     }
+  }
+
+  const _tTotal = performance.now() - _t0;
+  if (_tTotal > 100) {
+    log.info({ msg: "hybrid_search_slow", ms: Math.round(_tTotal), question_type: questionType, candidates: candidateCount, results: sorted.length, expand: strategy.expandRelationships });
   }
 
   return applyDiagnostics(sorted, {

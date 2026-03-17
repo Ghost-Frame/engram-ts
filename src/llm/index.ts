@@ -4,7 +4,7 @@
 // Set via env: LLM_API_KEY, LLM_URL, LLM_MODEL
 // ============================================================================
 
-import { LLM_URL, LLM_API_KEY, LLM_MODEL, RERANKER_ENABLED, RERANKER_TOP_K } from "../config/index.ts";
+import { LLM_URL, LLM_API_KEY, LLM_MODEL, LLM_PROVIDERS, type LLMProvider, RERANKER_ENABLED, RERANKER_TOP_K } from "../config/index.ts";
 import { log } from "../config/logger.ts";
 import { postProcessNewFacts } from "../intelligence/temporal.ts";
 
@@ -26,66 +26,78 @@ interface FactExtractionResult {
 
 // --- LLM availability check ---
 
+let _llmReachable: boolean | null = null;
+
+export async function probeLLM(): Promise<boolean> {
+  // Any provider with an API key means LLM is available
+  if (LLM_PROVIDERS.some(p => p.key)) { _llmReachable = true; return true; }
+  if (!LLM_URL.includes("127.0.0.1") && !LLM_URL.includes("localhost")) { _llmReachable = false; return false; }
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 2000);
+    const resp = await fetch(LLM_URL.replace(/\/chat\/completions$/, "/models"), { signal: ctrl.signal });
+    clearTimeout(timer);
+    _llmReachable = resp.ok;
+  } catch {
+    _llmReachable = false;
+  }
+  log.info({ msg: "llm_probe", reachable: _llmReachable, providers: LLM_PROVIDERS.map(p => p.name) });
+  return _llmReachable;
+}
+
 export function isLLMAvailable(): boolean {
-  if (LLM_API_KEY) return true;
+  if (LLM_PROVIDERS.some(p => p.key)) return true;
+  if (_llmReachable === false) return false;
+  if (_llmReachable === true) return true;
   if (LLM_URL.includes("127.0.0.1") || LLM_URL.includes("localhost")) return true;
   return false;
 }
 
-// --- Main LLM call ---
+// --- Single-provider call (internal) ---
 
-export async function callLLM(systemPrompt: string, userPrompt: string, model?: string): Promise<string> {
-  const useModel = model || LLM_MODEL;
+function isRetryable(status: number): boolean {
+  return status === 429 || status === 500 || status === 502 || status === 503 || status === 529;
+}
+
+async function callProvider(provider: LLMProvider, systemPrompt: string, userPrompt: string, model?: string): Promise<string> {
+  const useModel = model || provider.model;
+  const url = provider.url;
+  const key = provider.key;
+
+  // Anthropic detection
   let isAnthropic = false;
   try {
-    const parsed = new URL(LLM_URL);
-    const hostname = parsed.hostname.toLowerCase();
-    // Treat api.anthropic.com and its subdomains as Anthropic endpoints
+    const hostname = new URL(url).hostname.toLowerCase();
     isAnthropic = hostname === "api.anthropic.com" || hostname.endsWith(".api.anthropic.com");
-  } catch {
-    // If URL parsing fails, conservatively treat it as non-Anthropic
-    // but allow exact known Anthropic endpoint strings for backward compatibility.
-    const urlLower = LLM_URL.toLowerCase();
-    isAnthropic = urlLower === "https://api.anthropic.com" || urlLower === "https://api.anthropic.com/";
-  }
+  } catch {}
 
   if (isAnthropic) {
-    if (!LLM_API_KEY) throw new Error("LLM_API_KEY required for Anthropic API");
-    const resp = await fetch(LLM_URL, {
+    if (!key) throw new Error("API key required for Anthropic");
+    const resp = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": LLM_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: useModel,
-        max_tokens: 2000,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }],
-      }),
+      headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ model: useModel, max_tokens: 2000, system: systemPrompt, messages: [{ role: "user", content: userPrompt }] }),
     });
     if (!resp.ok) {
       const text = await resp.text();
-      throw new Error(`Anthropic request failed (${resp.status}): ${text}`);
+      const err = new Error(`LLM ${provider.name} failed (${resp.status}): ${text}`);
+      (err as any).status = resp.status;
+      throw err;
     }
     const data = await resp.json() as any;
     return data.content?.[0]?.text || "";
   }
 
-  // OpenAI-compatible format (Ollama, LiteLLM, vLLM, etc.)
+  // OpenAI-compatible
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (LLM_API_KEY) headers["Authorization"] = `Bearer ${LLM_API_KEY}`;
+  if (key) headers["Authorization"] = `Bearer ${key}`;
 
-  const resp = await fetch(LLM_URL, {
+  const resp = await fetch(url, {
     method: "POST",
     headers,
     body: JSON.stringify({
       model: useModel,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
+      messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
       max_tokens: 2000,
       temperature: 0.1,
     }),
@@ -93,11 +105,44 @@ export async function callLLM(systemPrompt: string, userPrompt: string, model?: 
 
   if (!resp.ok) {
     const text = await resp.text();
-    throw new Error(`LLM request failed (${resp.status}): ${text}`);
+    const err = new Error(`LLM ${provider.name} failed (${resp.status}): ${text}`);
+    (err as any).status = resp.status;
+    throw err;
   }
 
   const data = await resp.json() as any;
   return data.choices?.[0]?.message?.content || "";
+}
+
+// --- Main LLM call with fallback chain ---
+
+export async function callLLM(systemPrompt: string, userPrompt: string, model?: string): Promise<string> {
+  const providers = LLM_PROVIDERS.filter(p => p.key || p.url.includes("127.0.0.1") || p.url.includes("localhost"));
+  if (providers.length === 0) throw new Error("No LLM providers configured");
+
+  let lastError: Error | null = null;
+  for (const provider of providers) {
+    try {
+      const result = await callProvider(provider, systemPrompt, userPrompt, model);
+      _llmReachable = true;
+      return result;
+    } catch (e: any) {
+      lastError = e;
+      const status = e?.status || 0;
+      const isConn = e?.cause?.code === "ECONNREFUSED" || e?.message?.includes("ECONNREFUSED") || e?.message?.includes("fetch failed");
+
+      if (isConn || isRetryable(status)) {
+        log.warn({ msg: "llm_provider_failed", provider: provider.name, status, error: e.message, fallback: providers.indexOf(provider) < providers.length - 1 });
+        continue; // try next provider
+      }
+      // Non-retryable error (400, 401, etc.) - don't try fallbacks
+      throw e;
+    }
+  }
+
+  // All providers exhausted
+  _llmReachable = false;
+  throw lastError || new Error("All LLM providers failed");
 }
 
 const FACT_EXTRACTION_PROMPT = `You are a fact extraction engine for a persistent memory system. Your job is to analyze new content being stored and compare it with existing memories.

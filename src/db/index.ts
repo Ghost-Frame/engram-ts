@@ -1155,6 +1155,19 @@ function changeCount(result: any): number {
   return Number(result?.rowsAffected ?? result?.changes ?? 0);
 }
 
+// TTL-aware upsert: caller passes TTL in minutes (default 30, max 1440 = 24h)
+export const upsertScratchEntryWithTTL = db.prepare(
+  `INSERT INTO scratchpad (user_id, session, agent, model, entry_key, value, expires_at)
+   VALUES (?, ?, ?, ?, ?, ?, datetime('now', '+' || ? || ' minutes'))
+   ON CONFLICT(user_id, session, entry_key) DO UPDATE SET
+     agent = excluded.agent,
+     model = excluded.model,
+     value = excluded.value,
+     updated_at = datetime('now'),
+     expires_at = datetime('now', '+' || ? || ' minutes')`
+);
+
+// Legacy compat: 30-min default
 export const upsertScratchEntry = db.prepare(
   `INSERT INTO scratchpad (user_id, session, agent, model, entry_key, value, expires_at)
    VALUES (?, ?, ?, ?, ?, ?, datetime('now', '+30 minutes'))
@@ -1164,6 +1177,14 @@ export const upsertScratchEntry = db.prepare(
      value = excluded.value,
      updated_at = datetime('now'),
      expires_at = datetime('now', '+30 minutes')`
+);
+
+// Get all entries for a session (including expired, for session-end summarization)
+export const getScratchSessionAll = db.prepare(
+  `SELECT session, agent, model, entry_key, value, created_at, updated_at, expires_at
+   FROM scratchpad
+   WHERE user_id = ? AND session = ?
+   ORDER BY created_at ASC`
 );
 
 export const listScratchEntries = db.prepare(
