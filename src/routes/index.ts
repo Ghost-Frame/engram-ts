@@ -850,7 +850,7 @@ async function fetchHandler(req: Request): Promise<Response> {
         messages: msgCount.count,
         embedding_model: EMBEDDING_MODEL,
         llm_model: LLM_MODEL,
-        llm_providers: LLM_PROVIDERS.filter(p => p.key).map(p => p.name),
+        llm_providers: LLM_PROVIDERS.filter(p => p.key || p.url.includes("127.0.0.1") || p.url.includes("localhost")).map(p => p.name),
         llm_configured: isLLMAvailable(),
         features: {
           decay: "fsrs6",
@@ -5981,7 +5981,7 @@ If no meaningful inferences, return {"derived": []}`;
         agents,
         embedding_model: EMBEDDING_MODEL,
         llm_model: LLM_MODEL,
-        llm_providers: LLM_PROVIDERS.filter(p => p.key).map(p => p.name),
+        llm_providers: LLM_PROVIDERS.filter(p => p.key || p.url.includes("127.0.0.1") || p.url.includes("localhost")).map(p => p.name),
         llm_configured: isLLMAvailable(),
         db_size_mb: Math.round(dbSize / 1048576 * 100) / 100,
       });

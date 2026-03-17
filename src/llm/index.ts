@@ -4,7 +4,7 @@
 // Set via env: LLM_API_KEY, LLM_URL, LLM_MODEL
 // ============================================================================
 
-import { LLM_URL, LLM_API_KEY, LLM_MODEL, LLM_PROVIDERS, type LLMProvider, RERANKER_ENABLED, RERANKER_TOP_K } from "../config/index.ts";
+import { LLM_URL, LLM_API_KEY, LLM_MODEL, LLM_PROVIDERS, LLM_STRATEGY, type LLMProvider, RERANKER_ENABLED, RERANKER_TOP_K } from "../config/index.ts";
 import { log } from "../config/logger.ts";
 import { postProcessNewFacts } from "../intelligence/temporal.ts";
 
@@ -119,17 +119,27 @@ async function callProvider(provider: LLMProvider, systemPrompt: string, userPro
   return data.choices?.[0]?.message?.content || "";
 }
 
-// --- Main LLM call with fallback chain ---
+// --- Main LLM call with fallback chain or round-robin ---
+
+let _rrIndex = 0;
 
 export async function callLLM(systemPrompt: string, userPrompt: string, model?: string): Promise<string> {
   const providers = LLM_PROVIDERS.filter(p => p.key || p.url.includes("127.0.0.1") || p.url.includes("localhost"));
   if (providers.length === 0) throw new Error("No LLM providers configured");
 
+  // Round-robin: rotate starting provider each call, still fall through on failure
+  const startIdx = LLM_STRATEGY === "round-robin" ? _rrIndex % providers.length : 0;
+  if (LLM_STRATEGY === "round-robin") _rrIndex++;
+
   let lastError: Error | null = null;
-  for (const provider of providers) {
+  for (let i = 0; i < providers.length; i++) {
+    const provider = providers[(startIdx + i) % providers.length];
     try {
       const result = await callProvider(provider, systemPrompt, userPrompt, model);
       _llmReachable = true;
+      if (LLM_STRATEGY === "round-robin" && providers.length > 1) {
+        log.info({ msg: "llm_round_robin", provider: provider.name, index: (startIdx + i) % providers.length });
+      }
       return result;
     } catch (e: any) {
       lastError = e;
@@ -137,7 +147,7 @@ export async function callLLM(systemPrompt: string, userPrompt: string, model?: 
       const isConn = e?.cause?.code === "ECONNREFUSED" || e?.message?.includes("ECONNREFUSED") || e?.message?.includes("fetch failed");
 
       if (isConn || isRetryable(status)) {
-        log.warn({ msg: "llm_provider_failed", provider: provider.name, status, error: e.message, fallback: providers.indexOf(provider) < providers.length - 1 });
+        log.warn({ msg: "llm_provider_failed", provider: provider.name, status, error: e.message, remaining: providers.length - i - 1 });
         continue; // try next provider
       }
       // Non-retryable error (400, 401, etc.) - don't try fallbacks
