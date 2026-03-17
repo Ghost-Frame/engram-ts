@@ -1,6 +1,6 @@
 // ============================================================================
 // LLM — Client, fact extraction, reranker
-// Supports: Anthropic API key, OpenAI-compatible (Ollama, LiteLLM, vLLM)
+// Supports: Anthropic, MiniMax, OpenAI-compatible (Ollama, LiteLLM, vLLM, Gemini, Groq, DeepSeek)
 // Set via env: LLM_API_KEY, LLM_URL, LLM_MODEL
 // ============================================================================
 
@@ -64,11 +64,13 @@ async function callProvider(provider: LLMProvider, systemPrompt: string, userPro
   const url = provider.url;
   const key = provider.key;
 
-  // Anthropic detection
+  // Provider detection
   let isAnthropic = false;
+  let isMiniMax = false;
   try {
     const hostname = new URL(url).hostname.toLowerCase();
     isAnthropic = hostname === "api.anthropic.com" || hostname.endsWith(".api.anthropic.com");
+    isMiniMax = hostname === "api.minimax.io" || hostname.endsWith(".minimaxi.com");
   } catch {}
 
   if (isAnthropic) {
@@ -88,7 +90,10 @@ async function callProvider(provider: LLMProvider, systemPrompt: string, userPro
     return data.content?.[0]?.text || "";
   }
 
-  // OpenAI-compatible
+  // MiniMax: OpenAI-compatible but requires API key
+  if (isMiniMax && !key) throw new Error("API key required for MiniMax");
+
+  // OpenAI-compatible (also handles MiniMax, Gemini, Groq, DeepSeek, etc.)
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (key) headers["Authorization"] = `Bearer ${key}`;
 

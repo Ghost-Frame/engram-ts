@@ -637,8 +637,23 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 - **Embeddings:** BGE-large-en-v1.5 (1024-dim, runs locally via raw ONNX inference)
 - **Reranker:** BGE-reranker-base (XLM-RoBERTa, quantized INT8, optional)
 - **Search:** Reciprocal Rank Fusion across vector, FTS5, personality, and graph channels
-- **LLM:** Optional, for fact extraction / personality / consolidation
+- **LLM:** Optional, for fact extraction / personality / consolidation (with fallback chain)
 - **Decay:** FSRS-6 (21-parameter power-law forgetting curve)
+
+### Supported LLM Providers
+
+Engram works with any OpenAI-compatible provider via `LLM_URL`, `LLM_API_KEY`, and `LLM_MODEL`. Automatic failover across up to 3 providers.
+
+| Provider | Example URL | Example Model |
+|----------|-------------|---------------|
+| **Gemini** | `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions` | `gemini-2.5-flash` |
+| **MiniMax** | `https://api.minimax.io/v1/chat/completions` | `MiniMax-M2.5` |
+| **Groq** | `https://api.groq.com/openai/v1/chat/completions` | `llama-3.3-70b-versatile` |
+| **DeepSeek** | `https://api.deepseek.com/v1/chat/completions` | `deepseek-chat` |
+| **OpenAI** | `https://api.openai.com/v1/chat/completions` | `gpt-4o` |
+| **Anthropic** | `https://api.anthropic.com/v1/messages` | `claude-sonnet-4-20250514` |
+| **Ollama** | `http://127.0.0.1:11434/v1/chat/completions` | `llama3` |
+| **LiteLLM** | `http://127.0.0.1:4000/v1/chat/completions` | Any routed model |
 
 ---
 

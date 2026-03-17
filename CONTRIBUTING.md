@@ -41,7 +41,7 @@ src/
 ├── gui/           GUI route handlers
 ├── helpers/       shared utilities
 ├── intelligence/  fact extraction, consolidation, reflections, contradiction detection
-├── llm/           LLM client (optional, OpenAI-compatible)
+├── llm/           LLM client (Anthropic/MiniMax/OpenAI-compatible, with fallback chain)
 ├── memory/        core memory CRUD + versioning, hybrid vector+FTS search, profile generation
 ├── organization/  tags, episodes, entities, projects, spaces
 ├── platform/      webhooks, digests, sync, import/export
