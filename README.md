@@ -82,7 +82,7 @@ curl -X POST http://localhost:4200/recall \
 
 ---
 
-## What's New in v5.8
+## What's New in v5.8.2
 
 ### Reciprocal Rank Fusion (RRF) Search
 Replaced simple weighted-sum scoring with **RRF across four channels**: vector similarity (BGE-large), FTS5 full-text, personality signal matching, and graph-based relationships. Type-aware link weighting gives causal links 2x multiplier, updates/corrections 1.5x, and extensions/contradictions 1.3x.
@@ -130,7 +130,7 @@ Extracts six signal types from memories: preference, value, motivation, decision
 
 `POST /context` supports 12 overrides: `max_memory_tokens`, `dedup_threshold`, `min_relevance`, `semantic_ceiling`, `semantic_limit`, and 7 layer toggles (`episodes`, `linked`, `inference`, `current_state`, `preferences`, `structured_facts`, `working_memory`).
 
-#### v5.8 - Intelligence Pipeline Overhaul
+#### v5.8.0 - Intelligence Pipeline Overhaul
 
 **Reciprocal Rank Fusion** - Replaced weighted-sum scoring with RRF across 4 search channels (vector, FTS5, personality, graph). More robust ranking with less parameter tuning.
 
@@ -149,6 +149,26 @@ Extracts six signal types from memories: preference, value, motivation, decision
 **Cross-Encoder Reranker** - Optional re-ranking pass for search results using a cross-encoder model.
 
 **Core Memory Auto-Promotion** - Memories automatically promoted to static when they exceed access, source, and stability thresholds.
+
+#### v5.8.1 - Durable Jobs, Security Hardening, Scheduler Leases
+
+**Durable Job Queue** - Post-store processing (vector write, auto-link, fact extraction, personality signals) moved from fire-and-forget `setTimeout` to a DB-backed `jobs` table with retry, exponential backoff, and crash recovery.
+
+**Scheduler Leases** - All 6 background intervals wrapped with DB-backed leases. Prevents duplicate work in multi-instance deployments. Leases released on graceful shutdown.
+
+**Security** - Atomic memory ownership (eliminates post-insert race), bootstrap hardening (localhost-only or one-time token), cross-tenant scratchpad fix, SSRF redirect blocking on webhooks and digests, passport tenant binding.
+
+**Readiness Probes** - `GET /live` (process up) and `GET /ready` (DB writable + embeddings loaded + LLM available). Returns 503 when degraded.
+
+**Schema Versioning** - `schema_versions` table tracks applied migrations. Startup blocks on critical migration failure.
+
+#### v5.8.2 - CI Reliability, Graph Visualization Fix
+
+**CI Fixes** - Contract tests now connect to the correct server port. Server readiness polling replaces fixed sleep, eliminating flaky failures during ONNX model load.
+
+**Graph Visualization** - Added `@pixi/unsafe-eval` polyfill; the WebGL galaxy view no longer errors in browsers with strict CSP.
+
+**Webhook Drain** - In-flight webhook deliveries tracked and drained during graceful shutdown to prevent dropped events on restart.
 
 <details>
 <summary><strong>Previous releases</strong></summary>
