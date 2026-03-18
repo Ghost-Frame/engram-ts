@@ -58,6 +58,10 @@ interface SearchResult {
   ce_score?: number;
   rerank_score?: number;
   personality_signal_score?: number;
+  fts_score?: number;
+  graph_score?: number;
+  temporal_boost?: number;
+  _channels?: string[];
   question_type?: QuestionType;
   reranked?: boolean;
   reranker_ms?: number;
@@ -241,13 +245,21 @@ function mergeSearchOptions(
   const options = typeof vectorFloorOrOptions === "number"
     ? { vectorFloor: vectorFloorOrOptions }
     : (vectorFloorOrOptions || {});
+  // If an explicit single type is passed, use it directly (backward compat)
   const questionType = options.questionType || options.question_type || classifyQuestion(query);
-  const base = QUESTION_STRATEGIES[questionType];
+  // Compute blended weights; if caller supplied explicit type keep it dominant
+  let blendedStrategy: SearchStrategy;
+  if (options.questionType || options.question_type) {
+    blendedStrategy = QUESTION_STRATEGIES[questionType];
+  } else {
+    const weights = classifyQuestionMixed(query);
+    blendedStrategy = blendStrategies(weights);
+  }
   const strategy: SearchStrategy = {
-    ...base,
-    vectorFloor: options.vectorFloor ?? base.vectorFloor ?? DEFAULT_VECTOR_FLOOR,
-    expandRelationships: (options.expandRelationships ?? expandRelationships) && base.expandRelationships,
-    includePersonalitySignals: options.includePersonalitySignals ?? base.includePersonalitySignals,
+    ...blendedStrategy,
+    vectorFloor: options.vectorFloor ?? blendedStrategy.vectorFloor ?? DEFAULT_VECTOR_FLOOR,
+    expandRelationships: (options.expandRelationships ?? expandRelationships) && blendedStrategy.expandRelationships,
+    includePersonalitySignals: options.includePersonalitySignals ?? blendedStrategy.includePersonalitySignals,
   };
   return { questionType, strategy };
 }
@@ -421,6 +433,100 @@ export function classifyQuestion(query: string): QuestionType {
 
   // Default: fact_recall is the safest default (tightest retrieval, least noise)
   return "fact_recall";
+}
+
+// Returns confidence weights for each question type — allows blended multi-strategy retrieval.
+// Weights are normalized to sum to 1.0. Use with blendStrategies() for mixed queries.
+export function classifyQuestionMixed(query: string): Partial<Record<QuestionType, number>> {
+  const q = query.toLowerCase();
+  const scores: Partial<Record<QuestionType, number>> = {};
+
+  // Temporal signals
+  if (/\b(when did|when was|what happened (?:on|in|during|before|after)|timeline|history of)\b/.test(q))
+    scores.temporal = (scores.temporal || 0) + 0.6;
+  if (/\b(over the past|how long ago|since when|from .* to|between .* and|at what time)\b/.test(q))
+    scores.temporal = (scores.temporal || 0) + 0.4;
+  if (/\b(how ha(?:s|ve) .* changed|used to|originally|evolution of|over time|progression|shift(?:ed|ing)|transition(?:ed)?)\b/.test(q))
+    scores.temporal = (scores.temporal || 0) + 0.5;
+  if (extractQueryDate(query) !== null && /\b(what|who|how|which|did)\b/.test(q))
+    scores.temporal = (scores.temporal || 0) + 0.3;
+
+  // Fact recall signals
+  if (/\b(recently|attended|joined|last time|went to|visited|started|stopped)\b/.test(q))
+    scores.fact_recall = (scores.fact_recall || 0) + 0.5;
+  if (/\b(what (?:is|are|was|were) (?:my|the|their)|tell me about|do (?:i|they) (?:have|own|use))\b/.test(q))
+    scores.fact_recall = (scores.fact_recall || 0) + 0.5;
+  if (/\b(what did (?:i|they)|where (?:do|did|does)|who (?:is|was|did))\b/.test(q))
+    scores.fact_recall = (scores.fact_recall || 0) + 0.4;
+
+  // Reasoning signals
+  if (/\b(why did|what made|decided|reasons?|because|why do|why does)\b/.test(q))
+    scores.reasoning = (scores.reasoning || 0) + 0.6;
+  if (/\b(motivation|what led|trade.?off|tradeoff)\b/.test(q))
+    scores.reasoning = (scores.reasoning || 0) + 0.4;
+
+  // Generalization signals
+  if (/\b(should i|do you think|considering|would i|could i|good fit|worth it)\b/.test(q))
+    scores.generalization = (scores.generalization || 0) + 0.6;
+  if (/\b(does it make sense|is it .* for me|aligned with|make sense for me)\b/.test(q))
+    scores.generalization = (scores.generalization || 0) + 0.4;
+
+  // Preference signals
+  if (/\b(suggest|recommend|what would|ideas|what .* try|what .* explore|weekend|fit me)\b/.test(q))
+    scores.preference = (scores.preference || 0) + 0.5;
+  if (/\b(favorite|prefer|like most|enjoy|love|hate|dislike|interested in|passionate about|into)\b/.test(q))
+    scores.preference = (scores.preference || 0) + 0.6;
+  if (/\b(what (?:kind|type|sort) of|taste in|style of|based on (?:my|what))\b/.test(q))
+    scores.preference = (scores.preference || 0) + 0.4;
+
+  const total = Object.values(scores).reduce((a, b) => a + b, 0);
+  if (total === 0) return { fact_recall: 1.0 };
+
+  const weights: Partial<Record<QuestionType, number>> = {};
+  for (const [k, v] of Object.entries(scores) as Array<[QuestionType, number]>) {
+    weights[k] = Math.round((v / total) * 100) / 100;
+  }
+  return weights;
+}
+
+// Blend SearchStrategy configs from multiple question types, weighted by confidence.
+function blendStrategies(weights: Partial<Record<QuestionType, number>>): SearchStrategy {
+  const entries = Object.entries(weights) as Array<[QuestionType, number]>;
+  if (entries.length === 1) return QUESTION_STRATEGIES[entries[0][0]];
+
+  const result: SearchStrategy = {
+    vectorFloor: 0, vectorWeight: 0, ftsWeight: 0,
+    candidateMultiplier: 0, ftsLimitMultiplier: 0,
+    expandRelationships: false, relationshipSeedLimit: 0,
+    hop1Limit: 0, hop2Limit: 0, relationshipMultiplier: 0,
+    includePersonalitySignals: false, personalityLimit: 0, personalityWeight: 0,
+  };
+  let expandWeight = 0;
+  let personalityWeight = 0;
+
+  for (const [type, w] of entries) {
+    const s = QUESTION_STRATEGIES[type];
+    result.vectorFloor += s.vectorFloor * w;
+    result.vectorWeight += s.vectorWeight * w;
+    result.ftsWeight += s.ftsWeight * w;
+    result.candidateMultiplier += s.candidateMultiplier * w;
+    result.ftsLimitMultiplier += s.ftsLimitMultiplier * w;
+    result.relationshipSeedLimit += s.relationshipSeedLimit * w;
+    result.hop1Limit += s.hop1Limit * w;
+    result.hop2Limit += s.hop2Limit * w;
+    result.relationshipMultiplier += s.relationshipMultiplier * w;
+    result.personalityLimit += s.personalityLimit * w;
+    result.personalityWeight += s.personalityWeight * w;
+    if (s.expandRelationships) expandWeight += w;
+    if (s.includePersonalitySignals) personalityWeight += w;
+  }
+  result.expandRelationships = expandWeight > 0.4;
+  result.includePersonalitySignals = personalityWeight > 0.3;
+  result.relationshipSeedLimit = Math.round(result.relationshipSeedLimit);
+  result.hop1Limit = Math.round(result.hop1Limit);
+  result.hop2Limit = Math.round(result.hop2Limit);
+  result.personalityLimit = Math.round(result.personalityLimit);
+  return result;
 }
 
 export async function hybridSearch(
@@ -617,8 +723,15 @@ export async function hybridSearch(
   // k=60 is the standard constant from the RRF paper (Cormack et al. 2009)
   const RRF_K = 60;
 
-  // Build rank maps from each source
+  // Build rank maps from each source + channel membership sets for explainability
   const rrfScores = new Map<number, number>();
+  const vectorSet = new Set(vectorRanked.map(r => r.id));
+  const ftsSet = new Set(ftsRanked.map(r => r.id));
+  const personalitySet = new Set(personalityRanked.map(r => r.id));
+  // Raw score maps for explain output
+  const ftsScoreMap = new Map<number, number>(ftsRanked.map(r => [r.id, r.rawScore]));
+  const personalityScoreMap = new Map<number, number>(personalityRanked.map(r => [r.id, r.rawScore]));
+  const graphScoreMap = new Map<number, number>();
 
   for (let rank = 0; rank < vectorRanked.length; rank++) {
     const id = vectorRanked[rank].id;
@@ -708,7 +821,21 @@ export async function hybridSearch(
     }
 
     r.score = rrf * decayBoost * sourceBoost * staticBoost * temporalBoost;
+
+    // Contradiction penalty: memories with temporal-contradiction language that
+    // are NOT the latest version get demoted to prefer the most current fact.
+    // Latest-version contradictions are kept at full score (they represent updates).
+    if (!r.is_latest && r.content) {
+      const lc = r.content.toLowerCase();
+      const hasContradiction = lc.includes("no longer") || lc.includes("changed to") ||
+        lc.includes("used to") || lc.includes("instead now") ||
+        lc.includes("but now") || lc.includes("previously") ||
+        lc.includes("was replaced") || lc.includes("switched from");
+      if (hasContradiction) r.score *= 0.65;
+    }
+
     r.combined_score = r.score;
+    if (temporalBoost > 1.0) r.temporal_boost = Math.round(temporalBoost * 1000) / 1000;
   }
 
   // 5. Relationship expansion (2-hop) - feeds into graph RRF channel
@@ -815,6 +942,9 @@ export async function hybridSearch(
 
     // Sort graph results by score and apply RRF for graph channel
     graphRanked.sort((a, b) => b.rawScore - a.rawScore);
+    for (const gr of graphRanked) {
+      graphScoreMap.set(gr.id, Math.max(graphScoreMap.get(gr.id) || 0, gr.rawScore));
+    }
     for (let rank = 0; rank < graphRanked.length; rank++) {
       const id = graphRanked[rank].id;
       const r = results.get(id);
@@ -825,11 +955,19 @@ export async function hybridSearch(
     }
   }
 
-  // 6. Guard against NaN scores, sort, and limit
+  // 6. Guard against NaN scores, sort, and limit; annotate per-result channel contributions
+  const graphSet = new Set(graphScoreMap.keys());
   for (const r of results.values()) {
     if (Number.isNaN(r.score)) r.score = 0;
     if (r.decay_score != null && Number.isNaN(r.decay_score)) r.decay_score = 0;
     r.combined_score = Number.isNaN(r.combined_score as number) ? r.score : (r.combined_score || r.score);
+    // Annotate which channels contributed and raw per-channel scores
+    const channels: string[] = [];
+    if (vectorSet.has(r.id)) channels.push("vector");
+    if (ftsSet.has(r.id)) { channels.push("fts"); r.fts_score = Math.round((ftsScoreMap.get(r.id) || 0) * 1000) / 1000; }
+    if (personalitySet.has(r.id)) { channels.push("personality"); r.personality_signal_score = Math.max(r.personality_signal_score || 0, Math.round((personalityScoreMap.get(r.id) || 0) * 1000) / 1000); }
+    if (graphSet.has(r.id)) { channels.push("graph"); r.graph_score = Math.round((graphScoreMap.get(r.id) || 0) * 1000) / 1000; }
+    r._channels = channels;
   }
 
   const sortedAll = Array.from(results.values()).sort((a, b) => (b.combined_score || b.score) - (a.combined_score || a.score));
