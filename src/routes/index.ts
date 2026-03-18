@@ -929,7 +929,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
       }
       const isAuthed = !!healthAuth;
       if (!isAuthed) {
-        return json({ status: "ok", version: "5.8.1" });
+        return json({ status: "ok", version: "5.8.2" });
       }
       // Full health for authenticated users — tenant-scoped for non-admins
       const uid = healthAuth.user_id;
@@ -965,7 +965,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
       const dbSize = statSync(DB_PATH).size;
       return json({
         status: "ok",
-        version: "5.8.1",
+        version: "5.8.2",
         memories: scopedMemCount.count,
         embedded: embCount.count,
         unembedded: noEmbCount2,
@@ -2236,6 +2236,17 @@ Only include pairs that are actual contradictions.`;
         const t0 = Date.now();
         const timing: Record<string, number> = {};
 
+        // Unified dedup: single MMR-style diversity check replaces 3x O(N) scans
+        const dedupThreshGlobal = overrideDedupThreshold != null ? Number(overrideDedupThreshold) : 0.88;
+        const isDuplicateOfExisting = (memId: number): boolean => {
+          const cached = embMap.get(memId);
+          if (!cached || blockEmbeddings.length === 0) return false;
+          for (const existing of blockEmbeddings) {
+            if (cosineSimilarity(cached.embedding, existing) > dedupThreshGlobal) return true;
+          }
+          return false;
+        };
+
         // Embed query for ranking statics + dedup
         let queryEmb: Float32Array | null = null;
         try { queryEmb = await embed(query); } catch {}
@@ -2306,16 +2317,8 @@ Only include pairs that are actual contradictions.`;
           const tokens = estimateTokens(truncated);
           if (usedTokens + tokens > tokenBudget * semanticCeiling) break;
 
-          // Dedup: skip if too similar to already-included memory
-          const dedupThresh = overrideDedupThreshold != null ? Number(overrideDedupThreshold) : 0.88;
-          const cached = embMap.get(r.id);
-          if (cached && blockEmbeddings.length > 0) {
-            let isDupe = false;
-            for (const existing of blockEmbeddings) {
-              if (cosineSimilarity(cached.embedding, existing) > dedupThresh) { isDupe = true; break; }
-            }
-            if (isDupe) continue;
-          }
+          // Dedup: skip if too similar to already-included memory (unified helper)
+          if (isDuplicateOfExisting(r.id)) continue;
 
           // Minimum relevance threshold (use semantic_score for quality, not RRF combined_score)
           const minRelev = overrideMinRelevance != null ? Number(overrideMinRelevance) : 0.55;
@@ -2337,7 +2340,8 @@ Only include pairs that are actual contradictions.`;
           });
           seenIds.add(r.id);
           usedTokens += tokens;
-          if (cached) blockEmbeddings.push(cached.embedding);
+          const cachedEmb = embMap.get(r.id);
+          if (cachedEmb) blockEmbeddings.push(cachedEmb.embedding);
         }
 
         timing.semantic_ms = Date.now() - t0 - Object.values(timing).reduce((a, b) => a + b, 0);
@@ -2345,6 +2349,7 @@ Only include pairs that are actual contradictions.`;
         // ---- Phase 2.5a: Version chain context (preference evolution tracking) ----
         // Surface version chains for semantic results that have prior versions,
         // so the LLM can see how preferences/facts evolved over time
+        const tEvolution = Date.now();
         if (depth >= 2 && usedTokens < tokenBudget * 0.72) {
           const semanticIds = blocks.filter(b => b.source === "semantic").slice(0, 8);
           for (const b of semanticIds) {
@@ -2374,8 +2379,10 @@ Only include pairs that are actual contradictions.`;
             usedTokens += tokens;
           }
         }
+        timing.evolution_ms = Date.now() - tEvolution;
 
         // ---- Phase 2.5b: Episode context ----
+        const tEpisodes = Date.now();
         const seenEpisodeIds = new Set<number>();
         if (doIncludeEpisodes && usedTokens < tokenBudget * 0.75) {
           for (const b of blocks.filter(b => b.source === "semantic").slice(0, 5)) {
@@ -2395,8 +2402,10 @@ Only include pairs that are actual contradictions.`;
             }
           }
         }
+        timing.episodes_ms = Date.now() - tEpisodes;
 
         // ---- Phase 3: Linked memories (graph expansion) ----
+        const tLinked = Date.now();
         if (doIncludeLinked && contextStrategy !== "precision" && usedTokens < tokenBudget * 0.85) {
           const semanticIds = blocks.filter(b => b.source === "semantic").slice(0, 5).map(b => b.id);
           for (const sid of semanticIds) {
@@ -2408,14 +2417,8 @@ Only include pairs that are actual contradictions.`;
               const tokens = estimateTokens(truncated);
               if (usedTokens + tokens > tokenBudget * 0.88) break;
 
-              const cachedL = embMap.get(l.id);
-              if (cachedL && blockEmbeddings.length > 0) {
-                let isDupe = false;
-                for (const existing of blockEmbeddings) {
-                  if (cosineSimilarity(cachedL.embedding, existing) > 0.88) { isDupe = true; break; }
-                }
-                if (isDupe) continue;
-              }
+              // Dedup: skip if too similar to already-included memory (unified helper)
+              if (isDuplicateOfExisting(l.id)) continue;
 
               blocks.push({
                 id: l.id, content: truncated, category: l.category,
@@ -2424,12 +2427,15 @@ Only include pairs that are actual contradictions.`;
               });
               seenIds.add(l.id);
               usedTokens += tokens;
-              if (cachedL) blockEmbeddings.push(cachedL.embedding);
+              const cachedEmb = embMap.get(l.id);
+              if (cachedEmb) blockEmbeddings.push(cachedEmb.embedding);
             }
           }
         }
+        timing.linked_ms = Date.now() - tLinked;
 
         // ---- Phase 4: Recent memories (temporal context, capped at 12% of budget) ----
+        const tRecent = Date.now();
         const recentCeiling = tokenBudget * 0.93;
         if (includeRecent && usedTokens < recentCeiling) {
           const recent = getRecentDynamicMemories.all(auth.user_id, 5) as any[];
@@ -2439,14 +2445,8 @@ Only include pairs that are actual contradictions.`;
             const tokens = estimateTokens(truncated);
             if (usedTokens + tokens > recentCeiling) break;
 
-            const cachedR = embMap.get(r.id);
-            if (cachedR && blockEmbeddings.length > 0) {
-              let isDupe = false;
-              for (const existing of blockEmbeddings) {
-                if (cosineSimilarity(cachedR.embedding, existing) > 0.88) { isDupe = true; break; }
-              }
-              if (isDupe) continue;
-            }
+            // Dedup: skip if too similar to already-included memory (unified helper)
+            if (isDuplicateOfExisting(r.id)) continue;
 
             blocks.push({
               id: r.id, content: truncated, category: r.category,
@@ -2455,11 +2455,14 @@ Only include pairs that are actual contradictions.`;
             });
             seenIds.add(r.id);
             usedTokens += tokens;
-            if (cachedR) blockEmbeddings.push(cachedR.embedding);
+            const cachedEmb = embMap.get(r.id);
+            if (cachedEmb) blockEmbeddings.push(cachedEmb.embedding);
           }
         }
+        timing.recent_ms = Date.now() - tRecent;
 
         // Phase 5: Implicit connection inference (LLM post-processing)
+        const tInference = Date.now();
         const semanticBlocks = blocks.filter(b => b.source === "semantic");
         if (doIncludeInference && isLLMAvailable() && semanticBlocks.length >= 2 && usedTokens < tokenBudget * 0.95) {
           try {
@@ -2477,15 +2480,10 @@ Only include pairs that are actual contradictions.`;
             }
           } catch {}
         }
-
-        timing.remaining_ms = Date.now() - t0 - Object.values(timing).reduce((a, b) => a + b, 0);
-        timing.total_ms = Date.now() - t0;
-
-        // Defer access tracking to after response
-        const blockIds = blocks.filter(b => b.id > 0).map(b => b.id);
-        setTimeout(() => { try { const batch = db.transaction(() => { for (const id of blockIds) trackAccessWithFSRS(id); }); batch(); } catch {} }, 0);
+        timing.inference_ms = Date.now() - tInference;
 
         // Build formatted context string with intelligence layers
+        const tAssembly = Date.now();
         const contextParts: string[] = [];
         const staticBlocks = blocks.filter(b => b.source === "static");
         const linkedBlocks = blocks.filter(b => b.source === "linked");
@@ -2525,7 +2523,7 @@ Only include pairs that are actual contradictions.`;
           } catch {}
         }
 
-        // Intelligence Layer: Structured Facts relevant to query
+        // Intelligence Layer: Structured Facts relevant to query (freshness-weighted)
         if (doIncludeStructuredFacts) {
           try {
             const memIds = blocks.map(b => b.id);
@@ -2537,13 +2535,31 @@ Only include pairs that are actual contradictions.`;
                  ORDER BY valid_at DESC NULLS LAST, date_approx DESC NULLS LAST`
               ).all(...memIds) as any[];
               if (sfRows.length > 0) {
-                const sfLines = sfRows.map((sf: any) => {
+                // Freshness weighting: sort by valid_at recency, flag stale facts (>90 days old)
+                const now = Date.now();
+                const STALE_MS = 90 * 24 * 60 * 60 * 1000;
+                const scored = sfRows.map((sf: any) => {
+                  let freshness = 0.5; // default for facts with no date
+                  if (sf.valid_at) {
+                    const ageMs = now - new Date(sf.valid_at).getTime();
+                    freshness = ageMs < 0 ? 1.0 : Math.max(0.1, 1.0 - (ageMs / (365 * 24 * 60 * 60 * 1000)));
+                  } else if (sf.date_approx) {
+                    const ageMs = now - new Date(sf.date_approx).getTime();
+                    freshness = ageMs < 0 ? 1.0 : Math.max(0.1, 1.0 - (ageMs / (365 * 24 * 60 * 60 * 1000)));
+                  }
+                  const isStale = sf.valid_at ? (now - new Date(sf.valid_at).getTime() > STALE_MS) : false;
+                  return { sf, freshness, isStale };
+                });
+                scored.sort((a, b) => b.freshness - a.freshness);
+
+                const sfLines = scored.map(({ sf, isStale }) => {
                   let line = `- ${sf.subject} ${sf.verb}`;
                   if (sf.object) line += ` ${sf.object}`;
                   if (sf.quantity != null) line += ` (qty: ${sf.quantity}${sf.unit ? " " + sf.unit : ""})`;
                   if (sf.valid_at) line += ` [${sf.valid_at}]`;
                   else if (sf.date_approx) line += ` [${sf.date_approx}]`;
                   else if (sf.date_ref) line += ` [${sf.date_ref}]`;
+                  if (isStale) line += ` [possibly outdated]`;
                   return line;
                 });
                 contextParts.push("## Extracted Facts\n" + sfLines.join("\n"));
@@ -2584,6 +2600,13 @@ Only include pairs that are actual contradictions.`;
         if (inferenceBlocks.length > 0) {
           contextParts.push("## Implicit Connections\n" + inferenceBlocks.map(b => b.content).join("\n"));
         }
+
+        timing.assembly_ms = Date.now() - tAssembly;
+        timing.total_ms = Date.now() - t0;
+
+        // Defer access tracking to after response
+        const blockIds = blocks.filter(b => b.id > 0).map(b => b.id);
+        setTimeout(() => { try { const batch = db.transaction(() => { for (const id of blockIds) trackAccessWithFSRS(id); }); batch(); } catch {} }, 0);
 
         return json({
           context: contextParts.join("\n\n"),
@@ -3184,6 +3207,242 @@ Return JSON:
     }
 
     // ========================================================================
+    // MEMORY HEALTH — surface stale, duplicate, and disconnected memories
+    // ========================================================================
+
+    if (url.pathname === "/memory-health" && method === "GET") {
+      try {
+        const staleDays = Number(url.searchParams.get("stale_days") || 60);
+        const dupThreshold = Number(url.searchParams.get("dup_threshold") || 0.94);
+        const limit = Math.min(Number(url.searchParams.get("limit") || 20), 100);
+
+        // 1. Stale high-importance memories: important but not accessed recently
+        const staleRows = db.prepare(
+          `SELECT id, content, category, importance, created_at, source_count,
+                  access_count, decay_score
+           FROM memories
+           WHERE user_id = ? AND is_forgotten = 0 AND is_static = 0 AND is_archived = 0
+             AND importance >= 6
+             AND created_at < datetime('now', '-' || ? || ' days')
+             AND (access_count IS NULL OR access_count < 2)
+           ORDER BY importance DESC, created_at ASC
+           LIMIT ?`
+        ).all(auth.user_id, staleDays, limit) as any[];
+
+        // 2. Duplicate clusters: high-similarity unlinked memory pairs
+        const allEmbs = getCachedEmbeddings(true, auth.user_id);
+        const dupClusters: Array<{ ids: number[]; similarity: number; sample_content: string }> = [];
+        const seen = new Set<string>();
+        const userEmbs = allEmbs.filter((e: any) => e.user_id === auth.user_id);
+        for (let i = 0; i < Math.min(userEmbs.length, 300); i++) {
+          for (let j = i + 1; j < Math.min(userEmbs.length, 300); j++) {
+            const sim = cosineSimilarity(userEmbs[i].embedding, userEmbs[j].embedding);
+            if (sim >= dupThreshold) {
+              const key = `${Math.min(userEmbs[i].id, userEmbs[j].id)}-${Math.max(userEmbs[i].id, userEmbs[j].id)}`;
+              if (!seen.has(key)) {
+                seen.add(key);
+                const memA = getMemoryWithoutEmbedding.get(userEmbs[i].id) as any;
+                dupClusters.push({
+                  ids: [userEmbs[i].id, userEmbs[j].id],
+                  similarity: Math.round(sim * 1000) / 1000,
+                  sample_content: memA?.content?.substring(0, 120) || "",
+                });
+              }
+            }
+          }
+        }
+        dupClusters.sort((a, b) => b.similarity - a.similarity);
+
+        // 3. High-value unlinked memories: important memories with no graph links
+        const unlinkedRows = db.prepare(
+          `SELECT m.id, m.content, m.category, m.importance, m.created_at
+           FROM memories m
+           WHERE m.user_id = ? AND m.is_forgotten = 0 AND m.importance >= 7
+             AND NOT EXISTS (
+               SELECT 1 FROM memory_links ml
+               WHERE ml.source_id = m.id OR ml.target_id = m.id
+             )
+           ORDER BY m.importance DESC
+           LIMIT ?`
+        ).all(auth.user_id, limit) as any[];
+
+        // 4. Contradiction hints: memories with contradicting keywords near same subjects
+        const contradictionRows = db.prepare(
+          `SELECT m.id, m.content, m.category, m.created_at
+           FROM memories m
+           WHERE m.user_id = ? AND m.is_forgotten = 0
+             AND (m.content LIKE '%no longer%' OR m.content LIKE '%changed to%'
+               OR m.content LIKE '%used to%' OR m.content LIKE '%instead now%'
+               OR m.content LIKE '%but now%' OR m.content LIKE '%previously%')
+           ORDER BY m.created_at DESC
+           LIMIT ?`
+        ).all(auth.user_id, limit) as any[];
+
+        return json({
+          stale: staleRows.map(r => ({
+            id: r.id,
+            content: r.content?.substring(0, 150),
+            category: r.category,
+            importance: r.importance,
+            created_at: r.created_at,
+            access_count: r.access_count || 0,
+            decay_score: r.decay_score,
+          })),
+          duplicates: dupClusters.slice(0, limit),
+          high_value_unlinked: unlinkedRows.map(r => ({
+            id: r.id,
+            content: r.content?.substring(0, 150),
+            category: r.category,
+            importance: r.importance,
+            created_at: r.created_at,
+          })),
+          contradiction_hints: contradictionRows.map(r => ({
+            id: r.id,
+            content: r.content?.substring(0, 200),
+            category: r.category,
+            created_at: r.created_at,
+          })),
+          summary: {
+            stale_count: staleRows.length,
+            duplicate_pairs: dupClusters.length,
+            unlinked_high_value: unlinkedRows.length,
+            contradiction_hints: contradictionRows.length,
+          },
+        });
+      } catch (e: any) {
+        return safeError("Memory health", e);
+      }
+    }
+
+    // ========================================================================
+    // RETRIEVAL FEEDBACK — relevance signal collection
+    // ========================================================================
+
+    if (url.pathname === "/feedback" && method === "POST") {
+      try {
+        // Create table if not exists (idempotent)
+        db.exec(`
+          CREATE TABLE IF NOT EXISTS retrieval_feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            query TEXT NOT NULL,
+            memory_id INTEGER NOT NULL,
+            signal TEXT NOT NULL CHECK(signal IN ('used', 'ignored', 'corrected', 'irrelevant', 'helpful')),
+            context TEXT,
+            agent TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (memory_id) REFERENCES memories(id)
+          );
+          CREATE INDEX IF NOT EXISTS idx_feedback_user ON retrieval_feedback(user_id, created_at);
+          CREATE INDEX IF NOT EXISTS idx_feedback_memory ON retrieval_feedback(memory_id, signal);
+        `);
+
+        const body = await req.json() as any;
+        const { query: fbQuery, memory_id, signal, context: fbContext, agent: fbAgent, items } = body;
+
+        // Support both single feedback and batch
+        const feedbackItems: Array<{ query: string; memory_id: number; signal: string; context?: string; agent?: string }> = [];
+
+        if (items && Array.isArray(items)) {
+          for (const item of items) {
+            if (!item.query || !item.memory_id || !item.signal) continue;
+            if (!["used", "ignored", "corrected", "irrelevant", "helpful"].includes(item.signal)) continue;
+            feedbackItems.push(item);
+          }
+        } else if (fbQuery && memory_id && signal) {
+          if (!["used", "ignored", "corrected", "irrelevant", "helpful"].includes(signal)) {
+            return errorResponse("Invalid signal. Must be one of: used, ignored, corrected, irrelevant, helpful", 400);
+          }
+          feedbackItems.push({ query: fbQuery, memory_id, signal, context: fbContext, agent: fbAgent });
+        }
+
+        if (feedbackItems.length === 0) {
+          return errorResponse("Required: query, memory_id, signal (used|ignored|corrected|irrelevant|helpful). Or items[] for batch.", 400);
+        }
+
+        const insertFeedback = db.prepare(
+          "INSERT INTO retrieval_feedback (user_id, query, memory_id, signal, context, agent) VALUES (?, ?, ?, ?, ?, ?)"
+        );
+        const batch = db.transaction(() => {
+          for (const fb of feedbackItems) {
+            insertFeedback.run(auth.user_id, fb.query, fb.memory_id, fb.signal, fb.context || null, fb.agent || null);
+          }
+        });
+        batch();
+
+        // Also update importance heuristically: "helpful" boosts, "irrelevant" penalizes
+        for (const fb of feedbackItems) {
+          try {
+            if (fb.signal === "helpful") {
+              db.prepare("UPDATE memories SET importance = MIN(importance + 0.5, 10) WHERE id = ? AND user_id = ?").run(fb.memory_id, auth.user_id);
+            } else if (fb.signal === "irrelevant") {
+              db.prepare("UPDATE memories SET importance = MAX(importance - 0.3, 0) WHERE id = ? AND user_id = ?").run(fb.memory_id, auth.user_id);
+            }
+          } catch {}
+        }
+
+        return json({ ok: true, recorded: feedbackItems.length });
+      } catch (e: any) {
+        return safeError("Feedback", e);
+      }
+    }
+
+    // GET /feedback/stats — retrieval quality analytics
+    if (url.pathname === "/feedback/stats" && method === "GET") {
+      try {
+        // Ensure table exists
+        db.exec(`CREATE TABLE IF NOT EXISTS retrieval_feedback (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          query TEXT NOT NULL,
+          memory_id INTEGER NOT NULL,
+          signal TEXT NOT NULL CHECK(signal IN ('used', 'ignored', 'corrected', 'irrelevant', 'helpful')),
+          context TEXT,
+          agent TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )`);
+
+        const days = Number(url.searchParams.get("days") || 30);
+        const sinceDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().replace("T", " ").slice(0, 19);
+
+        const signalCounts = db.prepare(
+          `SELECT signal, COUNT(*) as count FROM retrieval_feedback
+           WHERE user_id = ? AND created_at >= ? GROUP BY signal ORDER BY count DESC`
+        ).all(auth.user_id, sinceDate) as any[];
+
+        const topIrrelevant = db.prepare(
+          `SELECT memory_id, COUNT(*) as count FROM retrieval_feedback
+           WHERE user_id = ? AND signal = 'irrelevant' AND created_at >= ?
+           GROUP BY memory_id ORDER BY count DESC LIMIT 10`
+        ).all(auth.user_id, sinceDate) as any[];
+
+        const topHelpful = db.prepare(
+          `SELECT memory_id, COUNT(*) as count FROM retrieval_feedback
+           WHERE user_id = ? AND signal = 'helpful' AND created_at >= ?
+           GROUP BY memory_id ORDER BY count DESC LIMIT 10`
+        ).all(auth.user_id, sinceDate) as any[];
+
+        const totalFeedback = signalCounts.reduce((sum: number, r: any) => sum + r.count, 0);
+        const helpfulCount = signalCounts.find((r: any) => r.signal === "helpful")?.count || 0;
+        const usedCount = signalCounts.find((r: any) => r.signal === "used")?.count || 0;
+        const irrelevantCount = signalCounts.find((r: any) => r.signal === "irrelevant")?.count || 0;
+        const precision = totalFeedback > 0 ? Math.round(((helpfulCount + usedCount) / totalFeedback) * 1000) / 1000 : null;
+
+        return json({
+          period_days: days,
+          total_feedback: totalFeedback,
+          signal_breakdown: signalCounts,
+          estimated_precision: precision,
+          top_irrelevant_memories: topIrrelevant,
+          top_helpful_memories: topHelpful,
+        });
+      } catch (e: any) {
+        return safeError("Feedback stats", e);
+      }
+    }
+
+    // ========================================================================
     // SEARCH — v3
     // ========================================================================
 
@@ -3311,22 +3570,33 @@ Return JSON:
         const explainResults = body.explain !== false ? (abstained ? [] : results).map((r: any) => {
           const explain: Record<string, any> = {};
           if (r.semantic_score != null) explain.vector = Math.round(r.semantic_score * 1000) / 1000;
+          if (r.fts_score != null) explain.fts = Math.round(r.fts_score * 1000) / 1000;
+          if (r.graph_score != null) explain.graph = Math.round(r.graph_score * 1000) / 1000;
+          if (r.personality_signal_score != null) explain.personality = Math.round(r.personality_signal_score * 1000) / 1000;
           if (r.ce_score != null) explain.reranker = Math.round(r.ce_score * 1000) / 1000;
           if (r.combined_score != null) explain.rrf = Math.round(r.combined_score * 1000) / 1000;
           if (r.decay_score != null) explain.decay = Math.round(r.decay_score * 100) / 100;
+          if (r.temporal_boost != null) explain.temporal_boost = r.temporal_boost;
           if (r.is_static) explain.static = true;
           if (r.source_count && r.source_count > 1) explain.corroborated = r.source_count;
           if (r.question_type) explain.question_type = r.question_type;
+          if (r._channels && r._channels.length > 0) explain.channels = r._channels;
           // Build human-readable reason
           const reasons: string[] = [];
           if (explain.vector && explain.vector > 0.7) reasons.push("strong semantic match");
           else if (explain.vector && explain.vector > 0.5) reasons.push("moderate semantic match");
+          if (explain.fts != null) reasons.push("full-text match");
+          if (explain.graph != null) reasons.push("graph hop");
+          if (explain.personality != null) reasons.push("personality signal");
+          if (explain.temporal_boost != null) reasons.push("temporal proximity boost");
           if (explain.reranker && explain.reranker > 0.9) reasons.push("high reranker confidence");
           if (explain.static) reasons.push("permanent fact");
           if (explain.corroborated) reasons.push(`corroborated ${explain.corroborated}x`);
           if (r.importance >= 8) reasons.push("high importance");
           explain.reasons = reasons;
-          return { ...r, explain };
+          // Strip internal fields from result before returning
+          const { _channels, fts_score, graph_score, temporal_boost, ...rest } = r;
+          return { ...rest, explain };
         }) : (abstained ? [] : results);
 
         return json({
