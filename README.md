@@ -8,7 +8,7 @@ Store, search, recall, and link memories with automatic embeddings,
 fact extraction, versioning, deduplication, and graph visualization.
 
 [![License: Elastic-2.0](https://img.shields.io/badge/License-Elastic--2.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-5.8.0-gold.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-5.8.1-gold.svg)](CHANGELOG.md)
 
 [Quick Start](#quick-start) · [API Reference](#api-reference) · [SDKs](#sdks) · [MCP Server](#mcp-server) · [CLI](#cli) · [Self-Host](#self-hosting) · [GUI](#gui)
 
@@ -190,127 +190,144 @@ Extracts six signal types from memories: preference, value, motivation, decision
 
 ---
 
-## Quick Start
+## Quick Start (10 minutes)
 
-### Docker (recommended)
-
-```bash
-git clone https://github.com/zanfiel/engram.git
-cd engram
-cp .env.example .env
-# Edit .env - set ENGRAM_GUI_PASSWORD
-
-docker compose up -d
-```
-
-Engram is now running at `http://localhost:4200`.
-
-### From source (Node.js 22+ - recommended)
+### 1. Start the server
 
 ```bash
-git clone https://github.com/zanfiel/engram.git
-cd engram
+git clone https://github.com/zanfiel/engram.git && cd engram
 npm install
-ENGRAM_GUI_PASSWORD=your-password node --experimental-strip-types server-split.ts
+cp .env.example .env    # Edit .env: set ENGRAM_GUI_PASSWORD
+npm start               # Or: docker compose up -d
 ```
 
-### From source (Bun - legacy)
+### 2. Bootstrap your admin key
 
 ```bash
-git clone https://github.com/zanfiel/engram.git
-cd engram
-bun install
-ENGRAM_GUI_PASSWORD=your-password bun run server-split.ts
-```
-
-### Create an API key
-
-```bash
-curl -X POST http://localhost:4200/keys \
+curl -X POST http://localhost:4200/bootstrap \
   -H "Content-Type: application/json" \
-  -d '{"name": "my-agent", "scopes": "read,write"}'
+  -d '{"name": "my-admin-key"}'
+# Save the returned eg_... key
 ```
 
-Save the returned `eg_...` key - it's shown only once.
+### 3. Store your first memories
+
+```bash
+export KEY="eg_your_key_here"
+
+curl -X POST http://localhost:4200/store \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"content": "Production database is PostgreSQL 16 on db.example.com:5432", "category": "reference", "importance": 8}'
+
+curl -X POST http://localhost:4200/store \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"content": "Never deploy on Fridays - outage on 2026-01-15 was caused by Friday deploy", "category": "decision", "importance": 9}'
+
+curl -X POST http://localhost:4200/store \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"content": "Migrated auth service from JWT to opaque sessions for compliance", "category": "decision", "importance": 7}'
+```
+
+### 4. Recall what matters
+
+```bash
+# Semantic search
+curl -X POST http://localhost:4200/search \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"query": "database connection details"}'
+
+# Decision-focused search
+curl -X POST http://localhost:4200/search \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"query": "deployment policy", "mode": "decision"}'
+
+# Budget-aware context for RAG injection
+curl -X POST http://localhost:4200/context \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"query": "setting up a new deploy pipeline", "mode": "fast"}'
+```
+
+### 5. Check the guardrails
+
+```bash
+# Before deploying, check against stored rules
+curl -X POST http://localhost:4200/guard \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"action": "deploy to production on Friday"}'
+# Returns: { "verdict": "warn", "reasons": ["Never deploy on Fridays..."] }
+```
+
+### 6. Open the GUI
+
+Visit `http://localhost:4200` in your browser. Log in with the `ENGRAM_GUI_PASSWORD` you set. Explore the memory graph, search, and review the inbox.
 
 ---
 
-## SDKs
+## Decision Memory
 
-### TypeScript / JavaScript
+Engram is especially strong as a **decision memory system**. It tracks not just what you know, but what you decided, why, and what changed.
 
-The SDK lives in `sdk/` within the repo. Zero dependencies - uses native `fetch`.
+- **Versioning**: update a memory and the full version chain is preserved
+- **Contradictions**: when new information conflicts with old, both are flagged with a `contradicts` link
+- **Corrections**: `POST /correct` stores a correction that supersedes the original, with `corrects` relationship
+- **Guardrails**: `POST /guard` checks proposed actions against stored decision rules before execution
+- **Temporal queries**: "what did we know last Tuesday?" via `mode=timeline` or time-travel queries
+- **Structured facts**: subject/verb/object decomposition with temporal validity windows
+
+This makes Engram ideal for:
+- **Agent memory**: agents that learn from mistakes and don't repeat them
+- **Ops runbooks**: infrastructure decisions with context ("we chose X because Y")
+- **Project continuity**: decisions survive team turnover
+
+---
+
+## Review Inbox
+
+Memories extracted by LLM (fact extraction, personality signals) land in the **review inbox** instead of being immediately trusted. This gives you control over what enters long-term memory.
 
 ```bash
-cd sdk && npm install && npm run build
+# List pending memories
+curl http://localhost:4200/inbox -H "Authorization: Bearer $KEY"
+
+# Approve a memory
+curl -X POST http://localhost:4200/inbox/42/approve -H "Authorization: Bearer $KEY"
+
+# Reject a memory
+curl -X POST http://localhost:4200/inbox/42/reject -H "Authorization: Bearer $KEY"
 ```
 
-```ts
-import { Engram } from "@engram/sdk";
+The GUI also shows an inbox badge with the pending count. Memories you store directly via `/store` bypass the inbox and are approved immediately.
 
-const engram = new Engram({
-  url: "http://localhost:4200",
-  apiKey: "eg_your_key_here",
-});
+---
+
+## SDK
+
+### TypeScript SDK
+
+```typescript
+import { Engram } from "@zanfiel/engram/sdk";
+
+const engram = new Engram({ url: "http://localhost:4200", apiKey: "eg_..." });
 
 // Store
-const result = await engram.store("Deployed v2.3 to production", {
-  category: "task",
-  importance: 7,
-});
+await engram.store("User prefers dark mode", { category: "decision", importance: 8 });
 
-// Search
-const results = await engram.search("deployment history");
+// Search with presets
+const results = await engram.search("dark mode", { mode: "preference" });
 
-// Recall (optimized for agent context)
-const context = await engram.recall("What was deployed recently?");
+// Budget-aware context for RAG
+const ctx = await engram.context("setting up the editor", { mode: "fast" });
 
-// List
-const recent = await engram.list({ limit: 10, category: "task" });
+// Guardrails
+const check = await engram.guard("deploy to production on Friday");
+if (check.verdict === "block") console.log("Blocked:", check.reasons);
 
-// Update (creates new version)
-await engram.update(result.id, "Deployed v2.4 to production");
-
-// FSRS state - check memory health
-const fsrs = await engram.fsrsState(result.id);
-// → { retrievability: 0.95, stability: 4.2, next_review_days: 4 }
-
-// Spaces
-engram.useSpace("project-alpha");
-await engram.store("Sprint 3 completed", { category: "task" });
+// Inbox review
+const pending = await engram.inbox();
+for (const mem of pending.pending) {
+  await engram.approve(mem.id);  // or: engram.reject(mem.id)
+}
 ```
-
-> **npm:** `@engram/sdk` will be published to npm soon. For now, install from the repo.
-
-### Python
-
-The Python SDK lives in `sdk-py/`. Requires `httpx`.
-
-```bash
-cd sdk-py && pip install -e .
-```
-
-```python
-from engram import Engram
-
-client = Engram("http://localhost:4200", api_key="eg_your_key_here")
-
-# Store
-result = client.store("User prefers dark mode", category="decision", importance=8)
-
-# Search
-memories = client.search("user preferences", limit=5)
-for m in memories:
-    print(f"[{m.category}] {m.content} (score: {m.score:.2f})")
-
-# Recall
-context = client.recall("What does the user like?")
-
-# Export everything
-data = client.export()
-```
-
-> **PyPI:** `engram-sdk` will be published to PyPI soon. For now, install from the repo.
 
 ### cURL
 
@@ -321,11 +338,11 @@ curl -X POST http://localhost:4200/store \
   -H "Content-Type: application/json" \
   -d '{"content": "Server migrated to new IP", "category": "state", "importance": 7}'
 
-# Search
+# Search with mode preset
 curl -X POST http://localhost:4200/search \
   -H "Authorization: Bearer eg_your_key" \
   -H "Content-Type: application/json" \
-  -d '{"query": "server migration", "limit": 5}'
+  -d '{"query": "server migration", "mode": "timeline", "limit": 5}'
 
 # Recall
 curl -X POST http://localhost:4200/recall \
@@ -355,7 +372,7 @@ Add to `claude_desktop_config.json`:
   "mcpServers": {
     "engram": {
       "command": "node",
-      "args": ["path/to/engram/mcp-server.mjs"],
+      "args": ["--experimental-strip-types", "path/to/engram/mcp-server.ts"],
       "env": {
         "ENGRAM_URL": "http://localhost:4200",
         "ENGRAM_API_KEY": "eg_your_key"
@@ -369,59 +386,19 @@ Add to `claude_desktop_config.json`:
 
 | Tool | Description |
 |------|-------------|
-| `memory_store` | Store a new memory |
-| `memory_search` | Semantic + full-text search |
-| `memory_recall` | Agent-optimized contextual recall |
-| `memory_pack` | Token-budget-aware context packing |
-| `memory_forget` | Soft-delete a memory |
-| `memory_update` | Create a new version of a memory |
-| `memory_tags` | List all tags |
-| `memory_list` | List recent memories |
+| `memory_store` | Store a new memory with category, importance, and model attribution |
+| `memory_recall` | Semantic + full-text search across memories |
+| `memory_context` | Token-budget-aware context packing for LLM injection |
+| `memory_list` | List recent memories, optionally filtered by category |
+| `memory_delete` | Delete a memory by ID |
 
-### Available Resources
-
-| Resource | Description |
-|----------|-------------|
-| `engram://health` | Server health + feature flags |
-| `engram://profile` | User profile (static facts + recent activity) |
-| `engram://stats` | Detailed statistics |
+> **Note:** The MCP server connects to a running Engram instance via HTTP. All tools support signed tool manifests for integrity verification when `ENGRAM_SIGNING_SECRET` is set.
 
 ---
 
 ## CLI
 
-Full-featured command-line interface in `sdk/cli.mjs`.
-
-```bash
-# Symlink for global access
-ln -s $(pwd)/sdk/cli.mjs ~/.local/bin/engram
-
-# Or run directly
-node sdk/cli.mjs <command>
-```
-
-### Commands
-
-```bash
-engram store "Server migrated to new IP" --category state --importance 7
-engram search "deployment history" --limit 5
-engram recall "What was deployed recently?"
-engram list --limit 10 --category task
-engram get 42
-engram update 42 "Server migrated to 10.0.0.5"
-engram forget 42
-engram tags
-engram episodes
-engram health
-engram stats
-engram export > backup.json
-engram import < backup.json
-engram pack "current project context" --tokens 4000
-```
-
-Environment variables: `ENGRAM_URL` (default: `http://localhost:4200`), `ENGRAM_API_KEY`.
-
-Supports stdin piping: `echo "Deploy completed" | engram store --category task`
+> **Roadmap:** A dedicated CLI is planned. For now, use `curl` or any HTTP client directly against the API.
 
 ---
 
@@ -680,6 +657,7 @@ Engram includes a WebGL graph visualization at `/gui`. Login with your `ENGRAM_G
 |----------|---------|-------------|
 | `ENGRAM_PORT` | `4200` | Server port |
 | `ENGRAM_HOST` | `0.0.0.0` | Bind address |
+| `ENGRAM_DATA_DIR` | `./data` | Data directory for DB and models |
 | `ENGRAM_GUI_PASSWORD` | required | GUI login password unless `ENGRAM_OPEN_ACCESS=1` |
 | `ENGRAM_OPEN_ACCESS` | `0` | Set `1` for unauthenticated single-user mode |
 | `ENGRAM_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error`, `none` |
@@ -687,29 +665,37 @@ Engram includes a WebGL graph visualization at `/gui`. Login with your `ENGRAM_G
 | `ENGRAM_MAX_BODY_SIZE` | `1048576` | Max request body (bytes) |
 | `ENGRAM_MAX_CONTENT_SIZE` | `102400` | Max memory content (bytes) |
 | `ENGRAM_ALLOWED_IPS` | - | Comma-separated IP allowlist |
-| `ENGRAM_HOT_RELOAD` | `0` | Set `1` to reload GUI from disk each request |
-| `ENGRAM_CROSS_ENCODER` | `1` | Set `0` to disable the cross-encoder reranker |
+| `ENGRAM_EMBEDDING_PROVIDER` | `local` | Embedding provider: `local`, `google`, `vertex` |
+| `ENGRAM_EMBEDDING_DIM` | auto | Embedding dimension (1024 for local, 768 for google/vertex) |
+| `ENGRAM_CROSS_ENCODER` | `1` | Set `0` to disable the ONNX cross-encoder reranker |
+| `ENGRAM_RERANKER` | `1` | Set `0` to disable LLM-based reranking |
+| `ENGRAM_RERANKER_TOP_K` | `12` | Rerank top K candidates |
 | `ENGRAM_RERANKER_FP32` | `0` | Set `1` for full-precision reranker instead of quantized INT8 |
+| `GOOGLE_API_KEY` | - | Google AI Studio API key (for `google` embedding provider) |
+| `GOOGLE_CLOUD_PROJECT` | - | GCP project ID (for `vertex` embedding provider) |
+| `GOOGLE_APPLICATION_CREDENTIALS` | - | Service account JSON path (for `vertex`) |
 | `LLM_URL` | - | OpenAI-compatible API URL |
 | `LLM_API_KEY` | - | API key for LLM |
 | `LLM_MODEL` | - | Model name (e.g., `gpt-4o`, `claude-sonnet-4-20250514`) |
+| `LLM_STRATEGY` | `fallback` | `fallback` or `round-robin` for multi-provider LLM rotation |
 
 #### Search Tuning
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SEARCH_FACT_VECTOR_FLOOR` | - | Min vector score for fact_recall queries |
-| `SEARCH_PREFERENCE_VECTOR_FLOOR` | - | Min vector score for preference queries |
-| `SEARCH_REASONING_VECTOR_FLOOR` | - | Min vector score for reasoning queries |
-| `SEARCH_GENERALIZATION_VECTOR_FLOOR` | - | Min vector score for generalization queries |
-| `SEARCH_PERSONALITY_MIN_SCORE` | - | Min score for personality signal matching |
+| `ENGRAM_SEARCH_MIN_SCORE` | `0.58` | Min overall score for search results |
+| `ENGRAM_SEARCH_FACT_VECTOR_FLOOR` | `0.22` | Min vector score for fact_recall queries |
+| `ENGRAM_SEARCH_PREFERENCE_VECTOR_FLOOR` | `0.12` | Min vector score for preference queries |
+| `ENGRAM_SEARCH_REASONING_VECTOR_FLOOR` | `0.10` | Min vector score for reasoning queries |
+| `ENGRAM_SEARCH_GENERALIZATION_VECTOR_FLOOR` | `0.12` | Min vector score for generalization queries |
+| `ENGRAM_SEARCH_PERSONALITY_MIN_SCORE` | `0.30` | Min score for personality signal matching |
 | `AUTO_LINK_MAX` | `6` | Max auto-links created per memory |
 
 ### Storage
 
-All data lives in a single libsql database (`data/memory.db`). Vector embeddings are stored as `FLOAT32(1024)` columns.
+All data lives in a single libsql database (`data/memory.db`). Embedding BLOBs are stored alongside native `FLOAT32(N)` vector columns matching the configured `EMBEDDING_DIM`.
 
-**Backup:** `GET /backup` returns a downloadable copy (admin required). WAL checkpoints every 5 minutes and on graceful shutdown. Manual checkpoint via `POST /checkpoint`.
+**Backup:** `GET /backup` returns a consistent SQLite snapshot via `VACUUM INTO` (admin required). Safe to call under write load. WAL checkpoints every 5 minutes and on graceful shutdown. Manual checkpoint via `POST /checkpoint`.
 
 **Audit:** `GET /audit` shows all mutations - who stored, deleted, archived, or modified memories, from which IP, with request IDs.
 
@@ -733,8 +719,9 @@ server {
 
 ```bash
 # Start the server, then:
-cd engram
-npx vitest run
+npm test
+# or directly:
+node --test tests/api.test.mjs
 ```
 
 ---

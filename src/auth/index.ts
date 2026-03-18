@@ -96,7 +96,9 @@ export function getAuthOrDefault(req: Request, guiAuthed: (req: Request) => bool
   const auth = authenticate(req);
   if (isAuthError(auth)) return auth; // propagate rate limit, bad space, etc.
   if (auth) return auth;
-  // GUI cookie auth
+  // GUI cookie auth -- single-user mode. All browser sessions with the GUI password
+  // operate as owner (user_id=1) with read+write. This is intentional for personal deployments.
+  // For multi-tenant use, disable GUI auth and require per-user API keys.
   if (guiAuthed(req)) {
     return { user_id: 1, space_id: null, key_id: null, agent_id: null, scopes: ["read", "write"], is_admin: false };
   }

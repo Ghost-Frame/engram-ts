@@ -14,7 +14,7 @@ import {
   SEARCH_PERSONALITY_MIN_SCORE,
 } from "../config/index.ts";
 import { db, searchMemoriesFTS, getMemoryWithoutEmbedding, getVersionChainForUser, getLinksForUser, insertLink } from "../db/index.ts";
-import { embed, cosineSimilarity, getCachedEmbeddings } from "../embeddings/index.ts";
+import { embed, cosineSimilarity, getCachedEmbeddings, embeddingToVectorJSON } from "../embeddings/index.ts";
 import { calculateDecayScore } from "../fsrs/index.ts";
 import { sanitizeFTS } from "../helpers/index.ts";
 
@@ -448,27 +448,72 @@ export async function hybridSearch(
   const personalityRanked: Array<{ id: number; rawScore: number }> = [];
   const graphRanked: Array<{ id: number; rawScore: number }> = [];
 
-  // 1. Vector search - in-memory cosine similarity (<1ms for 800 memories)
+  // 1. Vector search - libsql vector index (primary) with in-memory fallback
   try {
     const queryEmb = precomputedEmbedding || await embed(query);
-    const cached = getCachedEmbeddings(latestOnly, userId);
-    for (const mem of cached) {
-      if (mem.user_id !== userId) continue;
-      const sim = cosineSimilarity(queryEmb, mem.embedding);
-      if (sim > strategy.vectorFloor) {
-        vectorRanked.push({ id: mem.id, rawScore: sim });
-        if (!results.has(mem.id)) {
-          results.set(mem.id, {
-            id: mem.id,
-            content: mem.content,
-            category: mem.category,
-            importance: mem.importance,
-            created_at: "",
-            score: 0,
-            semantic_score: sim,
-            is_static: !!mem.is_static,
-            source_count: mem.source_count || 1,
-          });
+    let usedIndex = false;
+
+    // Primary: libsql vector_top_k index scan (disk-backed, scales to millions)
+    try {
+      const vecJson = embeddingToVectorJSON(queryEmb);
+      const vecResults = db.prepare(
+        `SELECT m.id, m.content, m.category, m.importance, m.is_static, m.source_count,
+                vector_distance_cos(m.embedding_vec_1024, vector(?)) as distance
+         FROM vector_top_k('memories_vec_1024_idx', vector(?), ?) AS v
+         JOIN memories m ON m.rowid = v.id
+         WHERE m.is_forgotten = 0 AND m.user_id = ?
+           ${latestOnly ? "AND m.is_latest = 1" : ""}`
+      ).all(vecJson, vecJson, candidateTarget, userId) as Array<{
+        id: number; content: string; category: string; importance: number;
+        is_static: number; source_count: number; distance: number;
+      }>;
+
+      for (const r of vecResults) {
+        const sim = 1 - r.distance; // cosine distance -> similarity
+        if (sim > strategy.vectorFloor) {
+          vectorRanked.push({ id: r.id, rawScore: sim });
+          if (!results.has(r.id)) {
+            results.set(r.id, {
+              id: r.id,
+              content: r.content,
+              category: r.category,
+              importance: r.importance,
+              created_at: "",
+              score: 0,
+              semantic_score: sim,
+              is_static: !!r.is_static,
+              source_count: r.source_count || 1,
+            });
+          }
+        }
+      }
+      usedIndex = true;
+    } catch (indexErr: any) {
+      // Index not available (empty, corrupt, or libsql version without vector support)
+      log.debug({ msg: "vector_index_fallback", reason: indexErr.message?.substring(0, 80) });
+    }
+
+    // Fallback: in-memory cosine scan (for when vector index is unavailable)
+    if (!usedIndex) {
+      const cached = getCachedEmbeddings(latestOnly, userId);
+      for (const mem of cached) {
+        if (mem.user_id !== userId) continue;
+        const sim = cosineSimilarity(queryEmb, mem.embedding);
+        if (sim > strategy.vectorFloor) {
+          vectorRanked.push({ id: mem.id, rawScore: sim });
+          if (!results.has(mem.id)) {
+            results.set(mem.id, {
+              id: mem.id,
+              content: mem.content,
+              category: mem.category,
+              importance: mem.importance,
+              created_at: "",
+              score: 0,
+              semantic_score: sim,
+              is_static: !!mem.is_static,
+              source_count: mem.source_count || 1,
+            });
+          }
         }
       }
     }
@@ -591,7 +636,8 @@ export async function hybridSearch(
   // Temporal boost: extract date from query for temporal question types
   const queryDate = questionType === "temporal" ? extractQueryDate(query) : null;
 
-  // Pre-fetch decay scores from DB for all candidates (avoids recalculating per result)
+  // Hydrate missing fields (created_at, importance, etc.) for vector-only hits before scoring
+  // Vector index results may lack created_at, which breaks decay and temporal scoring
   const decayScoreCache = new Map<number, number>();
   {
     const ids = Array.from(results.keys());
@@ -599,10 +645,27 @@ export async function hybridSearch(
       try {
         const placeholders = ids.map(() => "?").join(",");
         const rows = db.prepare(
-          `SELECT id, decay_score, importance, is_static FROM memories WHERE id IN (${placeholders})`
-        ).all(...ids) as Array<{ id: number; decay_score: number | null; importance: number; is_static: number }>;
+          `SELECT id, created_at, decay_score, importance, is_static, source_count, version, is_latest, source, model, access_count
+           FROM memories WHERE id IN (${placeholders})`
+        ).all(...ids) as Array<{
+          id: number; created_at: string; decay_score: number | null; importance: number;
+          is_static: number; source_count: number; version: number; is_latest: number;
+          source: string; model: string | null; access_count: number;
+        }>;
         for (const row of rows) {
-          // Use pre-computed decay_score if available and valid, otherwise calculate
+          const r = results.get(row.id);
+          if (r) {
+            // Hydrate fields that may be missing from vector-only hits
+            if (!r.created_at) r.created_at = row.created_at;
+            if (!r.source) r.source = row.source;
+            if (!r.model && row.model) r.model = row.model;
+            if (r.version == null) r.version = row.version;
+            if (r.is_latest == null) r.is_latest = !!row.is_latest;
+            r.importance = row.importance;
+            r.is_static = !!row.is_static;
+            r.source_count = Math.max(r.source_count || 1, row.source_count || 1);
+            (r as any).access_count = row.access_count || 0;
+          }
           if (row.decay_score != null && row.decay_score > 0) {
             decayScoreCache.set(row.id, row.is_static ? row.importance : row.decay_score);
           }

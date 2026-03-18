@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Engram Memory Garden</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117;
+    color: #e0d8c8;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+  #controls {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 16px;
+    background: rgba(26, 26, 14, 0.92);
+    border-bottom: 1px solid rgba(196, 162, 101, 0.3);
+    backdrop-filter: blur(8px);
+  }
+  #controls label { font-size: 12px; color: #c4a265; letter-spacing: 0.5px; text-transform: uppercase; }
+  #controls input {
+    background: rgba(196, 162, 101, 0.1);
+    border: 1px solid rgba(196, 162, 101, 0.3);
+    color: #e0d8c8; padding: 5px 10px; border-radius: 4px;
+    font-size: 13px; outline: none;
+  }
+  #controls input:focus { border-color: #c4a265; }
+  #urlInput { width: 240px; }
+  #apiKeyInput { width: 160px; }
+  #connectBtn {
+    background: rgba(196, 162, 101, 0.2); border: 1px solid #c4a265;
+    color: #c4a265; padding: 5px 14px; border-radius: 4px;
+    cursor: pointer; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
+  }
+  #connectBtn:hover { background: rgba(196, 162, 101, 0.35); }
+  #status {
+    margin-left: auto; font-size: 11px; color: #8b8060;
+    display: flex; align-items: center; gap: 6px;
+  }
+  #statusDot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #555; display: inline-block;
+  }
+  #statusDot.ok { background: #7a9f4a; }
+  #statusDot.err { background: #a94442; }
+  canvas { display: block; }
+  #tooltip {
+    position: fixed; display: none; z-index: 200;
+    background: rgba(26, 26, 14, 0.95);
+    border: 1px solid rgba(196, 162, 101, 0.5);
+    border-radius: 6px; padding: 10px 14px;
+    max-width: 320px; pointer-events: none;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    backdrop-filter: blur(6px);
+  }
+  #tooltip .tt-category {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
+    color: #c4a265; margin-bottom: 4px;
+  }
+  #tooltip .tt-content { font-size: 12px; color: #d4ccb8; line-height: 1.4; margin-bottom: 6px; }
+  #tooltip .tt-meta { font-size: 10px; color: #8b8060; }
+  #detail-panel {
+    position: fixed; top: 44px; right: 0; bottom: 0; width: 360px;
+    background: rgba(26, 26, 14, 0.95);
+    border-left: 1px solid rgba(196, 162, 101, 0.3);
+    backdrop-filter: blur(10px);
+    transform: translateX(100%); transition: transform 0.3s ease;
+    z-index: 150; overflow-y: auto; padding: 20px;
+  }
+  #detail-panel.open { transform: translateX(0); }
+  #detail-panel .dp-close {
+    position: absolute; top: 10px; right: 14px;
+    background: none; border: none; color: #8b8060;
+    font-size: 18px; cursor: pointer;
+  }
+  #detail-panel .dp-close:hover { color: #c4a265; }
+  #detail-panel .dp-category {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px;
+    color: #c4a265; margin-bottom: 8px;
+  }
+  #detail-panel .dp-content {
+    font-size: 13px; color: #d4ccb8; line-height: 1.6;
+    margin-bottom: 16px; white-space: pre-wrap; word-break: break-word;
+  }
+  #detail-panel .dp-meta { font-size: 11px; color: #8b8060; line-height: 1.8; }
+  #detail-panel .dp-meta span { color: #b0a580; }
+  #detail-panel .dp-tags { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 4px; }
+  #detail-panel .dp-tag {
+    font-size: 10px; background: rgba(196,162,101,0.15);
+    border: 1px solid rgba(196,162,101,0.25); border-radius: 3px;
+    padding: 2px 6px; color: #c4a265;
+  }
+  .loading-msg {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    color: #8b8060; font-size: 14px; z-index: 50;
+  }
+</style>
+</head>
+<body>
+<div id="controls">
+  <label>Engram</label>
+  <input id="urlInput" type="text" value="http://localhost:4200" placeholder="Engram URL">
+  <input id="apiKeyInput" type="password" placeholder="API Key (optional)">
+  <button id="connectBtn">Connect</button>
+  <div id="status"><span id="statusDot"></span><span id="statusText">Disconnected</span></div>
+</div>
+<div id="tooltip">
+  <div class="tt-category"></div>
+  <div class="tt-content"></div>
+  <div class="tt-meta"></div>
+</div>
+<div id="detail-panel">
+  <button class="dp-close">&times;</button>
+  <div class="dp-category"></div>
+  <div class="dp-content"></div>
+  <div class="dp-meta"></div>
+  <div class="dp-tags"></div>
+</div>
+<div class="loading-msg" id="loadingMsg">Enter Engram URL and connect</div>
+<canvas id="garden"></canvas>
+<script>
+const canvas = document.getElementById('garden');
+const ctx = canvas.getContext('2d');
+const tooltip = document.getElementById('tooltip');
+const detailPanel = document.getElementById('detail-panel');
+const loadingMsg = document.getElementById('loadingMsg');
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+
+let W, H;
+let plants = [];
+let memories = [];
+let particles = [];
+let stars = [];
+let hoveredPlant = null;
+let selectedPlant = null;
+let time = 0;
+let refreshTimer = null;
+let engramUrl = '';
+let apiKey = '';
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  if (memories.length) layoutPlants();
+  generateStars();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// --- Sky & Time ---
+function getTimeOfDay() {
+  const h = new Date().getHours();
+  // 6-8 dawn, 8-18 day, 18-20 dusk, 20-6 night
+  if (h >= 8 && h < 18) return { phase: 'day', t: (h - 8) / 10 };
+  if (h >= 6 && h < 8) return { phase: 'dawn', t: (h - 6) / 2 };
+  if (h >= 18 && h < 20) return { phase: 'dusk', t: (h - 18) / 2 };
+  return { phase: 'night', t: h >= 20 ? (h - 20) / 10 : (h + 4) / 10 };
+}
+
+function getSkyColors() {
+  const { phase, t } = getTimeOfDay();
+  switch (phase) {
+    case 'day': return { top: '#2a3020', mid: '#3a4530', bot: '#4a5540' };
+    case 'dawn': return lerpColors(
+      { top: '#0d1117', mid: '#1a1a14', bot: '#2a2a1e' },
+      { top: '#2a3020', mid: '#3a4530', bot: '#4a5540' }, t);
+    case 'dusk': return lerpColors(
+      { top: '#2a3020', mid: '#3a4530', bot: '#4a5540' },
+      { top: '#0d1117', mid: '#1a1a14', bot: '#2a2a1e' }, t);
+    default: return { top: '#0a0e10', mid: '#10140e', bot: '#1a1a14' };
+  }
+}
+
+function lerpColors(a, b, t) {
+  return {
+    top: lerpHex(a.top, b.top, t),
+    mid: lerpHex(a.mid, b.mid, t),
+    bot: lerpHex(a.bot, b.bot, t)
+  };
+}
+
+function lerpHex(a, b, t) {
+  const pa = hexToRgb(a), pb = hexToRgb(b);
+  const r = Math.round(pa.r + (pb.r - pa.r) * t);
+  const g = Math.round(pa.g + (pb.g - pa.g) * t);
+  const bl = Math.round(pa.b + (pb.b - pa.b) * t);
+  return `rgb(${r},${g},${bl})`;
+}
+
+function hexToRgb(hex) {
+  const v = parseInt(hex.slice(1), 16);
+  return { r: (v >> 16) & 255, g: (v >> 8) & 255, b: v & 255 };
+}
+
+function generateStars() {
+  stars = [];
+  for (let i = 0; i < 120; i++) {
+    stars.push({
+      x: Math.random() * W,
+      y: Math.random() * H * 0.5,
+      r: Math.random() * 1.3 + 0.3,
+      twinkle: Math.random() * Math.PI * 2,
+      speed: Math.random() * 0.02 + 0.005
+    });
+  }
+}
+
+// --- Particles (fireflies/pollen) ---
+function initParticles() {
+  particles = [];
+  const count = Math.min(40, Math.floor(W / 30));
+  for (let i = 0; i < count; i++) {
+    particles.push(makeParticle());
+  }
+}
+
+function makeParticle() {
+  const groundY = H * 0.35;
+  return {
+    x: Math.random() * W,
+    y: groundY + Math.random() * (H - groundY) * 0.7,
+    vx: (Math.random() - 0.5) * 0.3,
+    vy: (Math.random() - 0.5) * 0.2 - 0.1,
+    life: Math.random() * 400 + 200,
+    maxLife: 0,
+    r: Math.random() * 2 + 1,
+    phase: Math.random() * Math.PI * 2
+  };
+}
+
+// --- Plant Layout ---
+function layoutPlants() {
+  plants = [];
+  const horizonY = H * 0.35; // horizon line
+  const groundBottom = H * 0.95;
+  const margin = 30;
+  const usableW = W - margin * 2;
+
+  // Shuffle for natural randomness
+  const shuffled = [...memories].sort(() => Math.random() - 0.5);
+
+  const placed = [];
+  for (let i = 0; i < shuffled.length; i++) {
+    const mem = shuffled[i];
+    const imp = Math.max(1, Math.min(10, mem.importance || 5));
+
+    let bestX, bestY, bestDist = 0;
+    // Try many positions, pick best spacing
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const x = margin + Math.random() * usableW;
+      // Random depth across the full meadow
+      const y = horizonY + 20 + Math.random() * (groundBottom - horizonY - 20);
+
+      let minDist = Infinity;
+      for (const p of placed) {
+        const d = Math.hypot(p.x - x, (p.y - y) * 2); // weight Y distance more
+        minDist = Math.min(minDist, d);
+      }
+      if (minDist > bestDist) {
+        bestDist = minDist;
+        bestX = x;
+        bestY = y;
+      }
+    }
+
+    // Perspective: plants near horizon are smaller
+    const depthT = (bestY - horizonY) / (groundBottom - horizonY); // 0=horizon, 1=foreground
+    const perspScale = 0.25 + depthT * 0.75; // far=0.25, near=1.0
+    const scale = perspScale * (0.5 + (imp / 10) * 0.7);
+    const baseH = 25 + imp * 10;
+
+    const decay = mem._decayScore != null ? mem._decayScore : (mem.decay_score != null ? mem.decay_score : 5);
+    const plant = {
+      x: bestX, y: bestY,
+      scale, baseH, mem,
+      category: mem.category || 'general',
+      importance: imp,
+      decay: decay,
+      isStatic: !!mem.is_static,
+      swayOffset: Math.random() * Math.PI * 2,
+      swaySpeed: 0.3 + Math.random() * 0.4,
+      swayAmount: (1 + Math.random() * 2) * perspScale,
+      depth: bestY,
+      depthT: depthT
+    };
+    plants.push(plant);
+    placed.push({ x: bestX, y: bestY });
+  }
+
+  // Sort by depth for painter's algorithm (far first)
+  plants.sort((a, b) => a.depth - b.depth);
+  initParticles();
+}
+
+// --- Color helpers ---
+// Category-specific palettes, then modified by decay health
+function getPlantColors(category, decay, isStatic) {
+  // Base palettes per category - BRIGHT enough to see on dark bg
+  const palettes = {
+    decision:  { stem: '#8b6b4a', leaf: '#6db56a', accent: '#85cc78', flower: '#c4a265' },
+    task:      { stem: '#7a9960', leaf: '#8ecc6e', accent: '#a4dd82', flower: '#f0d858' },
+    discovery: { stem: '#b09870', leaf: '#d4c490', accent: '#e0d0a0', flower: '#f0e0a8' },
+    state:     { stem: '#609968', leaf: '#78bb80', accent: '#90d098', flower: '#a8e0b0' },
+    issue:     { stem: '#a07050', leaf: '#c09068', accent: '#d0a078', flower: '#e0b888' },
+    reference: { stem: '#709058', leaf: '#90b870', accent: '#a0c880', flower: '#b8d898' },
+    general:   { stem: '#80a868', leaf: '#98c880', accent: '#a8d890', flower: '#c0e8a8' },
+  };
+  const base = palettes[category] || palettes.general;
+
+  if (isStatic) {
+    return { stem: '#9a8a50', leaf: '#c8b860', accent: '#c4a265', flower: '#dcc878' };
+  }
+
+  if (decay > 7) return base;
+  if (decay > 3) {
+    return {
+      stem: lerpHex(base.stem, '#908060', 0.3),
+      leaf: lerpHex(base.leaf, '#b0a868', 0.3),
+      accent: lerpHex(base.accent, '#c0b070', 0.3),
+      flower: lerpHex(base.flower, '#d0c080', 0.25),
+    };
+  }
+  return {
+    stem: lerpHex(base.stem, '#706050', 0.5),
+    leaf: lerpHex(base.leaf, '#908060', 0.5),
+    accent: lerpHex(base.accent, '#a09070', 0.4),
+    flower: lerpHex(base.flower, '#b0a080', 0.4),
+  };
+}
+
+// --- Draw functions ---
+function drawSky() {
+  const colors = getSkyColors();
+  const grad = ctx.createLinearGradient(0, 0, 0, H * 0.38);
+  grad.addColorStop(0, colors.top);
+  grad.addColorStop(0.6, colors.mid);
+  grad.addColorStop(1, colors.bot);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H * 0.38);
+}
+
+function drawStars() {
+  const { phase } = getTimeOfDay();
+  let alpha = 0;
+  if (phase === 'night') alpha = 0.8;
+  else if (phase === 'dusk') alpha = 0.4;
+  else if (phase === 'dawn') alpha = 0.3;
+  else alpha = 0;
+  if (alpha === 0) return;
+
+  for (const s of stars) {
+    const twinkle = Math.sin(s.twinkle + time * s.speed) * 0.3 + 0.7;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(230, 220, 190, ${alpha * twinkle})`;
+    ctx.fill();
+  }
+}
+
+function drawGround() {
+  const horizonY = H * 0.33;
+  // Ground gradient from horizon to bottom
+  const grad = ctx.createLinearGradient(0, horizonY, 0, H);
+  grad.addColorStop(0, '#2a2818');
+  grad.addColorStop(0.1, '#252316');
+  grad.addColorStop(0.3, '#201e12');
+  grad.addColorStop(0.6, '#1a1a0e');
+  grad.addColorStop(1, '#14140a');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, horizonY, W, H - horizonY);
+
+  // Soft horizon mist
+  const hGrad = ctx.createLinearGradient(0, horizonY - 10, 0, horizonY + 40);
+  hGrad.addColorStop(0, 'rgba(70, 65, 45, 0)');
+  hGrad.addColorStop(0.4, 'rgba(70, 65, 45, 0.06)');
+  hGrad.addColorStop(1, 'rgba(70, 65, 45, 0)');
+  ctx.fillStyle = hGrad;
+  ctx.fillRect(0, horizonY - 10, W, 50);
+
+  // Texture dots scattered across the ground
+  const seed = 42;
+  for (let i = 0; i < 300; i++) {
+    const px = ((i * 7919 + seed) % W);
+    const py = horizonY + 20 + ((i * 6271 + seed) % (H - horizonY - 20));
+    const depthAlpha = 0.05 + ((py - horizonY) / (H - horizonY)) * 0.12;
+    ctx.fillStyle = `rgba(60, 55, 35, ${depthAlpha})`;
+    ctx.fillRect(px, py, 2, 1);
+  }
+}
+
+function drawPlant(p) {
+  const sway = Math.sin(time * p.swaySpeed + p.swayOffset) * p.swayAmount;
+  const colors = getPlantColors(p.category, p.decay, p.isStatic);
+  const s = p.scale;
+  const bh = p.baseH * s;
+
+  ctx.save();
+  ctx.translate(p.x, p.y);
+
+  // Golden glow for static memories
+  if (p.isStatic) {
+    const glowR = bh * 0.8;
+    const glow = ctx.createRadialGradient(0, -bh * 0.4, 0, 0, -bh * 0.4, glowR);
+    glow.addColorStop(0, 'rgba(196, 162, 101, 0.08)');
+    glow.addColorStop(1, 'rgba(196, 162, 101, 0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(-glowR, -bh - glowR * 0.5, glowR * 2, glowR * 2);
+  }
+
+  // Shadow
+  ctx.beginPath();
+  ctx.ellipse(0, 2, bh * 0.2, 3 * s, 0, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(0,0,0,${0.08 + p.depthT * 0.1})`;
+  ctx.fill();
+
+  switch (p.category) {
+    case 'decision': drawTree(bh, sway, s, colors); break;
+    case 'task': drawFlower(bh, sway, s, colors); break;
+    case 'discovery': drawMushroom(bh, sway, s, colors); break;
+    case 'state': drawGrass(bh, sway, s, colors); break;
+    case 'issue': drawBush(bh, sway, s, colors); break;
+    case 'reference': drawVine(bh, sway, s, colors); break;
+    default: drawSprout(bh, sway, s, colors); break;
+  }
+
+  ctx.restore();
+}
+
+function drawTree(h, sway, s, c) {
+  // Trunk with slight curve
+  const tw = 3.5 * s;
+  ctx.beginPath();
+  ctx.moveTo(-tw, 0);
+  ctx.quadraticCurveTo(-tw * 0.6 + sway * 0.2, -h * 0.4, sway * 0.4, -h * 0.6);
+  ctx.quadraticCurveTo(tw * 0.6 + sway * 0.2, -h * 0.4, tw, 0);
+  ctx.fillStyle = c.stem;
+  ctx.fill();
+
+  // Branches (small lines from trunk)
+  ctx.strokeStyle = c.stem;
+  ctx.lineWidth = 1.5 * s;
+  const bx = sway * 0.3;
+  ctx.beginPath(); ctx.moveTo(bx - 2, -h*0.45); ctx.lineTo(bx - 12*s, -h*0.55); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(bx + 2, -h*0.5); ctx.lineTo(bx + 10*s, -h*0.6); ctx.stroke();
+
+  // Canopy - multiple organic blobs
+  const cx = sway * 0.5;
+  const cy = -h * 0.7;
+  const cr = h * 0.3;
+  const blobs = [
+    { x: 0, y: 0, r: 1.0 },
+    { x: -0.5, y: 0.15, r: 0.75 },
+    { x: 0.45, y: 0.1, r: 0.8 },
+    { x: -0.2, y: -0.35, r: 0.7 },
+    { x: 0.25, y: -0.25, r: 0.65 },
+  ];
+  for (let i = 0; i < blobs.length; i++) {
+    const b = blobs[i];
+    ctx.beginPath();
+    ctx.arc(cx + b.x * cr, cy + b.y * cr, cr * b.r, 0, Math.PI * 2);
+    ctx.fillStyle = adjustBrightness(c.leaf, (2 - i) * 5);
+    ctx.fill();
+  }
+  // Top highlight
+  ctx.beginPath();
+  ctx.arc(cx - cr * 0.1, cy - cr * 0.3, cr * 0.35, 0, Math.PI * 2);
+  ctx.fillStyle = adjustBrightness(c.accent, 20) + '30';
+  ctx.fill();
+}
+
+function drawFlower(h, sway, s, c) {
+  // Stem
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.quadraticCurveTo(sway * 0.5, -h * 0.5, sway, -h);
+  ctx.strokeStyle = c.stem;
+  ctx.lineWidth = 2 * s;
+  ctx.stroke();
+
+  // Leaf on stem
+  const lx = sway * 0.3, ly = -h * 0.4;
+  ctx.beginPath();
+  ctx.ellipse(lx + 6 * s, ly, 8 * s, 4 * s, 0.3, 0, Math.PI * 2);
+  ctx.fillStyle = c.leaf;
+  ctx.fill();
+
+  // Petals
+  const px = sway, py = -h;
+  const petalR = 7 * s;
+  const petalCount = 5;
+  for (let i = 0; i < petalCount; i++) {
+    const angle = (i / petalCount) * Math.PI * 2 + time * 0.008;
+    const ppx = px + Math.cos(angle) * petalR * 0.7;
+    const ppy = py + Math.sin(angle) * petalR * 0.5;
+    ctx.beginPath();
+    ctx.ellipse(ppx, ppy, petalR * 0.55, petalR * 0.3, angle, 0, Math.PI * 2);
+    ctx.fillStyle = c.flower || c.accent;
+    ctx.fill();
+  }
+  // Center
+  ctx.beginPath();
+  ctx.arc(px, py, 3.5 * s, 0, Math.PI * 2);
+  ctx.fillStyle = adjustBrightness(c.flower || '#c4a265', -30);
+  ctx.fill();
+}
+
+function drawMushroom(h, sway, s, c) {
+  const stemH = h * 0.55;
+  const stemW = 3.5 * s;
+  // Stem
+  ctx.beginPath();
+  ctx.moveTo(-stemW, 0);
+  ctx.lineTo(-stemW * 0.7 + sway * 0.2, -stemH);
+  ctx.lineTo(stemW * 0.7 + sway * 0.2, -stemH);
+  ctx.lineTo(stemW, 0);
+  ctx.fillStyle = '#d4c8a8';
+  ctx.fill();
+
+  // Cap
+  const capW = h * 0.35;
+  const capH = h * 0.3;
+  const cx = sway * 0.3;
+  ctx.beginPath();
+  ctx.ellipse(cx, -stemH, capW, capH, 0, Math.PI, 0);
+  ctx.fillStyle = c.accent;
+  ctx.fill();
+
+  // Cap spots
+  ctx.fillStyle = adjustBrightness(c.accent, 40) + '80';
+  for (let i = 0; i < 3; i++) {
+    const sx = cx + (i - 1) * capW * 0.35;
+    const sy = -stemH - capH * 0.4 - i * 2;
+    ctx.beginPath();
+    ctx.arc(sx, sy, 2 * s, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawGrass(h, sway, s, c) {
+  // Tapered blade shapes
+  const blades = 7;
+  for (let i = 0; i < blades; i++) {
+    const ox = (i - 3) * 3.5 * s;
+    const bh = h * (0.6 + (i * 1337 % 7) / 20);
+    const sw = sway * (0.7 + i * 0.08);
+    const tipX = ox + sw;
+    const tipY = -bh;
+    const baseW = 2 * s;
+    ctx.beginPath();
+    ctx.moveTo(ox - baseW, 0);
+    ctx.quadraticCurveTo(ox - baseW * 0.5 + sw * 0.3, -bh * 0.5, tipX, tipY);
+    ctx.quadraticCurveTo(ox + baseW * 0.5 + sw * 0.3, -bh * 0.5, ox + baseW, 0);
+    ctx.closePath();
+    ctx.fillStyle = adjustBrightness(c.leaf, (i - 3) * 6);
+    ctx.fill();
+  }
+}
+
+function drawBush(h, sway, s, c) {
+  const bushW = h * 0.45;
+  const bushH = h * 0.5;
+  const cx = sway * 0.3;
+  // Main body - overlapping round shapes
+  const bushBlobs = [
+    { x: -0.3, y: -0.4, r: 0.38 },
+    { x: 0.2, y: -0.35, r: 0.35 },
+    { x: 0, y: -0.55, r: 0.3 },
+    { x: -0.15, y: -0.25, r: 0.32 },
+    { x: 0.3, y: -0.5, r: 0.28 },
+  ];
+  for (let i = 0; i < bushBlobs.length; i++) {
+    const b = bushBlobs[i];
+    ctx.beginPath();
+    ctx.arc(cx + b.x * bushW * 2, b.y * bushH * 2, bushW * b.r * 1.2, 0, Math.PI * 2);
+    ctx.fillStyle = adjustBrightness(c.leaf, (2 - i) * 4);
+    ctx.fill();
+  }
+  // Small thorns/spines
+  ctx.strokeStyle = adjustBrightness(c.stem, 10);
+  ctx.lineWidth = 1.2 * s;
+  for (let i = 0; i < 4; i++) {
+    const tx = cx + (i - 1.5) * bushW * 0.5;
+    const ty = -bushH * 0.6;
+    ctx.beginPath();
+    ctx.moveTo(tx, ty);
+    ctx.lineTo(tx + 3 * s * (i % 2 ? 1 : -1), ty - 5 * s);
+    ctx.stroke();
+  }
+}
+
+function drawVine(h, sway, s, c) {
+  // Winding vine
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  const segments = 6;
+  for (let i = 1; i <= segments; i++) {
+    const t = i / segments;
+    const sx = Math.sin(t * Math.PI * 2 + sway * 0.1) * 10 * s + sway * t;
+    const sy = -h * t;
+    ctx.lineTo(sx, sy);
+  }
+  ctx.strokeStyle = c.stem;
+  ctx.lineWidth = 2 * s;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Leaves along vine
+  for (let i = 1; i <= 4; i++) {
+    const t = i / 5;
+    const lx = Math.sin(t * Math.PI * 2 + sway * 0.1) * 10 * s + sway * t;
+    const ly = -h * t;
+    const side = i % 2 ? 1 : -1;
+    ctx.beginPath();
+    ctx.ellipse(lx + side * 6 * s, ly, 5 * s, 3 * s, side * 0.5, 0, Math.PI * 2);
+    ctx.fillStyle = c.leaf;
+    ctx.fill();
+  }
+}
+
+function drawSprout(h, sway, s, c) {
+  // Simple stem
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.quadraticCurveTo(sway * 0.3, -h * 0.5, sway * 0.5, -h);
+  ctx.strokeStyle = c.stem;
+  ctx.lineWidth = 1.5 * s;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Two tiny leaves
+  const lx = sway * 0.3, ly = -h * 0.6;
+  ctx.beginPath();
+  ctx.ellipse(lx + 4 * s, ly, 5 * s, 2.5 * s, 0.4, 0, Math.PI * 2);
+  ctx.fillStyle = c.leaf;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(lx - 4 * s, ly - 2, 4 * s, 2 * s, -0.4, 0, Math.PI * 2);
+  ctx.fillStyle = adjustBrightness(c.leaf, -10);
+  ctx.fill();
+}
+
+function adjustBrightness(hex, amt) {
+  let color = hex;
+  if (color.length > 7) color = color.slice(0, 7);
+  const rgb = hexToRgb(color);
+  const r = Math.max(0, Math.min(255, rgb.r + amt));
+  const g = Math.max(0, Math.min(255, rgb.g + amt));
+  const b = Math.max(0, Math.min(255, rgb.b + amt));
+  return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+function drawParticles() {
+  const { phase } = getTimeOfDay();
+  const isNight = phase === 'night' || phase === 'dusk';
+
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx + Math.sin(time * 0.01 + p.phase) * 0.15;
+    p.y += p.vy;
+    p.life--;
+
+    if (p.life <= 0 || p.x < -20 || p.x > W + 20 || p.y < 0) {
+      particles[i] = makeParticle();
+      continue;
+    }
+
+    const alpha = Math.min(1, p.life / 60) * 0.6;
+    if (isNight) {
+      // Fireflies
+      const glow = Math.sin(time * 0.05 + p.phase) * 0.3 + 0.7;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r + 1, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(200, 190, 100, ${alpha * glow * 0.3})`;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * 0.5, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(230, 220, 140, ${alpha * glow})`;
+      ctx.fill();
+    } else {
+      // Pollen
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * 0.4, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(220, 210, 170, ${alpha * 0.4})`;
+      ctx.fill();
+    }
+  }
+}
+
+// --- Hit testing ---
+function getPlantAt(mx, my) {
+  // Reverse order so topmost (front) plants are hit first
+  for (let i = plants.length - 1; i >= 0; i--) {
+    const p = plants[i];
+    const hitW = p.baseH * p.scale * 0.4;
+    const hitH = p.baseH * p.scale;
+    if (mx > p.x - hitW && mx < p.x + hitW &&
+        my > p.y - hitH && my < p.y + 10) {
+      return p;
+    }
+  }
+  return null;
+}
+
+canvas.addEventListener('mousemove', (e) => {
+  const plant = getPlantAt(e.clientX, e.clientY);
+  hoveredPlant = plant;
+  canvas.style.cursor = plant ? 'pointer' : 'default';
+
+  if (plant) {
+    const mem = plant.mem;
+    const content = mem.content.length > 100 ? mem.content.slice(0, 100) + '...' : mem.content;
+    const age = getAge(mem.created_at);
+    tooltip.querySelector('.tt-category').textContent = (mem.category || 'memory').toUpperCase();
+    tooltip.querySelector('.tt-content').textContent = content;
+    tooltip.querySelector('.tt-meta').textContent =
+      `Importance: ${mem.importance || '?'}  |  Age: ${age}` +
+      (mem.is_static ? '  |  Static' : '');
+    tooltip.style.display = 'block';
+    let tx = e.clientX + 14;
+    let ty = e.clientY - 10;
+    if (tx + 330 > W) tx = e.clientX - 330;
+    if (ty + 100 > H) ty = e.clientY - 80;
+    tooltip.style.left = tx + 'px';
+    tooltip.style.top = ty + 'px';
+  } else {
+    tooltip.style.display = 'none';
+  }
+});
+
+canvas.addEventListener('click', (e) => {
+  const plant = getPlantAt(e.clientX, e.clientY);
+  if (plant) {
+    selectedPlant = plant;
+    showDetail(plant);
+  } else {
+    detailPanel.classList.remove('open');
+    selectedPlant = null;
+  }
+});
+
+detailPanel.querySelector('.dp-close').addEventListener('click', () => {
+  detailPanel.classList.remove('open');
+  selectedPlant = null;
+});
+
+function showDetail(plant) {
+  const mem = plant.mem;
+  detailPanel.querySelector('.dp-category').textContent =
+    (mem.category || 'memory').toUpperCase() + (mem.is_static ? ' (static)' : '');
+  detailPanel.querySelector('.dp-content').textContent = mem.content;
+
+  const age = getAge(mem.created_at);
+  let metaHtml = `<div>ID: <span>${mem.id}</span></div>`;
+  metaHtml += `<div>Importance: <span>${mem.importance || '?'}</span></div>`;
+  metaHtml += `<div>Created: <span>${mem.created_at}</span></div>`;
+  metaHtml += `<div>Age: <span>${age}</span></div>`;
+  if (mem.source) metaHtml += `<div>Source: <span>${mem.source}</span></div>`;
+  if (mem._decayScore != null) metaHtml += `<div>Decay: <span>${mem._decayScore.toFixed(2)}</span></div>`;
+  if (mem.version > 1) metaHtml += `<div>Version: <span>${mem.version}</span></div>`;
+  detailPanel.querySelector('.dp-meta').innerHTML = metaHtml;
+
+  const tagsEl = detailPanel.querySelector('.dp-tags');
+  tagsEl.innerHTML = '';
+  if (mem._tags && mem._tags.length) {
+    mem._tags.forEach(t => {
+      const tag = document.createElement('span');
+      tag.className = 'dp-tag';
+      tag.textContent = t;
+      tagsEl.appendChild(tag);
+    });
+  }
+
+  detailPanel.classList.add('open');
+
+  // Fetch full detail for decay/tags if not yet loaded
+  if (mem._decayScore == null) {
+    fetchMemoryDetail(mem.id).then(detail => {
+      if (detail) {
+        mem._decayScore = detail.decay_score;
+        mem._tags = detail.tags || [];
+        plant.decay = detail.decay_score != null ? detail.decay_score : 5;
+        if (selectedPlant === plant) showDetail(plant);
+      }
+    });
+  }
+}
+
+function getAge(dateStr) {
+  const created = new Date(dateStr.replace(' ', 'T') + 'Z');
+  const now = new Date();
+  const diffMs = now - created;
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return days + 'd ago';
+  return Math.floor(days / 30) + 'mo ago';
+}
+
+// --- API ---
+function apiHeaders() {
+  const h = { 'Content-Type': 'application/json' };
+  if (apiKey) h['Authorization'] = 'Bearer ' + apiKey;
+  return h;
+}
+
+async function fetchMemories() {
+  try {
+    const res = await fetch(engramUrl + '/list?limit=200', { headers: apiHeaders() });
+    const data = await res.json();
+    return data.results || [];
+  } catch (e) {
+    console.error('Failed to fetch memories:', e);
+    return null;
+  }
+}
+
+async function fetchHealth() {
+  try {
+    const res = await fetch(engramUrl + '/health', { headers: apiHeaders() });
+    return await res.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+async function fetchMemoryDetail(id) {
+  try {
+    const res = await fetch(engramUrl + '/memory/' + id, { headers: apiHeaders() });
+    return await res.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+async function connect() {
+  engramUrl = document.getElementById('urlInput').value.replace(/\/+$/, '');
+  apiKey = document.getElementById('apiKeyInput').value.trim();
+
+  loadingMsg.textContent = 'Connecting...';
+  loadingMsg.style.display = 'block';
+  statusDot.className = '';
+  statusText.textContent = 'Connecting...';
+
+  const health = await fetchHealth();
+  if (!health || health.status !== 'ok') {
+    statusDot.className = 'err';
+    statusText.textContent = 'Connection failed';
+    loadingMsg.textContent = 'Could not connect to Engram. Check URL.';
+    return;
+  }
+
+  loadingMsg.textContent = 'Loading ' + (health.memories || '?') + ' memories...';
+
+  const mems = await fetchMemories();
+  if (!mems) {
+    statusDot.className = 'err';
+    statusText.textContent = 'Failed to load';
+    loadingMsg.textContent = 'Connected but failed to load memories.';
+    return;
+  }
+
+  memories = mems;
+  statusDot.className = 'ok';
+  statusText.textContent = `v${health.version} | ${memories.length} memories`;
+  loadingMsg.style.display = 'none';
+
+  layoutPlants();
+
+  // Auto-refresh
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(async () => {
+    const newMems = await fetchMemories();
+    if (newMems && newMems.length !== memories.length) {
+      memories = newMems;
+      layoutPlants();
+      statusText.textContent = `v${health.version} | ${memories.length} memories`;
+    }
+  }, 60000);
+}
+
+document.getElementById('connectBtn').addEventListener('click', connect);
+document.getElementById('urlInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') connect();
+});
+document.getElementById('apiKeyInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') connect();
+});
+
+// --- Render Loop ---
+function render() {
+  time++;
+  ctx.clearRect(0, 0, W, H);
+
+  drawSky();
+  drawStars();
+  drawGround();
+
+  // Warm ambient glow near horizon (anime-style atmosphere)
+  const horizGlow = ctx.createRadialGradient(W * 0.5, H * 0.35, 0, W * 0.5, H * 0.35, W * 0.6);
+  horizGlow.addColorStop(0, 'rgba(180, 150, 80, 0.06)');
+  horizGlow.addColorStop(0.5, 'rgba(150, 120, 60, 0.03)');
+  horizGlow.addColorStop(1, 'rgba(120, 100, 50, 0)');
+  ctx.fillStyle = horizGlow;
+  ctx.fillRect(0, 0, W, H);
+
+  for (const p of plants) {
+    drawPlant(p);
+  }
+
+  drawParticles();
+
+  // Hovered plant highlight
+  if (hoveredPlant) {
+    ctx.save();
+    ctx.translate(hoveredPlant.x, hoveredPlant.y);
+    const r = hoveredPlant.baseH * hoveredPlant.scale * 0.3;
+    const glow = ctx.createRadialGradient(0, -r, 0, 0, -r, r * 2);
+    glow.addColorStop(0, 'rgba(196, 162, 101, 0.12)');
+    glow.addColorStop(1, 'rgba(196, 162, 101, 0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(-r * 2, -r * 3, r * 4, r * 4);
+    ctx.restore();
+  }
+
+  requestAnimationFrame(render);
+}
+
+render();
+</script>
+</body>
+</html>

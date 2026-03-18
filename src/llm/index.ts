@@ -1,12 +1,13 @@
 // ============================================================================
-// LLM — Client, fact extraction, reranker
-// Supports: Anthropic, MiniMax, OpenAI-compatible (Ollama, LiteLLM, vLLM, Gemini, Groq, DeepSeek)
+// LLM -- Client, fact extraction, reranker
+// Supports: Anthropic, MiniMax, Vertex AI, OpenAI-compatible (Ollama, LiteLLM, vLLM, Gemini, Groq, DeepSeek)
 // Set via env: LLM_API_KEY, LLM_URL, LLM_MODEL
 // ============================================================================
 
 import { LLM_URL, LLM_API_KEY, LLM_MODEL, LLM_PROVIDERS, LLM_STRATEGY, type LLMProvider, RERANKER_ENABLED, RERANKER_TOP_K } from "../config/index.ts";
-import { log } from "../config/logger.ts";
+import { log, opsCounters } from "../config/logger.ts";
 import { postProcessNewFacts } from "../intelligence/temporal.ts";
+import { getVertexAccessToken } from "../auth/google-auth.ts";
 
 interface FactExtractionResult {
   facts: Array<{
@@ -26,11 +27,18 @@ interface FactExtractionResult {
 
 // --- LLM availability check ---
 
+export function isProviderAvailable(p: LLMProvider): boolean {
+  if (p.key) return true;
+  if (p.url.includes("127.0.0.1") || p.url.includes("localhost")) return true;
+  try { if (new URL(p.url).hostname.endsWith("-aiplatform.googleapis.com")) return true; } catch {}
+  return false;
+}
+
 let _llmReachable: boolean | null = null;
 
 export async function probeLLM(): Promise<boolean> {
-  // Any provider with an API key means LLM is available
-  if (LLM_PROVIDERS.some(p => p.key)) { _llmReachable = true; return true; }
+  // Any provider with an API key or Vertex SA auth means LLM is available
+  if (LLM_PROVIDERS.some(isProviderAvailable)) { _llmReachable = true; return true; }
   if (!LLM_URL.includes("127.0.0.1") && !LLM_URL.includes("localhost")) { _llmReachable = false; return false; }
   try {
     const ctrl = new AbortController();
@@ -46,7 +54,7 @@ export async function probeLLM(): Promise<boolean> {
 }
 
 export function isLLMAvailable(): boolean {
-  if (LLM_PROVIDERS.some(p => p.key)) return true;
+  if (LLM_PROVIDERS.some(isProviderAvailable)) return true;
   if (_llmReachable === false) return false;
   if (_llmReachable === true) return true;
   if (LLM_URL.includes("127.0.0.1") || LLM_URL.includes("localhost")) return true;
@@ -67,10 +75,12 @@ async function callProvider(provider: LLMProvider, systemPrompt: string, userPro
   // Provider detection
   let isAnthropic = false;
   let isMiniMax = false;
+  let isVertexAI = false;
   try {
     const hostname = new URL(url).hostname.toLowerCase();
     isAnthropic = hostname === "api.anthropic.com" || hostname.endsWith(".api.anthropic.com");
     isMiniMax = hostname === "api.minimax.io" || hostname.endsWith(".minimaxi.com");
+    isVertexAI = hostname.endsWith("-aiplatform.googleapis.com");
   } catch {}
 
   if (isAnthropic) {
@@ -93,9 +103,21 @@ async function callProvider(provider: LLMProvider, systemPrompt: string, userPro
   // MiniMax: OpenAI-compatible but requires API key
   if (isMiniMax && !key) throw new Error("API key required for MiniMax");
 
-  // OpenAI-compatible (also handles MiniMax, Gemini, Groq, DeepSeek, etc.)
+  // OpenAI-compatible (also handles MiniMax, Gemini, Groq, DeepSeek, Vertex AI, etc.)
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (key) headers["Authorization"] = `Bearer ${key}`;
+  if (isVertexAI) {
+    // Vertex AI uses OAuth2 bearer tokens from service account
+    try {
+      const token = await getVertexAccessToken();
+      headers["Authorization"] = `Bearer ${token}`;
+    } catch (e: any) {
+      // Fall back to the provider's key if service account auth fails
+      if (key) headers["Authorization"] = `Bearer ${key}`;
+      else throw new Error(`Vertex AI auth failed: ${e.message}`);
+    }
+  } else if (key) {
+    headers["Authorization"] = `Bearer ${key}`;
+  }
 
   const resp = await fetch(url, {
     method: "POST",
@@ -124,7 +146,7 @@ async function callProvider(provider: LLMProvider, systemPrompt: string, userPro
 let _rrIndex = 0;
 
 export async function callLLM(systemPrompt: string, userPrompt: string, model?: string): Promise<string> {
-  const providers = LLM_PROVIDERS.filter(p => p.key || p.url.includes("127.0.0.1") || p.url.includes("localhost"));
+  const providers = LLM_PROVIDERS.filter(isProviderAvailable);
   if (providers.length === 0) throw new Error("No LLM providers configured");
 
   // Round-robin: rotate starting provider each call, still fall through on failure
@@ -373,7 +395,10 @@ export function processExtractionResult(
     for (const sf of (result as any).structured_facts) {
       try { insertSF.run(newMemoryId, sf.subject || "user", sf.verb || "unknown", sf.object || null,
         sf.quantity != null ? Number(sf.quantity) : null, sf.unit || null, sf.date_ref || null, sf.date_approx || null,
-        sf.location || null, sf.context || null, ownerId); } catch {}
+        sf.location || null, sf.context || null, ownerId); } catch (e: any) {
+        opsCounters.structured_fact_failures++;
+        log.warn({ msg: "structured_fact_insert_failed", memory_id: newMemoryId, error: e?.message });
+      }
     }
     // Stamp episode provenance from the parent memory onto LLM-extracted facts
     try {
@@ -382,7 +407,9 @@ export function processExtractionResult(
         db.prepare("UPDATE structured_facts SET episode_id = ? WHERE memory_id = ? AND episode_id IS NULL")
           .run(mem.episode_id, newMemoryId);
       }
-    } catch {}
+    } catch (e: any) {
+      log.warn({ msg: "episode_provenance_stamp_failed", memory_id: newMemoryId, error: e?.message });
+    }
     // Bi-temporal: set valid_at and detect contradictions for LLM-extracted facts
     postProcessNewFacts(newMemoryId, ownerId);
   }
@@ -393,7 +420,9 @@ export function processExtractionResult(
        ON CONFLICT(domain, preference, user_id) DO UPDATE SET strength = strength + 0.5, evidence_memory_id = excluded.evidence_memory_id, updated_at = datetime('now')`
     );
     for (const p of (result as any).preferences) {
-      try { upsertPref.run(p.domain || "general", p.preference, newMemoryId, ownerId); } catch {}
+      try { upsertPref.run(p.domain || "general", p.preference, newMemoryId, ownerId); } catch (e: any) {
+        log.warn({ msg: "preference_upsert_failed", memory_id: newMemoryId, error: e?.message });
+      }
     }
   }
 
@@ -404,7 +433,9 @@ export function processExtractionResult(
          value = excluded.value, memory_id = excluded.memory_id, updated_count = updated_count + 1, updated_at = datetime('now')`
     );
     for (const s of (result as any).state_updates) {
-      try { upsertState.run(s.key, s.value, newMemoryId, ownerId); } catch {}
+      try { upsertState.run(s.key, s.value, newMemoryId, ownerId); } catch (e: any) {
+        log.warn({ msg: "state_upsert_failed", memory_id: newMemoryId, error: e?.message });
+      }
     }
   }
 }
@@ -452,7 +483,9 @@ Return format: [most_relevant_index, next_most_relevant, ...]`;
       if (!rerankedIds.has(c.id)) reranked.push(c);
     }
     return reranked;
-  } catch {
+  } catch (e: any) {
+    opsCounters.reranker_fallbacks++;
+    log.warn({ msg: "llm_rerank_failed", query: query.substring(0, 80), error: e?.message });
     return candidates;
   }
 }

@@ -98,22 +98,20 @@ export async function sendDigestWebhook(digest: any, payload: any): Promise<void
       headers,
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(10000),
+      redirect: "error",
     });
 
     if (resp.ok) {
-      db.prepare("UPDATE digests SET last_sent_at = datetime('now'), next_send_at = ? WHERE id = ?").run(
+      db.prepare("UPDATE digests SET last_sent_at = datetime('now'), failure_count = 0, next_send_at = ? WHERE id = ?").run(
         calculateNextSend(digest.schedule), digest.id
       );
     } else {
-      db.prepare("UPDATE digests SET next_send_at = ? WHERE id = ?").run(
-        calculateNextSend(digest.schedule), digest.id
-      );
+      // On failure: retry sooner (5 min), increment failure count, don't advance schedule
+      db.prepare("UPDATE digests SET failure_count = COALESCE(failure_count, 0) + 1, next_send_at = datetime('now', '+5 minutes') WHERE id = ?").run(digest.id);
       log.error({ msg: "digest_webhook_error", digest_id: digest.id, status: resp.status });
     }
   } catch (e: any) {
-    db.prepare("UPDATE digests SET next_send_at = ? WHERE id = ?").run(
-      calculateNextSend(digest.schedule), digest.id
-    );
+    db.prepare("UPDATE digests SET failure_count = COALESCE(failure_count, 0) + 1, next_send_at = datetime('now', '+5 minutes') WHERE id = ?").run(digest.id);
     log.error({ msg: "digest_webhook_failed", digest_id: digest.id, error: e.message });
   }
 }
@@ -129,12 +127,22 @@ export function calculateNextSend(schedule: string): string {
 
 export async function processScheduledDigests(): Promise<number> {
   const nowStr = new Date().toISOString().replace("T", " ").replace("Z", "");
+
+  // Atomic claim: only process digests not already claimed by another worker.
+  // Push next_send_at forward immediately to prevent duplicate processing.
   const due = db.prepare(
     `SELECT * FROM digests WHERE active = 1 AND next_send_at <= ? ORDER BY next_send_at ASC LIMIT 10`
   ).all(nowStr) as any[];
 
   let sent = 0;
   for (const digest of due) {
+    // Optimistic claim: bump next_send_at before processing so concurrent workers skip it
+    const nextSend = calculateNextSend(digest.schedule);
+    const claimed = db.prepare(
+      "UPDATE digests SET next_send_at = ? WHERE id = ? AND next_send_at = ?"
+    ).run(nextSend, digest.id, digest.next_send_at);
+    if ((claimed as any).changes === 0) continue; // another worker claimed it
+
     try {
       const payload = await buildDigestPayload(digest, digest.user_id);
       await sendDigestWebhook(digest, payload);

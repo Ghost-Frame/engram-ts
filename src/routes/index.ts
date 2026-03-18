@@ -3,7 +3,7 @@
 // Auto-extracted from server.ts.monolith lines 2881-7283
 // ============================================================================
 
-import { readFileSync, writeFileSync, statSync, copyFileSync, existsSync, unlinkSync } from "fs";
+import { readFileSync, writeFileSync, statSync, existsSync, unlinkSync } from "fs";
 import { readFile } from "fs/promises";
 import { randomUUID, timingSafeEqual } from "crypto";
 import { resolve } from "path";
@@ -13,13 +13,13 @@ import { htmlToText } from "html-to-text";
 import {
   PORT, HOST, OPEN_ACCESS, CORS_ORIGIN, MAX_BODY_SIZE, MAX_CONTENT_SIZE,
   ALLOWED_IPS, LLM_URL, LLM_API_KEY, LLM_MODEL, LLM_PROVIDERS, AUTO_LINK_THRESHOLD, AUTO_LINK_MAX,
-  DEFAULT_IMPORTANCE, RERANKER_ENABLED, RERANKER_TOP_K, DATA_DIR, DB_PATH, EMBEDDING_MODEL,
+  DEFAULT_IMPORTANCE, RERANKER_ENABLED, RERANKER_TOP_K, DATA_DIR, DB_PATH, EMBEDDING_MODEL, EMBEDDING_DIM, EMBEDDING_PROVIDER,
   CONSOLIDATION_THRESHOLD, RATE_WINDOW_MS, OPEN_ACCESS_RATE_LIMIT, DEFAULT_RATE_LIMIT,
   GUI_AUTH_MAX_ATTEMPTS, GUI_AUTH_WINDOW_MS, GUI_AUTH_LOCKOUT_MS,
   ENABLE_CAUSAL_CHAINS, ENABLE_PREDICTIVE_RECALL, ENABLE_EMOTIONAL_VALENCE,
   ENABLE_RECONSOLIDATION, SEARCH_MIN_SCORE,
 } from "../config/index.ts";
-import { log } from "../config/logger.ts";
+import { log, opsCounters } from "../config/logger.ts";
 
 // Database + prepared statements
 import {
@@ -59,7 +59,7 @@ import {
 import {
   embed, cosineSimilarity, getCachedEmbeddings, addToEmbeddingCache,
   invalidateEmbeddingCache, embeddingToBuffer, bufferToEmbedding, embeddingToVectorJSON,
-  graphCache, setGraphCache, episodeCache, refreshEmbeddingCache,
+  graphCache, setGraphCache, episodeCache, refreshEmbeddingCache, embeddingCacheLatest,
 } from "../embeddings/index.ts";
 
 // Search + linking
@@ -76,10 +76,13 @@ import { updateCooccurrences } from "../graph/cooccurrence.ts";
 import { fsrsProcessReview, fsrsRetrievability, fsrsNextInterval, FSRSRating, calculateDecayScore as fsrsCalculateDecayScore } from "../fsrs/index.ts";
 
 // LLM + extraction
-import { callLLM, extractFacts, processExtractionResult, rerank, isLLMAvailable } from "../llm/index.ts";
+import { callLLM, extractFacts, processExtractionResult, rerank, isLLMAvailable, isProviderAvailable } from "../llm/index.ts";
 
 // Cross-encoder reranker
 import { crossEncoderRerank, isRerankerReady } from "../reranker/index.ts";
+
+// Jobs
+import { enqueueJob, getJobStats } from "../jobs/index.ts";
 import { fastExtractFacts } from "../intelligence/extraction.ts";
 import { runConsolidationSweep, consolidateCluster } from "../intelligence/consolidation.ts";
 import { extractPersonalitySignals, synthesizePersonalityProfile, getCachedProfile } from "../intelligence/personality.ts";
@@ -145,13 +148,27 @@ function formatScratchTimestamp(updatedAt: string): string {
   return `${diffMin}m ago`;
 }
 
+const WORKING_MEMORY_MAX_CHARS = 4000; // ~1K tokens cap to prevent context flooding
+const WORKING_MEMORY_VALUE_MAX = 300;  // truncate individual values
+
 function buildWorkingMemoryBlock(rows: ScratchEntryRow[]): string {
   if (rows.length === 0) return "";
-  const lines = rows.map((row) => {
+  const lines: string[] = [];
+  let totalLen = 0;
+  for (const row of rows) {
     const model = row.model ? `/${row.model}` : "";
-    const value = row.value?.trim() ? ` ${row.value.trim()}` : "";
-    return `- [${row.agent}${model} #${row.session.slice(0, 8)}] ${row.entry_key}${value} (${formatScratchTimestamp(row.updated_at)})`;
-  });
+    let value = row.value?.trim() || "";
+    if (value.length > WORKING_MEMORY_VALUE_MAX) {
+      value = value.slice(0, WORKING_MEMORY_VALUE_MAX) + "...";
+    }
+    const line = `- [${row.agent}${model} #${row.session.slice(0, 8)}] ${row.entry_key}${value ? ` ${value}` : ""} (${formatScratchTimestamp(row.updated_at)})`;
+    if (totalLen + line.length > WORKING_MEMORY_MAX_CHARS && lines.length > 0) {
+      lines.push(`- ... ${rows.length - lines.length} more entries truncated`);
+      break;
+    }
+    lines.push(line);
+    totalLen += line.length + 1;
+  }
   return `<working-memory>\n${lines.join("\n")}\n</working-memory>`;
 }
 
@@ -268,7 +285,10 @@ async function backfillEmbeddings(batchSize: number = 50, userId?: number): Prom
 
 // Write vec helper
 function writeVec(id: number, emb: Float32Array): void {
-  try { updateMemoryVec.run(embeddingToVectorJSON(emb), id); } catch {}
+  try { updateMemoryVec.run(embeddingToVectorJSON(emb), id); } catch (e: any) {
+    opsCounters.vec_write_failures++;
+    log.warn({ msg: "vec_write_failed", id, error: e?.message });
+  }
 }
 
 export { sweepExpiredMemories, backfillEmbeddings };
@@ -320,10 +340,7 @@ function recordAgentGuard(agentId: number | null, signal: "allow" | "warn" | "bl
   refreshAgentTrust(agentId);
 }
 
-let _currentClientIp = "unknown";
-export function setClientIp(ip: string) { _currentClientIp = ip; }
-
-async function fetchHandler(req: Request): Promise<Response> {
+async function fetchHandler(req: Request, socketIp?: string): Promise<Response> {
     const url = new URL(req.url);
     const method = req.method;
 
@@ -336,7 +353,7 @@ async function fetchHandler(req: Request): Promise<Response> {
     // REQUEST MIDDLEWARE — ID, IP check, body limit
     // ========================================================================
     const requestId = req.headers.get("X-Request-Id") || randomUUID().slice(0, 8);
-    const clientIp = _currentClientIp || req.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() || "unknown";
+    const clientIp = socketIp || req.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() || "unknown";
     const requestStart = performance.now();
 
     // IP allowlist check
@@ -437,6 +454,59 @@ async function fetchHandler(req: Request): Promise<Response> {
           "Content-Security-Policy": GUI_CONTENT_SECURITY_POLICY,
         })
       });
+    }
+
+    // ========================================================================
+    // FIRST-RUN BOOTSTRAP — create first admin API key (only works when no keys exist)
+    // Requires bootstrap token (generated on first access, written to DATA_DIR/.bootstrap_token)
+    // or localhost-only access
+    // ========================================================================
+    if (url.pathname === "/bootstrap" && method === "POST") {
+      const keyCount = (db.prepare("SELECT COUNT(*) as count FROM api_keys WHERE is_active = 1").get() as any).count;
+      if (keyCount > 0) {
+        return json({ error: "Bootstrap unavailable. API keys already exist." }, 403, { "X-Request-Id": requestId });
+      }
+
+      // Require localhost or valid bootstrap token
+      const isLocal = clientIp === "127.0.0.1" || clientIp === "::1" || clientIp === "localhost";
+      const tokenFile = resolve(DATA_DIR, ".bootstrap_token");
+      let bootstrapToken: string | null = null;
+      try { bootstrapToken = readFileSync(tokenFile, "utf-8").trim(); } catch {}
+      if (!bootstrapToken) {
+        // Generate a one-time bootstrap token
+        bootstrapToken = randomUUID();
+        try {
+          writeFileSync(tokenFile, bootstrapToken, { mode: 0o600 });
+          log.info({ msg: "bootstrap_token_generated", path: tokenFile });
+        } catch (e: any) {
+          log.error({ msg: "bootstrap_token_write_failed", error: e.message });
+        }
+      }
+
+      const body = await req.json().catch(() => ({})) as any;
+
+      if (!isLocal) {
+        const providedToken = body.token || req.headers.get("X-Bootstrap-Token") || "";
+        if (!bootstrapToken || providedToken !== bootstrapToken) {
+          log.warn({ msg: "bootstrap_rejected", ip: clientIp, rid: requestId, reason: "invalid_token" });
+          return json({ error: "Bootstrap from remote requires valid token. Check DATA_DIR/.bootstrap_token on the server." }, 403, { "X-Request-Id": requestId });
+        }
+      }
+
+      try {
+        const { key, prefix, hash } = generateApiKey();
+        const name = body.name || "bootstrap-admin";
+        db.prepare(
+          "INSERT INTO api_keys (user_id, key_prefix, key_hash, name, scopes, rate_limit) VALUES (?, ?, ?, ?, ?, ?)"
+        ).run(1, prefix, hash, name, "read,write,admin", DEFAULT_RATE_LIMIT);
+        audit(1, "bootstrap", null, null, "first_admin_key_created", clientIp, requestId);
+        log.info({ msg: "bootstrap_admin_key_created", ip: clientIp, rid: requestId });
+        // Clean up bootstrap token after successful use
+        try { unlinkSync(tokenFile); } catch {}
+        return json({ key, name, scopes: "read,write,admin", user_id: 1, message: "First admin API key created. Save this key -- it cannot be retrieved again." }, 201, { "X-Request-Id": requestId });
+      } catch (e: any) {
+        return safeError("Bootstrap", e, 500, requestId);
+      }
     }
 
     // ========================================================================
@@ -595,7 +665,7 @@ async function fetchHandler(req: Request): Promise<Response> {
       ).all(auth.user_id);
 
       const exportData = {
-        version: "engram-v4",
+        version: "engram-v5.8",
         exported_at: new Date().toISOString(),
         memories: mems,
         links: memLinks,
@@ -634,15 +704,17 @@ async function fetchHandler(req: Request): Promise<Response> {
         if (items.length > 1000) return errorResponse("Import batch too large (max 1000 items per request)", 400);
 
         let imported = 0, failed = 0;
+        const importedIds: number[] = [];
         const importTransaction = db.transaction(() => {
           for (const item of items) {
             try {
               if (!item.content || typeof item.content !== "string") { failed++; continue; }
-              db.prepare(
+              const row = db.prepare(
                 `INSERT INTO memories (content, category, source, importance, user_id, space_id,
                    is_static, version, source_count, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))`
-              ).run(
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))
+                 RETURNING id`
+              ).get(
                 item.content.trim(),
                 item.category || "general",
                 item.source || "import",
@@ -654,16 +726,35 @@ async function fetchHandler(req: Request): Promise<Response> {
                 item.source_count || 1,
                 item.created_at || null,
                 item.updated_at || null,
-              );
+              ) as { id: number };
+              importedIds.push(row.id);
               imported++;
             } catch { failed++; }
           }
         });
         importTransaction();
 
-        // Queue embedding backfill for imported memories
-        if (imported > 0) {
-          backfillEmbeddings(imported, auth.user_id).then(() => invalidateEmbeddingCache()).catch(e => log.error({ msg: "import_backfill_error", error: String(e) }));
+        // Backfill embeddings for the exact rows just imported (not older gaps)
+        if (importedIds.length > 0) {
+          (async () => {
+            try {
+              const placeholders = importedIds.map(() => "?").join(",");
+              const rows = db.prepare(
+                `SELECT id, content FROM memories WHERE id IN (${placeholders}) AND embedding IS NULL`
+              ).all(...importedIds) as Array<{ id: number; content: string }>;
+              for (const mem of rows) {
+                try {
+                  const emb = await embed(mem.content);
+                  updateMemoryEmbedding.run(embeddingToBuffer(emb), mem.id);
+                  writeVec(mem.id, emb);
+                  addToEmbeddingCache({ id: mem.id, user_id: auth.user_id, content: mem.content, category: "general", importance: 5, embedding: emb, is_static: false, source_count: 1, is_latest: true, is_forgotten: false } as any);
+                } catch {}
+              }
+              invalidateEmbeddingCache();
+            } catch (e: any) {
+              log.error({ msg: "import_backfill_error", error: e.message });
+            }
+          })();
         }
 
         return json({ imported, failed, total: items.length });
@@ -707,7 +798,10 @@ async function fetchHandler(req: Request): Promise<Response> {
                 if (t === "memory_links") {
                   db.prepare(`DELETE FROM memory_links WHERE target_id IN (${placeholders})`).run(...chunk);
                 }
-              } catch {}
+              } catch (e: any) {
+                opsCounters.reset_delete_warnings++;
+                log.warn({ msg: "reset_child_delete_failed", table: t, user_id: userId, error: e?.message });
+              }
             }
           }
           for (let i = 0; i < memIdSet.length; i += 500) {
@@ -716,7 +810,10 @@ async function fetchHandler(req: Request): Promise<Response> {
             db.prepare(`DELETE FROM memories WHERE id IN (${placeholders})`).run(...chunk);
           }
         }
-        try { db.exec("INSERT INTO memories_fts(memories_fts) VALUES('rebuild')"); } catch {}
+        try { db.exec("INSERT INTO memories_fts(memories_fts) VALUES('rebuild')"); } catch (e: any) {
+          opsCounters.fts_rebuild_failures++;
+          log.warn({ msg: "fts_rebuild_failed", table: "memories_fts", error: e?.message });
+        }
         invalidateEmbeddingCache();
         log.info({ msg: "reset_by_source", user_id: userId, source: resetSource, memories_deleted: memIdSet.length });
         return json({ reset: true, user_id: userId, source: resetSource, memories_deleted: memIdSet.length, scoped: true });
@@ -750,7 +847,10 @@ async function fetchHandler(req: Request): Promise<Response> {
               if (t === "memory_links") {
                 db.prepare(`DELETE FROM memory_links WHERE target_id IN (${placeholders})`).run(...chunk);
               }
-            } catch {}
+            } catch (e: any) {
+              opsCounters.reset_delete_warnings++;
+              log.warn({ msg: "reset_child_delete_failed", table: t, user_id: userId, error: e?.message });
+            }
           }
         }
         wiped++;
@@ -764,24 +864,60 @@ async function fetchHandler(req: Request): Promise<Response> {
           const placeholders = chunk.map(() => "?").join(",");
           db.prepare(`DELETE FROM entity_relationships WHERE source_entity_id IN (${placeholders}) OR target_entity_id IN (${placeholders})`).run(...chunk, ...chunk);
         }
-      } catch {}
+      } catch (e: any) {
+        opsCounters.reset_delete_warnings++;
+        log.warn({ msg: "reset_entity_relationships_failed", user_id: userId, error: e?.message });
+      }
       // Delete messages via this user's conversations
       try {
         db.prepare("DELETE FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = ?)").run(userId);
-      } catch {}
+      } catch (e: any) {
+        opsCounters.reset_delete_warnings++;
+        log.warn({ msg: "reset_messages_delete_failed", user_id: userId, error: e?.message });
+      }
       // Delete user-scoped tables
       for (const t of userScopedTables) {
-        try { db.prepare(`DELETE FROM ${t} WHERE user_id = ?`).run(userId); wiped++; } catch {}
+        try { db.prepare(`DELETE FROM ${t} WHERE user_id = ?`).run(userId); wiped++; } catch (e: any) {
+          opsCounters.reset_delete_warnings++;
+          log.warn({ msg: "reset_table_delete_failed", table: t, user_id: userId, error: e?.message });
+        }
       }
       // Delete memories last (after children are cleaned)
-      try { db.prepare("DELETE FROM memories WHERE user_id = ?").run(userId); wiped++; } catch {}
+      try { db.prepare("DELETE FROM memories WHERE user_id = ?").run(userId); wiped++; } catch (e: any) {
+        opsCounters.reset_delete_warnings++;
+        log.warn({ msg: "reset_memories_delete_failed", user_id: userId, error: e?.message });
+      }
       // Rebuild FTS indexes
-      try { db.exec("INSERT INTO memories_fts(memories_fts) VALUES('rebuild')"); } catch {}
-      try { db.exec("INSERT INTO messages_fts(messages_fts) VALUES('rebuild')"); } catch {}
-      try { db.exec("INSERT INTO episodes_fts(episodes_fts) VALUES('rebuild')"); } catch {}
+      try { db.exec("INSERT INTO memories_fts(memories_fts) VALUES('rebuild')"); } catch (e: any) {
+        opsCounters.fts_rebuild_failures++;
+        log.warn({ msg: "fts_rebuild_failed", table: "memories_fts", error: e?.message });
+      }
+      try { db.exec("INSERT INTO messages_fts(messages_fts) VALUES('rebuild')"); } catch (e: any) {
+        opsCounters.fts_rebuild_failures++;
+        log.warn({ msg: "fts_rebuild_failed", table: "messages_fts", error: e?.message });
+      }
+      try { db.exec("INSERT INTO episodes_fts(episodes_fts) VALUES('rebuild')"); } catch (e: any) {
+        opsCounters.fts_rebuild_failures++;
+        log.warn({ msg: "fts_rebuild_failed", table: "episodes_fts", error: e?.message });
+      }
       invalidateEmbeddingCache();
       log.info({ msg: "reset_complete", user_id: userId, memories_deleted: memIdSet.length, tables_wiped: wiped });
       return json({ reset: true, user_id: userId, memories_deleted: memIdSet.length, tables_wiped: wiped });
+    }
+
+    // /live — minimal liveness probe (process is up, no auth needed)
+    if (url.pathname === "/live" && method === "GET") {
+      return json({ status: "ok" });
+    }
+
+    // /ready — readiness probe: DB writable, embedding model loaded, LLM reachable
+    if (url.pathname === "/ready" && method === "GET") {
+      const checks: Record<string, boolean> = {};
+      try { db.prepare("SELECT 1").get(); checks.db = true; } catch { checks.db = false; }
+      try { checks.embeddings = embeddingCacheLatest.length > 0; } catch { checks.embeddings = false; }
+      checks.llm = isLLMAvailable();
+      const ready = checks.db && checks.embeddings;
+      return json({ status: ready ? "ready" : "degraded", checks }, ready ? 200 : 503);
     }
 
     if (url.pathname === "/health" && method === "GET") {
@@ -793,7 +929,7 @@ async function fetchHandler(req: Request): Promise<Response> {
       }
       const isAuthed = !!healthAuth;
       if (!isAuthed) {
-        return json({ status: "ok", version: "5.8.0" });
+        return json({ status: "ok", version: "5.8.1" });
       }
       // Full health for authenticated users — tenant-scoped for non-admins
       const uid = healthAuth.user_id;
@@ -829,7 +965,7 @@ async function fetchHandler(req: Request): Promise<Response> {
       const dbSize = statSync(DB_PATH).size;
       return json({
         status: "ok",
-        version: "5.8.0",
+        version: "5.8.1",
         memories: scopedMemCount.count,
         embedded: embCount.count,
         unembedded: noEmbCount2,
@@ -849,8 +985,10 @@ async function fetchHandler(req: Request): Promise<Response> {
         conversations: convCount.count,
         messages: msgCount.count,
         embedding_model: EMBEDDING_MODEL,
+        embedding_provider: EMBEDDING_PROVIDER,
+        embedding_dim: EMBEDDING_DIM,
         llm_model: LLM_MODEL,
-        llm_providers: LLM_PROVIDERS.filter(p => p.key || p.url.includes("127.0.0.1") || p.url.includes("localhost")).map(p => p.name),
+        llm_providers: LLM_PROVIDERS.filter(isProviderAvailable).map(p => p.name),
         llm_configured: isLLMAvailable(),
         features: {
           decay: "fsrs6",
@@ -888,6 +1026,26 @@ async function fetchHandler(req: Request): Promise<Response> {
           trust_scoring: true,
           execution_signing: true,
         },
+        warnings: (() => {
+          const w: string[] = [];
+          // Detect embedding dimension mismatch
+          try {
+            const sample = db.prepare("SELECT embedding FROM memories WHERE embedding IS NOT NULL LIMIT 1").get() as any;
+            if (sample?.embedding) {
+              const buf = sample.embedding instanceof ArrayBuffer ? sample.embedding
+                : sample.embedding.buffer.slice(sample.embedding.byteOffset, sample.embedding.byteOffset + sample.embedding.byteLength);
+              const storedDim = buf.byteLength / 4;
+              if (storedDim !== EMBEDDING_DIM) {
+                w.push(`Stored embeddings are ${storedDim}-dim but configured provider (${EMBEDDING_PROVIDER}) uses ${EMBEDDING_DIM}-dim. Run POST /admin/reembed to fix.`);
+              }
+            }
+          } catch {}
+          if (opsCounters.vec_write_failures > 0) w.push(`${opsCounters.vec_write_failures} vector column write failures since startup`);
+          if (opsCounters.extraction_failures > 0) w.push(`${opsCounters.extraction_failures} LLM extraction failures since startup`);
+          if (opsCounters.fts_rebuild_failures > 0) w.push(`${opsCounters.fts_rebuild_failures} FTS rebuild failures since startup`);
+          return w.length > 0 ? w : undefined;
+        })(),
+        ops_counters: isAdmin ? opsCounters : undefined,
         ...(isAdmin ? { db_size_mb: Math.round(dbSize / 1048576 * 100) / 100 } : {}),
       });
     }
@@ -1004,8 +1162,7 @@ async function fetchHandler(req: Request): Promise<Response> {
 
               if (summary && summary.toLowerCase().trim() !== "nothing") {
                 const content = `[Session summary: ${agent}/${model} #${session.slice(0, 8)}] ${summary.trim()}`;
-                const result = insertMemory.get(content, "discovery", agent, null, 5, null, 1, 1, null, null, 1, 0, 0, null, null, 0, model) as { id: number; created_at: string };
-                db.prepare("UPDATE memories SET user_id = ? WHERE id = ?").run(auth.user_id, result.id);
+                const result = insertMemory.get(content, "discovery", agent, null, 5, null, 1, 1, null, null, 1, 0, 0, null, null, 0, model, auth.user_id, auth.space_id || null) as { id: number; created_at: string };
                 summaryId = result.id;
                 try {
                   const emb = await embed(content);
@@ -1085,9 +1242,8 @@ async function fetchHandler(req: Request): Promise<Response> {
 
           const result = insertMemory.get(
             content, category, filtered[0].agent, null, 5,
-            null, 1, 1, null, null, 1, 0, 0, null, null, 0, null
+            null, 1, 1, null, null, 1, 0, 0, null, null, 0, null, auth.user_id, auth.space_id || null
           ) as { id: number; created_at: string };
-          db.prepare("UPDATE memories SET user_id = ? WHERE id = ?").run(auth.user_id, result.id);
           const newId = result.id;
           promoted.push(newId);
 
@@ -1105,9 +1261,8 @@ async function fetchHandler(req: Request): Promise<Response> {
             const content = `${r.entry_key}: ${r.value || ""}`;
             const result = insertMemory.get(
               content, category, r.agent, null, 5,
-              null, 1, 1, null, null, 1, 0, 0, null, null, 0, null
+              null, 1, 1, null, null, 1, 0, 0, null, null, 0, null, auth.user_id, auth.space_id || null
             ) as { id: number; created_at: string };
-            db.prepare("UPDATE memories SET user_id = ? WHERE id = ?").run(auth.user_id, result.id);
             const newId = result.id;
             promoted.push(newId);
 
@@ -1175,9 +1330,8 @@ async function fetchHandler(req: Request): Promise<Response> {
         const content = `[Session summary: ${agent}/${model} #${session.slice(0, 8)}] ${summary.trim()}`;
         const result = insertMemory.get(
           content, "discovery", agent, null, 5,
-          null, 1, 1, null, null, 1, 0, 0, null, null, 0, model
+          null, 1, 1, null, null, 1, 0, 0, null, null, 0, model, auth.user_id, auth.space_id || null
         ) as { id: number; created_at: string };
-        db.prepare("UPDATE memories SET user_id = ? WHERE id = ?").run(auth.user_id, result.id);
         const newId = result.id;
 
         try {
@@ -1312,14 +1466,14 @@ If no meaningful facts, return {"facts": []}`;
             fact.content.trim(), fact.category || category, source, null,
             effectiveImportance, embBuffer,
             1, 1, null, null, 1, effectiveStatic, 0,
-            fact.forget_after || null, null, 0
+            fact.forget_after || null, null, 0, null, auth.user_id, auth.space_id || null
           ) as { id: number; created_at: string };
 
           const syncId = randomUUID();
           const tagsJson = effectiveTags.length ? JSON.stringify(effectiveTags) : null;
           db.prepare(
-            "UPDATE memories SET user_id = ?, space_id = ?, tags = ?, episode_id = ?, sync_id = ?, confidence = 1.0 WHERE id = ?"
-          ).run(auth.user_id, auth.space_id || null, tagsJson, episodeId || null, syncId, result.id);
+            "UPDATE memories SET tags = ?, episode_id = ?, sync_id = ?, confidence = 1.0 WHERE id = ?"
+          ).run(tagsJson, episodeId || null, syncId, result.id);
 
         // Link to entities/projects
         for (const eid of getOwnedEntityIds(entityIds, auth)) linkMemoryEntity.run(result.id, eid);
@@ -1351,7 +1505,10 @@ If no meaningful facts, return {"facts": []}`;
                   }
                   processExtractionResult(result.id, extraction, embArray, auth.user_id);
                 }
-              } catch {}
+              } catch (e: any) {
+                opsCounters.extraction_failures++;
+                log.warn({ msg: "async_extraction_failed", memory_id: result.id, error: e?.message });
+              }
             })();
           }
 
@@ -1563,14 +1720,14 @@ Return JSON:
               fact.content.trim(), fact.category || "general", ingestSource, null,
               fact.importance || DEFAULT_IMPORTANCE, embBuffer,
               1, 1, null, null, 1, fact.is_static ? 1 : 0, 0,
-              null, null, 0
+              null, null, 0, null, auth.user_id, auth.space_id || null
             ) as { id: number; created_at: string };
 
             const syncId = randomUUID();
             const tags = fact.tags?.length ? JSON.stringify(fact.tags) : null;
             db.prepare(
-              "UPDATE memories SET user_id = ?, space_id = ?, tags = ?, episode_id = ?, sync_id = ?, confidence = 1.0 WHERE id = ?"
-            ).run(auth.user_id, auth.space_id || null, tags, episode_id || null, syncId, result.id);
+              "UPDATE memories SET tags = ?, episode_id = ?, sync_id = ?, confidence = 1.0 WHERE id = ?"
+            ).run(tags, episode_id || null, syncId, result.id);
 
             for (const eid of getOwnedEntityIds(entity_ids, auth)) linkMemoryEntity.run(result.id, eid);
             for (const pid of getOwnedProjectIds(project_ids, auth)) linkMemoryProject.run(result.id, pid);
@@ -1593,7 +1750,10 @@ Return JSON:
                   }
                   const extraction = await extractFacts(fact.content.trim(), fact.category || "general", sims.slice(0, 3));
                   if (extraction) processExtractionResult(result.id, extraction, embArray, auth.user_id);
-                } catch {}
+                } catch (e: any) {
+                  opsCounters.extraction_failures++;
+                  log.warn({ msg: "async_extraction_failed", memory_id: result.id, error: e?.message });
+                }
               })();
             }
 
@@ -1824,10 +1984,10 @@ Only include pairs that are actual contradictions.`;
             merged.content, merged.category || memA.category, "contradiction-merge", null,
             Math.max(memA.importance, memB.importance), embBuffer,
             1, 1, null, null, (memA.source_count || 1) + (memB.source_count || 1), 0, 0, null, null, 0,
-            memB.model || memA.model || null
+            memB.model || memA.model || null, auth.user_id, auth.space_id || null
           ) as { id: number; created_at: string };
-          db.prepare("UPDATE memories SET user_id = ?, tags = ?, episode_id = ?, confidence = ? WHERE id = ?")
-            .run(auth.user_id, memB.tags || memA.tags || null, memB.episode_id || memA.episode_id || null, Math.max(memA.confidence ?? 0, memB.confidence ?? 0, 1.0), result.id);
+          db.prepare("UPDATE memories SET tags = ?, episode_id = ?, confidence = ? WHERE id = ?")
+            .run(memB.tags || memA.tags || null, memB.episode_id || memA.episode_id || null, Math.max(memA.confidence ?? 0, memB.confidence ?? 0, 1.0), result.id);
 
           markArchived.run(memory_a_id);
           markArchived.run(memory_b_id);
@@ -1978,6 +2138,32 @@ Only include pairs that are actual contradictions.`;
     if (url.pathname === "/context" && method === "POST") {
       try {
         const body = await req.json() as any;
+
+        // Context mode presets: opinionated defaults on top of raw controls
+        // mode=fast: depth 1, small budget, static facts + current state only
+        // mode=balanced (default): depth 2, standard budget
+        // mode=deep: depth 3, large budget, all layers including inference
+        // mode=decision: depth 3, includes linked memories + version chains
+        const contextMode = body.mode as string | undefined;
+        if (contextMode) {
+          if (contextMode === "fast") {
+            body.depth = body.depth ?? 1;
+            body.max_tokens = body.max_tokens ?? 2000;
+          } else if (contextMode === "balanced") {
+            body.depth = body.depth ?? 2;
+            body.max_tokens = body.max_tokens ?? 6000;
+          } else if (contextMode === "deep") {
+            body.depth = body.depth ?? 3;
+            body.max_tokens = body.max_tokens ?? 16000;
+            body.include_inference = body.include_inference ?? true;
+          } else if (contextMode === "decision") {
+            body.depth = body.depth ?? 3;
+            body.max_tokens = body.max_tokens ?? 10000;
+            body.include_linked = true;
+            body.include_structured_facts = true;
+          }
+        }
+
         const { query, max_tokens, token_budget: tokenBudgetAlt, budget, include_static, include_recent, strategy,
           // Benchmark/tuning overrides
           max_memory_tokens: overrideMaxMemTokens,
@@ -2539,10 +2725,9 @@ Return JSON:
         const reflectionMem = insertMemory.get(
           `[Reflection: ${period}ly, ${periodStartStr.substring(0, 10)} to ${periodEndStr.substring(0, 10)}] ${result.reflection}`,
           "discovery", "reflection", null, 7, embBuffer,
-          1, 1, null, null, periodMemories.length, 1, 0, null, null, 1
+          1, 1, null, null, periodMemories.length, 1, 0, null, null, 1, null, auth.user_id, auth.space_id || null
         ) as { id: number; created_at: string };
-        db.prepare("UPDATE memories SET user_id = ?, tags = ? WHERE id = ?").run(
-          auth.user_id,
+        db.prepare("UPDATE memories SET tags = ? WHERE id = ?").run(
           JSON.stringify(["reflection", period, ...(result.themes || []).slice(0, 3)]),
           reflectionMem.id
         );
@@ -2754,15 +2939,15 @@ Return JSON:
           imp,
           embBuffer,
           1, 1, null, null, 1, isStatic, 0, forgetAfter, forgetReason, isInference,
-          (model && typeof model === "string") ? model.trim() : null
+          (model && typeof model === "string") ? model.trim() : null, auth.user_id, auth.space_id || null
         ) as { id: number; created_at: string };
 
-        // Set user_id, space_id, tags, episode_id, sync_id, confidence
+        // Set tags, episode_id, sync_id, confidence, status
         const syncId = randomUUID();
         const memStatus = body.status === "pending" ? "pending" : "approved";
         db.prepare(
-          "UPDATE memories SET user_id = ?, space_id = ?, tags = ?, episode_id = ?, sync_id = ?, confidence = 1.0, status = ? WHERE id = ?"
-        ).run(auth.user_id, auth.space_id || null, tagsJson, episodeId, syncId, memStatus, result.id);
+          "UPDATE memories SET tags = ?, episode_id = ?, sync_id = ?, confidence = 1.0, status = ? WHERE id = ?"
+        ).run(tagsJson, episodeId, syncId, memStatus, result.id);
 
         // Link to entities and projects if provided
         const entityIds = body.entity_ids as number[] | undefined;
@@ -2821,70 +3006,19 @@ Return JSON:
 
         audit(auth.user_id, "memory.store", "memory", result.id, (category || "general"), clientIp, requestId);
 
-        // === ASYNC POST-STORE PIPELINE (non-blocking) ===
-        // CRITICAL: Use setTimeout(0) to defer heavy work to NEXT event loop tick.
-        // Without this, synchronous libsql calls (writeVec, autoLink) block the 
-        // response from being flushed, defeating the async pattern.
+        // === DURABLE POST-STORE PIPELINE ===
+        // Enqueue to job table for reliable processing with retries.
+        // Worker loop in server-split.ts processes these every 2 seconds.
         if (embArray) {
-          const capturedEmbArray = embArray;
-          const capturedMemId = result.id;
-          const capturedContent = content.trim();
-          const capturedCategory = category || "general";
-          setTimeout(async () => {
-            try {
-              // 1. Write vector column + update in-memory cache
-              const _t1 = Date.now();
-              writeVec(capturedMemId, capturedEmbArray);
-              addToEmbeddingCache({
-                id: capturedMemId, user_id: auth.user_id, content: capturedContent, category: capturedCategory,
-                importance: imp, embedding: capturedEmbArray,
-                is_static: false, source_count: 1, is_latest: true, is_forgotten: false,
-              });
-              log.debug({ msg: "store_writeVec", id: capturedMemId, ms: Date.now() - _t1 });
-
-              // 2. Auto-link to similar memories (in-memory cosine, <1ms)
-              const _t2 = Date.now();
-              const linked = await autoLink(capturedMemId, capturedEmbArray, auth.user_id);
-              log.debug({ msg: "store_autoLink", id: capturedMemId, ms: Date.now() - _t2, linked });
-
-              // 3. Fact extraction via LLM (slowest — external API call)
-              if (LLM_API_KEY) {
-                try {
-                  const allMems = getCachedEmbeddings(true, auth.user_id);
-                  const similarities: Array<{ id: number; content: string; category: string; score: number }> = [];
-                  for (const mem of allMems) {
-                    if (mem.id === capturedMemId) continue;
-                    const sim = cosineSimilarity(capturedEmbArray, mem.embedding);
-                    if (sim > 0.4) {
-                      similarities.push({ id: mem.id, content: mem.content, category: mem.category, score: sim });
-                    }
-                  }
-                  similarities.sort((a, b) => b.score - a.score);
-                  const top3 = similarities.slice(0, 3);
-
-                  const extraction = await extractFacts(capturedContent, capturedCategory, top3);
-                  if (extraction) {
-                    processExtractionResult(capturedMemId, extraction, capturedEmbArray, auth.user_id);
-                    log.debug({ msg: "fact_extraction_done", id: capturedMemId, relation: extraction.relation_to_existing.type });
-                  }
-                } catch (e: any) {
-                  log.error({ msg: "fact_extraction_failed", id: capturedMemId, error: e.message });
-                }
-              }
-
-              // 4. Personality signal extraction (async, non-blocking)
-              try {
-                const pSignals = await extractPersonalitySignals(capturedContent, capturedMemId, auth.user_id);
-                if (pSignals.length > 0) {
-                  log.debug({ msg: "personality_extraction_done", id: capturedMemId, signals: pSignals.length });
-                }
-              } catch (e: any) {
-                log.error({ msg: "personality_extraction_failed", id: capturedMemId, error: e.message });
-              }
-            } catch (e: any) {
-              log.error({ msg: "store_pipeline_failed", id: capturedMemId, error: e.message });
-            }
-          }, 0);
+          const embBase64 = Buffer.from(embArray.buffer, embArray.byteOffset, embArray.byteLength).toString("base64");
+          enqueueJob("post_store", {
+            memoryId: result.id,
+            content: content.trim(),
+            category: category || "general",
+            userId: auth.user_id,
+            importance: imp,
+            embeddingBase64: embBase64,
+          });
         }
 
         return response;
@@ -2978,14 +3112,14 @@ Return JSON:
           storedContent, category, (body.source || "correction").trim(),
           null, imp, embBuffer,
           1, 1, null, null, 1, 1, 0, // is_static=1
-          null, null, 0
+          null, null, 0, null, auth.user_id, auth.space_id || null
         ) as { id: number; created_at: string };
 
-        // Set user_id, space_id, tags
+        // Set tags, status
         const correctionTags = JSON.stringify(["correction", ...(body.tags || [])]);
         db.prepare(
-          "UPDATE memories SET user_id = ?, space_id = ?, tags = ?, status = 'approved' WHERE id = ?"
-        ).run(auth.user_id, auth.space_id || null, correctionTags, result.id);
+          "UPDATE memories SET tags = ?, status = 'approved' WHERE id = ?"
+        ).run(correctionTags, result.id);
 
         // FSRS init
         const initFSRS = fsrsProcessReview(null, FSRSRating.Good, 0);
@@ -3013,23 +3147,17 @@ Return JSON:
           log.info({ msg: "memory_corrected", correction_id: result.id, old_id: memoryId, old_content: correctedMemory.content?.substring(0, 100) });
         }
 
-        // Vector index + cache update (async)
+        // Vector index + cache update (durable job queue)
         if (embArray) {
-          const capturedEmb = embArray;
-          const capturedId = result.id;
-          setTimeout(() => {
-            try {
-              writeVec(capturedId, capturedEmb);
-              addToEmbeddingCache({
-                id: capturedId, user_id: auth.user_id, content: storedContent, category,
-                importance: imp, embedding: capturedEmb,
-                is_static: true, source_count: 1, is_latest: true, is_forgotten: false,
-              });
-              autoLink(capturedId, capturedEmb, auth.user_id).catch(() => {});
-            } catch (e: any) {
-              log.error({ msg: "correction_pipeline_failed", id: capturedId, error: e.message });
-            }
-          }, 0);
+          const embBase64 = Buffer.from(embArray.buffer, embArray.byteOffset, embArray.byteLength).toString("base64");
+          enqueueJob("post_store", {
+            memoryId: result.id,
+            content: storedContent,
+            category,
+            userId: auth.user_id,
+            importance: imp,
+            embeddingBase64: embBase64,
+          });
         }
 
         // Invalidate context cache so the correction is immediately available
@@ -3063,6 +3191,31 @@ Return JSON:
       try {
         const _searchT0 = performance.now();
         const body = await req.json() as any;
+
+        // Search mode presets: opinionated defaults to reduce cognitive load
+        // mode=fact (default): standard hybrid search for factual recall
+        // mode=timeline: chronological ordering, broader results
+        // mode=preference: lower vector floor, targets user preferences/values
+        // mode=decision: focuses on decisions/corrections with version history
+        // mode=recent: last 24h only, sorted by time
+        const mode = body.mode as string | undefined;
+        if (mode) {
+          if (mode === "timeline") {
+            body.temporal_sort = body.temporal_sort ?? "desc";
+            body.limit = body.limit ?? 20;
+            body.vector_floor = body.vector_floor ?? 0.15;
+          } else if (mode === "preference") {
+            body.vector_floor = body.vector_floor ?? 0.10;
+            body.include_episodes = body.include_episodes ?? true;
+          } else if (mode === "decision") {
+            body.expand_relationships = body.expand_relationships ?? true;
+            body.include_links = body.include_links ?? true;
+          } else if (mode === "recent") {
+            body.temporal_sort = body.temporal_sort ?? "desc";
+            body.limit = body.limit ?? 15;
+          }
+        }
+
         const { query, limit, include_links, expand_relationships, latest_only, tag, episode_id: filterEpisode, temporal_sort, vector_floor } = body;
         if (!query || typeof query !== "string") return errorResponse("query is required");
         const _searchT1 = performance.now();
@@ -3154,11 +3307,34 @@ Return JSON:
         const minScore = body.min_score ?? SEARCH_MIN_SCORE;
         const abstained = results.length === 0 || topSemanticScore < minScore;
 
+        // Search explainability: add explain object showing why each result ranked
+        const explainResults = body.explain !== false ? (abstained ? [] : results).map((r: any) => {
+          const explain: Record<string, any> = {};
+          if (r.semantic_score != null) explain.vector = Math.round(r.semantic_score * 1000) / 1000;
+          if (r.ce_score != null) explain.reranker = Math.round(r.ce_score * 1000) / 1000;
+          if (r.combined_score != null) explain.rrf = Math.round(r.combined_score * 1000) / 1000;
+          if (r.decay_score != null) explain.decay = Math.round(r.decay_score * 100) / 100;
+          if (r.is_static) explain.static = true;
+          if (r.source_count && r.source_count > 1) explain.corroborated = r.source_count;
+          if (r.question_type) explain.question_type = r.question_type;
+          // Build human-readable reason
+          const reasons: string[] = [];
+          if (explain.vector && explain.vector > 0.7) reasons.push("strong semantic match");
+          else if (explain.vector && explain.vector > 0.5) reasons.push("moderate semantic match");
+          if (explain.reranker && explain.reranker > 0.9) reasons.push("high reranker confidence");
+          if (explain.static) reasons.push("permanent fact");
+          if (explain.corroborated) reasons.push(`corroborated ${explain.corroborated}x`);
+          if (r.importance >= 8) reasons.push("high importance");
+          explain.reasons = reasons;
+          return { ...r, explain };
+        }) : (abstained ? [] : results);
+
         return json({
-          results: abstained ? [] : results,
+          results: explainResults,
           abstained,
           top_score: Math.round(topScore * 1000) / 1000,
           ...(episodeContext.length > 0 ? { episodes: episodeContext } : {}),
+          ...(body.mode ? { mode: body.mode } : {}),
         });
       } catch (e: any) {
         return safeError("Search", e);
@@ -3296,11 +3472,11 @@ Return JSON:
            null,            // forget_after
            null,            // forget_reason
            existing.is_inference ? 1 : 0,
-           existing.model || null
+           existing.model || null, existing.user_id, existing.space_id || null
         ) as { id: number; created_at: string };
 
-        db.prepare("UPDATE memories SET user_id = ?, space_id = ?, tags = ?, episode_id = ?, confidence = ? WHERE id = ?")
-          .run(existing.user_id, auth.space_id || null, existing.tags || null, existing.episode_id || null, existing.confidence ?? 1.0, result.id);
+        db.prepare("UPDATE memories SET tags = ?, episode_id = ?, confidence = ? WHERE id = ?")
+          .run(existing.tags || null, existing.episode_id || null, existing.confidence ?? 1.0, result.id);
 
         // Link old -> new as "updates"
         insertLink.run(result.id, id, 1.0, "updates");
@@ -3956,9 +4132,9 @@ Return JSON:
           embBuffer = embeddingToBuffer(embArray);
           const result = insertMemory.get(
             body.content.trim(), body.category || "general", "gui", null,
-            imp, embBuffer, 1, 1, null, null, 1, body.is_static ? 1 : 0, 0, null, null, 0
+            imp, embBuffer, 1, 1, null, null, 1, body.is_static ? 1 : 0, 0, null, null, 0, null, 1, null
           ) as { id: number; created_at: string };
-          db.prepare("UPDATE memories SET user_id = ?, tags = ? WHERE id = ?").run(1, tagsJson, result.id);
+          db.prepare("UPDATE memories SET tags = ? WHERE id = ?").run(tagsJson, result.id);
           const initFSRS2 = fsrsProcessReview(null, FSRSRating.Good, 0);
           const decayScore = fsrsCalculateDecayScore(imp, result.created_at, 0, null, !!(body as any).is_static, 1, initFSRS2.stability);
           db.prepare("UPDATE memories SET decay_score = ?, fsrs_stability = ?, fsrs_difficulty = ?, fsrs_storage_strength = ?, fsrs_retrieval_strength = ?, fsrs_learning_state = ?, fsrs_reps = ?, fsrs_lapses = ?, fsrs_last_review_at = ? WHERE id = ?").run(
@@ -4377,7 +4553,7 @@ Return JSON:
         const agent = getAgentById.get(agentId, auth.user_id) as any;
         if (!agent) return errorResponse("Agent not found", 404);
         if (!agent.is_active) return errorResponse("Agent is revoked", 403);
-        const passport = createPassport(signingSecret, agent);
+        const passport = createPassport(signingSecret, agent, auth.user_id);
         return json(passport);
       }
     }
@@ -4995,12 +5171,12 @@ ${memoryBlock}
               mem.content, mem.category || "general", mem.source || "sync", mem.session_id || null,
               mem.importance || 5, embBuffer, mem.version || 1, 1, null, null, 1,
               mem.is_static ? 1 : 0, mem.is_forgotten ? 1 : 0, null, null, 0,
-              mem.model || null
+              mem.model || null, auth.user_id, auth.space_id || null
             ) as { id: number; created_at: string };
             db.prepare(
-              "UPDATE memories SET user_id = ?, sync_id = ?, tags = ?, confidence = ?, is_archived = ?, model = COALESCE(?, model) WHERE id = ?"
+              "UPDATE memories SET sync_id = ?, tags = ?, confidence = ?, is_archived = ?, model = COALESCE(?, model) WHERE id = ?"
             ).run(
-              auth.user_id, mem.sync_id, mem.tags ? JSON.stringify(mem.tags) : null,
+              mem.sync_id, mem.tags ? JSON.stringify(mem.tags) : null,
               mem.confidence ?? 1.0, mem.is_archived ? 1 : 0, mem.model || null, result.id
             );
             if (embArray) {
@@ -5112,13 +5288,13 @@ If no meaningful inferences, return {"derived": []}`;
 
           const result = insertMemory.get(
             d.content.trim(), d.category || "discovery", "derived", null,
-            d.importance || 5, embBuffer, 1, 1, null, null, 1, 0, 0, null, null, 0
+            d.importance || 5, embBuffer, 1, 1, null, null, 1, 0, 0, null, null, 0, null, auth.user_id, auth.space_id || null
           ) as { id: number; created_at: string };
 
           const syncId = randomUUID();
           db.prepare(
-            "UPDATE memories SET user_id = ?, sync_id = ?, confidence = ?, tags = ? WHERE id = ?"
-          ).run(auth.user_id, syncId, d.confidence || 0.7, JSON.stringify(["derived", ...(d.tags || [])]), result.id);
+            "UPDATE memories SET sync_id = ?, confidence = ?, tags = ? WHERE id = ?"
+          ).run(syncId, d.confidence || 0.7, JSON.stringify(["derived", ...(d.tags || [])]), result.id);
 
           // Link to source memories
           if (d.source_ids && Array.isArray(d.source_ids)) {
@@ -5174,12 +5350,12 @@ If no meaningful inferences, return {"derived": []}`;
 
           const result = insertMemory.get(
             content.trim(), category, source, null, importance, embBuffer,
-            1, 1, null, null, 1, 0, 0, null, null, 0
+            1, 1, null, null, 1, 0, 0, null, null, 0, null, auth.user_id, auth.space_id || null
           ) as { id: number; created_at: string };
 
           db.prepare(
-            "UPDATE memories SET user_id = ?, tags = ?, sync_id = ?, confidence = 1.0 WHERE id = ?"
-          ).run(auth.user_id, JSON.stringify(tags), randomUUID(), result.id);
+            "UPDATE memories SET tags = ?, sync_id = ?, confidence = 1.0 WHERE id = ?"
+          ).run(JSON.stringify(tags), randomUUID(), result.id);
 
           if (embArray) { writeVec(result.id, embArray); await autoLink(result.id, embArray, auth.user_id); }
           imported++;
@@ -5247,12 +5423,12 @@ If no meaningful inferences, return {"derived": []}`;
 
           const result = insertMemory.get(
             content.trim(), category, source, null, importance, embBuffer,
-            1, 1, null, null, 1, 0, 0, null, null, 0
+            1, 1, null, null, 1, 0, 0, null, null, 0, null, auth.user_id, auth.space_id || null
           ) as { id: number; created_at: string };
 
           db.prepare(
-            "UPDATE memories SET user_id = ?, tags = ?, sync_id = ?, confidence = 1.0 WHERE id = ?"
-          ).run(auth.user_id, JSON.stringify([...new Set(tags)]), randomUUID(), result.id);
+            "UPDATE memories SET tags = ?, sync_id = ?, confidence = 1.0 WHERE id = ?"
+          ).run(JSON.stringify([...new Set(tags)]), randomUUID(), result.id);
 
           if (embArray) { writeVec(result.id, embArray); await autoLink(result.id, embArray, auth.user_id); }
           imported++;
@@ -5805,6 +5981,37 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
+    // RE-EMBED ALL MEMORIES -- migrate between embedding providers/models
+    // ========================================================================
+    if (url.pathname === "/admin/reembed" && method === "POST") {
+      if (!hasScope(auth, "admin")) return errorResponse("Admin scope required", 403);
+      try {
+        const { reembedAll, getEmbeddingProviderInfo } = await import("../embeddings/index.ts");
+        const info = getEmbeddingProviderInfo();
+        log.info({ msg: "reembed_started", ...info, triggered_by: auth.user_id });
+        const result = await reembedAll((done, total) => {
+          log.info({ msg: "reembed_progress", done, total, pct: Math.round(done / total * 100) });
+        });
+        return json({ ...result, provider: info });
+      } catch (e: any) {
+        return safeError("Re-embed", e);
+      }
+    }
+
+    // ========================================================================
+    // EMBEDDING PROVIDER INFO -- show current embedding configuration
+    // ========================================================================
+    if (url.pathname === "/admin/embedding-info" && method === "GET") {
+      if (!hasScope(auth, "admin")) return errorResponse("Admin scope required", 403);
+      try {
+        const { getEmbeddingProviderInfo } = await import("../embeddings/index.ts");
+        return json(getEmbeddingProviderInfo());
+      } catch (e: any) {
+        return safeError("Embedding info", e);
+      }
+    }
+
+    // ========================================================================
     // FACT VALIDITY BACKFILL — populate valid_at for existing facts
     // ========================================================================
     if (url.pathname === "/admin/backfill-facts" && method === "POST") {
@@ -5981,7 +6188,7 @@ If no meaningful inferences, return {"derived": []}`;
         agents,
         embedding_model: EMBEDDING_MODEL,
         llm_model: LLM_MODEL,
-        llm_providers: LLM_PROVIDERS.filter(p => p.key || p.url.includes("127.0.0.1") || p.url.includes("localhost")).map(p => p.name),
+        llm_providers: LLM_PROVIDERS.filter(isProviderAvailable).map(p => p.name),
         llm_configured: isLLMAvailable(),
         db_size_mb: Math.round(dbSize / 1048576 * 100) / 100,
       });
@@ -6127,18 +6334,17 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // BACKUP ENDPOINT — download SQLite DB
+    // BACKUP ENDPOINT — download SQLite DB (consistent snapshot)
     // ========================================================================
     if (url.pathname === "/backup" && method === "GET") {
       if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
       try {
-        db.prepare("PRAGMA wal_checkpoint(PASSIVE)").get();
         const backupPath = resolve(DATA_DIR, `backup-${Date.now()}.db`);
-        copyFileSync(DB_PATH, backupPath);
+        db.exec(`VACUUM INTO '${backupPath.replace(/'/g, "''")}'`);
         const fileStat = statSync(backupPath);
         const fileBuffer = readFileSync(backupPath);
         audit(auth.user_id, "backup", null, null, `${fileStat.size} bytes`, clientIp, requestId);
-        log.info({ msg: "backup_created", size: fileStat.size, rid: requestId });
+        log.info({ msg: "backup_created", size: fileStat.size, method: "VACUUM_INTO", rid: requestId });
         const resp = new Response(fileBuffer, {
           headers: securityHeaders({
             "Content-Type": "application/x-sqlite3",

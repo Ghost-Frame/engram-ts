@@ -6,8 +6,8 @@ import Database from 'libsql';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { mkdirSync } from 'fs';
-import { log } from '../config/logger.ts';
-import { DB_PATH, DATA_DIR, DEFAULT_RATE_LIMIT, DEFAULT_IMPORTANCE } from '../config/index.ts';
+import { log, opsCounters } from '../config/logger.ts';
+import { DB_PATH, DATA_DIR, DEFAULT_RATE_LIMIT, DEFAULT_IMPORTANCE, EMBEDDING_DIM } from '../config/index.ts';
 import { FSRSRating, type FSRSMemoryState, fsrsProcessReview, calculateDecayScore } from '../fsrs/index.ts';
 
 export function embeddingToVectorJSON(emb: Float32Array): string {
@@ -73,6 +73,20 @@ db.exec(`
 `);
 
 // Migration helper - logs unexpected errors instead of swallowing them silently
+// Schema version tracking
+db.exec("CREATE TABLE IF NOT EXISTS schema_versions (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime('now')), description TEXT)");
+
+function getSchemaVersion(): number {
+  try {
+    const row = db.prepare("SELECT MAX(version) as v FROM schema_versions").get() as { v: number | null };
+    return row?.v || 0;
+  } catch { return 0; }
+}
+
+function setSchemaVersion(version: number, description: string): void {
+  db.prepare("INSERT OR IGNORE INTO schema_versions (version, description) VALUES (?, ?)").run(version, description);
+}
+
 function migrate(sql: string) {
   try {
     db.exec(sql);
@@ -80,6 +94,18 @@ function migrate(sql: string) {
     const msg = String(e);
     if (msg.includes("duplicate column") || msg.includes("already exists")) return;
     log.warn({ msg: "migration_error", sql: sql.slice(0, 120), error: msg });
+  }
+}
+
+// Critical migrations that must succeed or block startup
+function migrateCritical(sql: string, description: string) {
+  try {
+    db.exec(sql);
+  } catch (e: any) {
+    const msg = String(e);
+    if (msg.includes("duplicate column") || msg.includes("already exists")) return;
+    log.error({ msg: "critical_migration_failed", description, sql: sql.slice(0, 120), error: msg });
+    throw new Error(`Critical migration failed: ${description} -- ${msg}`);
   }
 }
 
@@ -229,6 +255,17 @@ migrate("CREATE INDEX IF NOT EXISTS memories_vec_idx ON memories(libsql_vector_i
 // v5.7 — BGE-large 1024-dim vector column
 migrate("ALTER TABLE memories ADD COLUMN embedding_vec_1024 FLOAT32(1024)");
 migrate("CREATE INDEX IF NOT EXISTS memories_vec_1024_idx ON memories(libsql_vector_idx(embedding_vec_1024))");
+
+// v5.9 — Dynamic vector column matching configured EMBEDDING_DIM
+// When provider changes (e.g., local=1024, google/vertex=768), create the right column
+export const VECTOR_COL = `embedding_vec_${EMBEDDING_DIM}`;
+const EP_VECTOR_COL = `ep_embedding_vec_${EMBEDDING_DIM}`;
+if (EMBEDDING_DIM !== 384 && EMBEDDING_DIM !== 1024) {
+  migrate(`ALTER TABLE memories ADD COLUMN ${VECTOR_COL} FLOAT32(${EMBEDDING_DIM})`);
+  migrate(`CREATE INDEX IF NOT EXISTS memories_vec_${EMBEDDING_DIM}_idx ON memories(libsql_vector_idx(${VECTOR_COL}))`);
+  migrate(`ALTER TABLE episodes ADD COLUMN ${VECTOR_COL} FLOAT32(${EMBEDDING_DIM})`);
+  migrate(`CREATE INDEX IF NOT EXISTS episodes_vec_${EMBEDDING_DIM}_idx ON episodes(libsql_vector_idx(${VECTOR_COL}))`);
+}
 
 // Webhooks table
 migrate(`
@@ -665,8 +702,8 @@ migrate("CREATE INDEX IF NOT EXISTS idx_conv_user ON conversations(user_id)");
 export const insertMemory = db.prepare(
   `INSERT INTO memories (content, category, source, session_id, importance, embedding,
     version, is_latest, parent_memory_id, root_memory_id, source_count, is_static,
-    is_forgotten, forget_after, forget_reason, is_inference, model)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    is_forgotten, forget_after, forget_reason, is_inference, model, user_id, space_id)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
    RETURNING id, created_at`
 );
 
@@ -675,13 +712,16 @@ export const updateMemoryEmbedding = db.prepare(
 );
 
 export const updateMemoryVec = db.prepare(
-  `UPDATE memories SET embedding_vec_1024 = vector(?) WHERE id = ?`
+  `UPDATE memories SET ${VECTOR_COL} = vector(?) WHERE id = ?`
 );
 
 /** Write vector column for a newly inserted memory (call after insertMemory) */
 export function writeVec(memoryId: number, embArray: Float32Array | null): void {
   if (!embArray) return;
-  try { updateMemoryVec.run(embeddingToVectorJSON(embArray), memoryId); } catch {}
+  try { updateMemoryVec.run(embeddingToVectorJSON(embArray), memoryId); } catch (e: any) {
+    opsCounters.vec_write_failures++;
+    log.warn({ msg: "vec_write_failed", id: memoryId, error: e?.message });
+  }
 }
 
 export const getAllEmbeddings = db.prepare(
@@ -978,7 +1018,7 @@ export const updateEpisodeEmbedding = db.prepare(
   `UPDATE episodes SET embedding = ? WHERE id = ?`
 );
 export const updateEpisodeVec = db.prepare(
-  `UPDATE episodes SET embedding_vec_1024 = vector(?) WHERE id = ?`
+  `UPDATE episodes SET ${VECTOR_COL} = vector(?) WHERE id = ?`
 );
 export const searchEpisodesFTS = db.prepare(
   `SELECT e.*, rank FROM episodes_fts f JOIN episodes e ON e.id = f.rowid
@@ -1220,6 +1260,14 @@ const purgeExpiredScratchEntriesStmt = db.prepare(
   `DELETE FROM scratchpad WHERE expires_at <= datetime('now')`
 );
 
+// Fetch expired entries grouped by session before purging (for summarization)
+export const getExpiredScratchSessions = db.prepare(
+  `SELECT user_id, session, agent, model, entry_key, value, created_at, updated_at
+   FROM scratchpad
+   WHERE expires_at <= datetime('now')
+   ORDER BY user_id, session, created_at ASC`
+);
+
 export function purgeExpiredScratchpad(): number {
   return changeCount(purgeExpiredScratchEntriesStmt.run());
 }
@@ -1375,6 +1423,11 @@ migrate(`
   );
   CREATE INDEX IF NOT EXISTS idx_tp_user ON temporal_patterns(user_id, day_of_week, hour_of_day);
 `);
+
+// Record current schema version
+setSchemaVersion(1, "initial schema with all tables and indexes");
+setSchemaVersion(2, "insertMemory accepts user_id and space_id atomically");
+log.info({ msg: "schema_version", version: getSchemaVersion() });
 
 // Prepared statements for Tier 4 features
 export const insertCausalChain = db.prepare(

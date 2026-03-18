@@ -1,6 +1,6 @@
 {
   "name": "@zanfiel/engram",
-  "version": "5.8.0",
+  "version": "5.8.1",
   "type": "module",
   "repository": {
     "type": "git",
@@ -9,10 +9,18 @@
   "engines": {
     "node": ">=22.0.0"
   },
+  "exports": {
+    ".": "./server-split.ts",
+    "./sdk": "./sdk/index.ts",
+    "./mcp": "./mcp-server.ts"
+  },
   "files": [
     "server-split.ts",
     "mcp-server.ts",
+    "sdk/",
     "src/",
+    "sign/",
+    "scripts/",
     "engram-gui.html",
     "engram-login.html",
     "Dockerfile",
@@ -22,11 +30,17 @@
     "LICENSE",
     "CHANGELOG.md"
   ],
+  "bin": {
+    "engram": "./server-split.ts",
+    "engram-mcp": "./mcp-server.ts"
+  },
   "scripts": {
-    "start": "node --experimental-strip-types server-split.ts",
-    "dev": "node --experimental-strip-types --watch server-split.ts",
+    "start": "node --experimental-strip-types --env-file=.env server-split.ts",
+    "dev": "node --experimental-strip-types --env-file=.env --watch server-split.ts",
+    "mcp": "node --experimental-strip-types mcp-server.ts",
     "test": "node --test tests/api.test.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "backup-drill": "bash scripts/backup-restore-drill.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",

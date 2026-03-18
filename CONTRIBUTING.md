@@ -32,20 +32,20 @@ archive/server.ts.legacy-monolith  (archived monolith, ~7400 lines, do not use)
 server-split.ts    modular entrypoint, imports from src/
 mcp-server.ts      MCP server, JSON-RPC 2.0 stdio transport
 src/
-├── auth/          API keys, GUI cookies, RBAC
-├── config/        environment and runtime configuration
-├── db/            libsql with FTS5 + FLOAT32 vectors
-├── embeddings/    BGE-large-en-v1.5 (1024-dim) via raw onnxruntime-node
+├── auth/          API keys, GUI cookies, RBAC, Google Cloud auth
+├── config/        environment and runtime configuration, logger + ops counters
+├── db/            libsql with FTS5 + dynamic FLOAT32 vectors
+├── embeddings/    Pluggable: local ONNX (BGE-large-en-v1.5), Google AI Studio, Vertex AI
 ├── fsrs/          FSRS-6 spaced repetition, 21 trained weights
 ├── graph/         Graphology-based knowledge graph + community detection
 ├── gui/           GUI route handlers
-├── helpers/       shared utilities
-├── intelligence/  fact extraction, consolidation, reflections, contradiction detection
-├── llm/           LLM client (Anthropic/MiniMax/OpenAI-compatible, with fallback chain)
+├── helpers/       shared utilities (security headers, SSRF protection)
+├── intelligence/  fact extraction, consolidation, reflections, contradiction detection, personality
+├── llm/           LLM client (Anthropic/MiniMax/Vertex/OpenAI-compatible, with fallback chain)
 ├── memory/        core memory CRUD + versioning, hybrid vector+FTS search, profile generation
-├── organization/  tags, episodes, entities, projects, spaces
 ├── platform/      webhooks, digests, sync, import/export
-├── routes/        HTTP route definitions
+├── reranker/      ONNX cross-encoder (BGE-reranker-base) with SentencePiece tokenizer
+├── routes/        HTTP route definitions (monolithic, split planned)
 └── tier4/         causal chains, predictive recall, valence scoring
 
 engram-gui.html    WebGL galaxy visualization (standalone HTML)
@@ -59,7 +59,7 @@ landing.html       marketing landing page
 
 2. **libsql, not better-sqlite3**: We use libsql for native FLOAT32 vector columns and HNSW index support. This gives us vector search without an external service.
 
-3. **In-memory embedding cache**: All embeddings (memories + episodes) are loaded into RAM on startup (~4KB per memory at 1024-dim). This makes vector search sub-millisecond for thousands of memories. The tradeoff is O(n) memory usage.
+3. **In-memory embedding cache**: All embeddings (memories + episodes) are loaded into RAM on startup. This makes vector search sub-millisecond for thousands of memories. Memory usage scales with embedding dimension (e.g., ~4KB/memory at 1024-dim, ~3KB at 768-dim).
 
 4. **FSRS-6 over exponential decay**: Every other memory system uses exponential decay. We use the FSRS-6 algorithm (power-law forgetting curve) with 21 weights trained on millions of Anki reviews. This is mathematically more accurate and gives us features nobody else has (dual-strength model, same-day review handling, optimal review intervals).
 
@@ -106,13 +106,20 @@ We always need more coverage:
 4. Update CHANGELOG.md under `[Unreleased]`
 5. Submit a PR with a clear description of what changed and why
 
-## Areas Where Help Is Needed
+## Roadmap (Not Yet Shipped)
 
-- **OpenAPI Spec**: Generate from route definitions → Swagger UI at `/docs`
-- **SDK publishing**: `@engram/sdk` (TypeScript) and `engram-sdk` (Python) need npm/PyPI publishing
+- **OpenAPI Spec**: Generate from route definitions, serve Swagger UI at `/docs`
+- **SDKs**: `@engram/sdk` (TypeScript) and `engram-sdk` (Python) -- not yet built
+- **CLI**: Standalone command-line client
+- **Metrics endpoint**: `/metrics` for request counts, latency, background job stats
+- **Route splitting**: Break `src/routes/index.ts` into domain routers (auth, memory, conversations, admin, platform)
+
+## Areas Where Help Is Needed (shipped features that need improvement)
+
 - **Benchmarks**: Measure and publish latency vs Mem0, SuperMemory, ChromaDB
 - **Encryption at rest**: SQLCipher integration or envelope encryption
-- **Documentation**: Deployment guides, architecture diagrams, more examples
+- **Scale tests**: Concurrency, long-running background work, 10k+ memory datasets
+- **Agent trust docs**: The passport/signing system needs dedicated documentation and threat model
 
 ## License
 

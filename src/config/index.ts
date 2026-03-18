@@ -15,9 +15,11 @@ export const DB_PATH = resolve(DATA_DIR, "memory.db");
 export const PORT = Number(process.env.ENGRAM_PORT || process.env.ZANMEMORY_PORT || 4200);
 export const HOST = process.env.ENGRAM_HOST || process.env.ZANMEMORY_HOST || "0.0.0.0";
 
-// Embedding config
-export const EMBEDDING_MODEL = "BAAI/bge-large-en-v1.5";
-export const EMBEDDING_DIM = 1024;
+// Embedding config -- pluggable provider
+// Provider: "local" = ONNX BGE-large (default), "google" = Google AI Studio, "vertex" = Vertex AI
+export const EMBEDDING_PROVIDER = (process.env.ENGRAM_EMBEDDING_PROVIDER || "local") as "local" | "google" | "vertex";
+export const EMBEDDING_MODEL = process.env.ENGRAM_EMBEDDING_MODEL || (EMBEDDING_PROVIDER === "local" ? "BAAI/bge-large-en-v1.5" : "text-embedding-005");
+export const EMBEDDING_DIM = Number(process.env.ENGRAM_EMBEDDING_DIM || (EMBEDDING_PROVIDER === "local" ? 1024 : 768));
 export const EMBEDDING_MAX_SEQ = 512;
 export const MODEL_DIR = resolve(DATA_DIR, "models", "bge-large-en-v1.5");
 export const ONNX_MODEL_FILE = process.env.ENGRAM_EMBEDDING_FP32 === "1" ? "model.onnx" : "model_quantized.onnx";
@@ -26,6 +28,13 @@ export const MODEL_URLS: Record<string, string> = {
   "model_quantized.onnx": "https://huggingface.co/Xenova/bge-large-en-v1.5/resolve/main/onnx/model_quantized.onnx",
   "model.onnx": "https://huggingface.co/Xenova/bge-large-en-v1.5/resolve/main/onnx/model.onnx",
 };
+
+// Google Cloud / Vertex AI config
+export const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || process.env.LLM_API_KEY || ""; // AI Studio API key
+export const GOOGLE_CLOUD_PROJECT = process.env.GOOGLE_CLOUD_PROJECT || "";
+export const GOOGLE_CLOUD_LOCATION = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
+export const GOOGLE_APPLICATION_CREDENTIALS = process.env.GOOGLE_APPLICATION_CREDENTIALS || ""; // path to service account JSON
+
 export const AUTO_LINK_THRESHOLD = 0.55;
 export const SEARCH_MIN_SCORE = Number(process.env.ENGRAM_SEARCH_MIN_SCORE || 0.58);
 export const AUTO_LINK_MAX = Number(process.env.AUTO_LINK_MAX ?? 6);
@@ -83,9 +92,9 @@ export const FSRS_DEFAULT_RETENTION = 0.9;
 export const CONSOLIDATION_THRESHOLD = 8;
 export const CONSOLIDATION_INTERVAL = 30 * 60 * 1000;
 
-// Reranker config
-export const RERANKER_ENABLED = process.env.RERANKER !== "0";
-export const RERANKER_TOP_K = Number(process.env.RERANKER_TOP_K || 12);
+// Reranker config (LLM-based reranker; separate from ONNX cross-encoder)
+export const RERANKER_ENABLED = (process.env.ENGRAM_RERANKER ?? process.env.RERANKER) !== "0";
+export const RERANKER_TOP_K = Number(process.env.ENGRAM_RERANKER_TOP_K || process.env.RERANKER_TOP_K || 12);
 export const SEARCH_FACT_VECTOR_FLOOR = Number(process.env.ENGRAM_SEARCH_FACT_VECTOR_FLOOR || 0.22);
 export const SEARCH_PREFERENCE_VECTOR_FLOOR = Number(process.env.ENGRAM_SEARCH_PREFERENCE_VECTOR_FLOOR || 0.12);
 export const SEARCH_REASONING_VECTOR_FLOOR = Number(process.env.ENGRAM_SEARCH_REASONING_VECTOR_FLOOR || 0.10);

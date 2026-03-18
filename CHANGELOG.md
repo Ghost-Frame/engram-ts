@@ -5,6 +5,32 @@ All notable changes to Engram will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.1] - 2026-03-18
+
+### Security
+- **Atomic memory ownership**: `insertMemory` now accepts `user_id` and `space_id` as parameters (19 total), eliminating the post-insert UPDATE race window where rows briefly existed as default tenant. All 18 call sites updated.
+- **Bootstrap hardening**: `/bootstrap` endpoint now requires localhost access or a one-time token from `DATA_DIR/.bootstrap_token`. Token is auto-generated on first access, deleted after successful bootstrap. Prevents drive-by admin key creation on fresh deploys.
+- **Cross-tenant scratchpad fix**: TTL sweep now groups expired entries by `user_id:session`, preventing summaries from leaking into the wrong tenant.
+- **GUI auth clarity**: Startup warning when GUI password is configured with multiple users. Documented as single-user-only.
+- **SSRF redirect blocking**: Webhook and digest fetch calls use `redirect: "error"` to prevent redirect-based SSRF bypasses.
+- **Passport tenant binding**: Agent passports now include `user_id` and `issuer` fields, preventing cross-tenant signature reuse.
+
+### Added
+- **Durable job queue**: DB-backed `jobs` table replaces fire-and-forget `setTimeout` for post-store processing (vector write, auto-link, fact extraction, personality signals). Jobs have retry with exponential backoff (3 attempts), crash recovery for stuck jobs, hourly cleanup of completed jobs.
+- **Scheduler leases**: All 6 background intervals (forget sweep, scratchpad TTL, decay refresh, consolidation, digests, job cleanup) wrapped with DB-backed leases. Prevents duplicate work in multi-instance deployments. Leases released on graceful shutdown.
+- **Readiness probes**: `GET /live` (process up), `GET /ready` (DB writable + embeddings loaded + LLM available). Returns 503 when degraded.
+- **Schema versioning**: `schema_versions` table tracks applied migrations. `migrateCritical()` blocks startup on failure.
+- **Webhook auto-disable**: Webhooks auto-deactivate after 10 consecutive failures with structured logging.
+- **Scratchpad TTL summarization**: Expired multi-entry scratchpad sessions are LLM-summarized and stored as permanent memories before purging.
+- **Working memory token cap**: `buildWorkingMemoryBlock` capped at 4000 chars (~1K tokens) with per-value truncation at 300 chars.
+- **Gemini 3 Flash Preview**: Added as LLM provider via AI Studio API.
+- **Vertex AI support**: Full service account OAuth2 auth, Gemini 2.5 Pro available via GCP trial credits.
+- **Backup/restore drill**: `scripts/backup-restore-drill.sh` validates backup integrity, schema, and data.
+
+### Fixed
+- Digest duplicate-send risk: `processScheduledDigests` uses optimistic claiming (atomic `next_send_at` CAS) to prevent concurrent workers from sending the same digest.
+- Consolidation `insertMemory` call was missing `model` parameter (only 16 args instead of 17).
+
 ## [5.7.0] - 2026-03-14
 
 ### Security

@@ -64,10 +64,10 @@ export async function consolidateCluster(
     const summaryMem = insertMemory.get(
       `[Consolidated: ${result.title}] ${result.summary}`,
       "discovery", "consolidation", null, imp, embBuffer,
-      1, 1, null, null, members.length, 1, 0, null, null, 0
+      1, 1, null, null, members.length, 1, 0, null, null, 0, null, userId, null
     ) as { id: number; created_at: string };
-    db.prepare("UPDATE memories SET user_id = ?, tags = ? WHERE id = ?").run(
-      userId, JSON.stringify(["consolidated", result.title.toLowerCase().replace(/\s+/g, "-")]), summaryMem.id
+    db.prepare("UPDATE memories SET tags = ? WHERE id = ?").run(
+      JSON.stringify(["consolidated", result.title.toLowerCase().replace(/\s+/g, "-")]), summaryMem.id
     );
 
     // Archive source memories and link to summary

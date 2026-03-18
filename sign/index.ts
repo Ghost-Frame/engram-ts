@@ -67,6 +67,8 @@ export function verifyExecution(secret: string, execution: SignedExecution): boo
 
 export interface PassportPayload {
   agent_id: number;
+  user_id: number;        // tenant binding - prevents cross-tenant passport reuse
+  issuer: string;         // server identity (hostname or instance id)
   name: string;
   category: string | null;
   trust_score: number;
@@ -82,10 +84,14 @@ export interface Passport extends PassportPayload {
 export function createPassport(
   secret: string,
   agent: { id: number; name: string; category?: string | null; trust_score: number; code_hash?: string | null },
+  userId: number = 1,
+  issuer: string = "engram",
   ttlMs: number = 3_600_000, // 1 hour default
 ): Passport {
   const payload: PassportPayload = {
     agent_id: agent.id,
+    user_id: userId,
+    issuer,
     name: agent.name,
     category: agent.category ?? null,
     trust_score: agent.trust_score,

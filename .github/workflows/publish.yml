@@ -24,9 +24,16 @@ permissions:
 
 jobs:
   # ==========================================================================
+  # Gate: CI must pass before any publish
+  # ==========================================================================
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  # ==========================================================================
   # Docker → ghcr.io/zanfiel/engram
   # ==========================================================================
   docker:
+    needs: ci
     if: >-
       github.event_name == 'push' ||
       (github.event_name == 'workflow_dispatch' && inputs.publish_docker)
@@ -65,6 +72,7 @@ jobs:
   # npm → npm.pkg.github.com/@zanfiel/engram
   # ==========================================================================
   npm:
+    needs: ci
     if: >-
       github.event_name == 'push' ||
       (github.event_name == 'workflow_dispatch' && inputs.publish_npm)

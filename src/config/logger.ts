@@ -1,5 +1,5 @@
 // ============================================================================
-// LOGGER — Structured JSON logging
+// LOGGER — Structured JSON logging + operational counters
 // ============================================================================
 
 import { LOG_LEVEL } from "../config/index.ts";
@@ -14,4 +14,16 @@ export const log = {
   info: (...args: any[]) => { if (LOG_LEVEL <= 1) console.log(JSON.stringify({ level: "info", ts: new Date().toISOString(), ...logPayload(args) })); },
   warn: (...args: any[]) => { if (LOG_LEVEL <= 2) console.warn(JSON.stringify({ level: "warn", ts: new Date().toISOString(), ...logPayload(args) })); },
   error: (...args: any[]) => { if (LOG_LEVEL <= 3) console.error(JSON.stringify({ level: "error", ts: new Date().toISOString(), ...logPayload(args) })); },
+};
+
+// ── Operational counters for silent-failure tracking ─────────────────
+// Exposed via /health and /metrics for operator visibility.
+export const opsCounters = {
+  vec_write_failures: 0,
+  embed_failures: 0,
+  extraction_failures: 0,
+  reset_delete_warnings: 0,
+  fts_rebuild_failures: 0,
+  structured_fact_failures: 0,
+  reranker_fallbacks: 0,
 };
