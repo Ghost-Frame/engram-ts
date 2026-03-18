@@ -2851,9 +2851,9 @@ Return JSON:
         if (!digest) return errorResponse("Digest not found", 404);
 
         const payload = await buildDigestPayload(digest, auth.user_id);
-        await sendDigestWebhook(digest, payload);
+        const sent = await sendDigestWebhook(digest, payload);
 
-        return json({ sent: true, digest_id: digestId, payload });
+        return json({ sent, digest_id: digestId, payload });
       } catch (e: any) {
         return safeError("Digest send", e);
       }

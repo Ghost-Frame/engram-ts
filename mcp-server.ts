@@ -2,7 +2,9 @@
 /**
  * Engram MCP Server â€” exposes Engram memory tools to OpenCode
  *
- * Tools: memory_store, memory_recall, memory_list, memory_delete, memory_context
+ * Tools (12): memory_store, memory_recall, memory_context, memory_list, memory_delete,
+ *   memory_guard, memory_inbox, memory_search_preset, memory_entities,
+ *   memory_projects, memory_episodes, memory_scratch
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";

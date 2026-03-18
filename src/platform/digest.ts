@@ -76,7 +76,7 @@ export async function buildDigestPayload(digest: any, userId: number): Promise<a
   return payload;
 }
 
-export async function sendDigestWebhook(digest: any, payload: any): Promise<void> {
+export async function sendDigestWebhook(digest: any, payload: any): Promise<boolean> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (digest.webhook_secret) {
     const encoder = new TextEncoder();
@@ -105,14 +105,17 @@ export async function sendDigestWebhook(digest: any, payload: any): Promise<void
       db.prepare("UPDATE digests SET last_sent_at = datetime('now'), failure_count = 0, next_send_at = ? WHERE id = ?").run(
         calculateNextSend(digest.schedule), digest.id
       );
+      return true;
     } else {
       // On failure: retry sooner (5 min), increment failure count, don't advance schedule
       db.prepare("UPDATE digests SET failure_count = COALESCE(failure_count, 0) + 1, next_send_at = datetime('now', '+5 minutes') WHERE id = ?").run(digest.id);
       log.error({ msg: "digest_webhook_error", digest_id: digest.id, status: resp.status });
+      return false;
     }
   } catch (e: any) {
     db.prepare("UPDATE digests SET failure_count = COALESCE(failure_count, 0) + 1, next_send_at = datetime('now', '+5 minutes') WHERE id = ?").run(digest.id);
     log.error({ msg: "digest_webhook_failed", digest_id: digest.id, error: e.message });
+    return false;
   }
 }
 
@@ -145,8 +148,8 @@ export async function processScheduledDigests(): Promise<number> {
 
     try {
       const payload = await buildDigestPayload(digest, digest.user_id);
-      await sendDigestWebhook(digest, payload);
-      sent++;
+      const ok = await sendDigestWebhook(digest, payload);
+      if (ok) sent++;
     } catch (e: any) {
       log.error({ msg: "digest_processing_failed", digest_id: digest.id, error: e.message });
     }
