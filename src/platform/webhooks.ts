@@ -16,6 +16,25 @@ const webhookTriggered = db.prepare(
 const webhookFailed = db.prepare(
   "UPDATE webhooks SET failure_count = failure_count + 1 WHERE id = ?"
 );
+const WEBHOOK_FAILURE_THRESHOLD = 10;
+const webhookDisable = db.prepare(
+  "UPDATE webhooks SET active = 0 WHERE id = ?"
+);
+function recordWebhookFailure(hookId: number): void {
+  webhookFailed.run(hookId);
+  const row = db.prepare("SELECT failure_count FROM webhooks WHERE id = ?").get(hookId) as { failure_count: number } | undefined;
+  if (row && row.failure_count >= WEBHOOK_FAILURE_THRESHOLD) {
+    webhookDisable.run(hookId);
+    log.warn({ msg: "webhook_auto_disabled", webhook_id: hookId, failures: row.failure_count });
+  }
+}
+
+
+// In-flight promise tracking for clean shutdown
+const _inFlight = new Set<Promise<void>>();
+export function drainWebhooks(): Promise<void[]> {
+  return Promise.all([..._inFlight]);
+}
 
 export async function emitWebhookEvent(
   event: string,
@@ -35,7 +54,7 @@ export async function emitWebhookEvent(
       const urlError = await validatePublicUrlWithDNS(hook.url, "Webhook URL");
       if (urlError) {
         log.error({ msg: "webhook_ssrf_blocked", webhook_id: hook.id, error: urlError });
-        webhookFailed.run(hook.id);
+        recordWebhookFailure(hook.id);
         continue;
       }
 
@@ -46,12 +65,14 @@ export async function emitWebhookEvent(
         headers["X-Engram-Signature"] = `sha256=${hmac}`;
       }
 
-      fetch(hook.url, { method: "POST", headers, body, signal: AbortSignal.timeout(10000) })
+      const delivery = fetch(hook.url, { method: "POST", headers, body, signal: AbortSignal.timeout(10000), redirect: "error" })
         .then(resp => {
           if (resp.ok) { webhookTriggered.run(hook.id); }
-          else { webhookFailed.run(hook.id); }
+          else { recordWebhookFailure(hook.id); }
         })
-        .catch(() => { webhookFailed.run(hook.id); });
+        .catch(() => { recordWebhookFailure(hook.id); })
+        .finally(() => { _inFlight.delete(delivery); }) as Promise<void>;
+      _inFlight.add(delivery);
     } catch {}
   }
 }

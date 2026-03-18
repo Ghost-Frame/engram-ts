@@ -102,9 +102,9 @@ function ensureSimHashColumn(): boolean {
   }
 }
 
-let findBySimHash: ReturnType<typeof db.prepare> | null = null;
-let updateSimHash: ReturnType<typeof db.prepare> | null = null;
-let boostSourceCount: ReturnType<typeof db.prepare> | null = null;
+let findBySimHash: ReturnType<typeof db.prepare<any[]>> | null = null;
+let updateSimHash: ReturnType<typeof db.prepare<any[]>> | null = null;
+let boostSourceCount: ReturnType<typeof db.prepare<any[]>> | null = null;
 
 function getStatements() {
   if (!findBySimHash) {
