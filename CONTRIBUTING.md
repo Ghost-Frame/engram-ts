@@ -84,14 +84,15 @@ landing.html       marketing landing page
 API tests use Node.js built-in test runner. Start the server, then:
 
 ```bash
-# Run against localhost:4200 (default)
-node --test tests/api.test.mjs
+# Run against a locally running Engram (server defaults to port 4200)
+ENGRAM_URL=http://localhost:4200 node --test tests/api.test.mjs
 
-# Or specify a different URL
-ENGRAM_URL=http://localhost:4201 node --test tests/api.test.mjs
+# Or use ENGRAM_OPEN_ACCESS=1 to skip auth headers
+ENGRAM_OPEN_ACCESS=1 node --experimental-strip-types server-split.ts &
+ENGRAM_URL=http://localhost:4200 node --test tests/api.test.mjs
 ```
 
-33 tests across 14 suites covering core API, multi-tenant isolation, CRUD, FSRS, and more.
+40 tests across 15 suites covering core API, multi-tenant isolation, CRUD, FSRS, and more.
 
 We always need more coverage:
 - [ ] Benchmark suite for search latency vs competitors
@@ -112,7 +113,6 @@ We always need more coverage:
 - **SDKs**: `@engram/sdk` (TypeScript) and `engram-sdk` (Python) -- not yet built
 - **CLI**: Standalone command-line client
 - **Metrics endpoint**: `/metrics` for request counts, latency, background job stats
-- **Route splitting**: Break `src/routes/index.ts` into domain routers (auth, memory, conversations, admin, platform)
 
 ## Areas Where Help Is Needed (shipped features that need improvement)
 

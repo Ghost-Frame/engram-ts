@@ -1,4 +1,4 @@
-name: CI
+﻿name: CI
 
 on:
   push:
@@ -25,17 +25,18 @@ jobs:
       - name: Start server
         run: |
           ENGRAM_OPEN_ACCESS=1 node --experimental-strip-types server-split.ts &
-          sleep 5
+          timeout 30 bash -c 'until curl -sf http://127.0.0.1:4200/live > /dev/null 2>&1; do sleep 1; done'
 
       - name: Contract tests
+        env:
+          ENGRAM_URL: http://127.0.0.1:4200
         run: node --test tests/api.test.mjs
 
       - name: SDK import test
         run: node --experimental-strip-types -e "import { Engram } from './sdk/index.ts'; const e = new Engram(); console.log('SDK imports OK');"
 
       - name: MCP server parse test
-        run: node --experimental-strip-types -e "import './mcp-server.ts'" --input-type=module || true
-
+        run: node --experimental-strip-types -e "import './mcp-server.ts'" --input-type=module
       - name: Health check
         run: |
           curl -sf http://localhost:4200/live | grep -q '"ok"'

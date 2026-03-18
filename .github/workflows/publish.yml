@@ -86,6 +86,8 @@ jobs:
           registry-url: "https://npm.pkg.github.com"
           scope: "@zanfiel"
 
+      - run: npm install
+
       - name: Publish to GitHub Packages
         run: npm publish
         env:

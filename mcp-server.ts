@@ -1,6 +1,6 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env -S node --experimental-strip-types
 /**
- * Engram MCP Server — exposes Engram memory tools to OpenCode
+ * Engram MCP Server â€” exposes Engram memory tools to OpenCode
  *
  * Tools: memory_store, memory_recall, memory_list, memory_delete, memory_context
  */
@@ -28,7 +28,7 @@ async function engram(path: string, method = "GET", body?: unknown) {
     body: body !== undefined ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(8000),
   });
-  if (!res.ok) throw new Error(`Engram ${method} ${path} → ${res.status} ${await res.text()}`);
+  if (!res.ok) throw new Error(`Engram ${method} ${path} â†’ ${res.status} ${await res.text()}`);
   return res.json() as Promise<any>;
 }
 
@@ -37,7 +37,7 @@ const server = new Server(
   { capabilities: { tools: {} } },
 );
 
-// ── Tool Definitions (signed for integrity binding) ─────────────────
+// â”€â”€ Tool Definitions (signed for integrity binding) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const TOOLS: ToolDefinition[] = [
   {
@@ -72,7 +72,7 @@ const TOOLS: ToolDefinition[] = [
   },
   {
     name: "memory_context",
-    description: "Get a budget-aware context blob from Engram — relevance-ranked memories ready to inject into the conversation.",
+    description: "Get a budget-aware context blob from Engram â€” relevance-ranked memories ready to inject into the conversation.",
     inputSchema: {
       type: "object",
       properties: {
@@ -197,7 +197,7 @@ const TOOLS: ToolDefinition[] = [
   },
 ];
 
-// Sign the tool manifest at startup — clients can verify tools haven't been poisoned
+// Sign the tool manifest at startup â€” clients can verify tools haven't been poisoned
 const toolManifest: SignedToolManifest | null = ENGRAM_SIGNING_SECRET
   ? signToolManifest(ENGRAM_SIGNING_SECRET, TOOLS)
   : null;

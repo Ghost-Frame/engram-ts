@@ -740,14 +740,14 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
             try {
               const placeholders = importedIds.map(() => "?").join(",");
               const rows = db.prepare(
-                `SELECT id, content FROM memories WHERE id IN (${placeholders}) AND embedding IS NULL`
+                `SELECT id, content, category, importance, is_static, source_count FROM memories WHERE id IN (${placeholders}) AND embedding IS NULL`
               ).all(...importedIds) as Array<{ id: number; content: string }>;
               for (const mem of rows) {
                 try {
                   const emb = await embed(mem.content);
                   updateMemoryEmbedding.run(embeddingToBuffer(emb), mem.id);
                   writeVec(mem.id, emb);
-                  addToEmbeddingCache({ id: mem.id, user_id: auth.user_id, content: mem.content, category: "general", importance: 5, embedding: emb, is_static: false, source_count: 1, is_latest: true, is_forgotten: false } as any);
+                  addToEmbeddingCache({ id: mem.id, user_id: auth.user_id, content: mem.content, category: (mem as any).category ?? "general", importance: (mem as any).importance ?? 5, embedding: emb, is_static: !!((mem as any).is_static), source_count: (mem as any).source_count ?? 1, is_latest: true, is_forgotten: false } as any);
                 } catch {}
               }
               invalidateEmbeddingCache();

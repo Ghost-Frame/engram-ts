@@ -1,5 +1,6 @@
+﻿#!/usr/bin/env -S node --experimental-strip-types
 // ============================================================================
-// ENGRAM SERVER — Modular entry point
+// ENGRAM SERVER â€” Modular entry point
 // Run: node --experimental-strip-types server-split.ts
 // ============================================================================
 
@@ -67,7 +68,7 @@ await initReranker();
 }
 
 // ============================================================================
-// JOB HANDLERS — Durable processing for post-store pipeline
+// JOB HANDLERS â€” Durable processing for post-store pipeline
 // ============================================================================
 
 registerJobHandler("post_store", async (payload) => {
@@ -263,7 +264,7 @@ setInterval(withLease("forget_sweep", () => {
   if (swept > 0) log.info({ msg: "auto_forget_sweep", swept });
 }, 600), FORGET_SWEEP_INTERVAL);
 
-// Scratchpad TTL sweep — summarize expired sessions before purging (lease-protected)
+// Scratchpad TTL sweep â€” summarize expired sessions before purging (lease-protected)
 setInterval(withLease("scratchpad_ttl", async () => {
   try {
     // Fetch all expired entries before deleting them
@@ -285,7 +286,7 @@ setInterval(withLease("scratchpad_ttl", async () => {
 
     let summarized = 0;
     for (const [_key, rows] of sessions) {
-      // Only summarize multi-entry sessions — single entries aren't worth an LLM call
+      // Only summarize multi-entry sessions â€” single entries aren't worth an LLM call
       if (rows.length >= 2 && isLLMAvailable()) {
         const userId = rows[0].user_id;
         const session = rows[0].session;
@@ -382,7 +383,7 @@ purgeExpiredScratchpad();
   }
 }
 
-// Digest scheduler — check every 5 minutes for due digests (lease-protected)
+// Digest scheduler â€” check every 5 minutes for due digests (lease-protected)
 setInterval(withLease("digest_scheduler", async () => {
   try {
     const sent = await processScheduledDigests();
@@ -392,7 +393,7 @@ setInterval(withLease("digest_scheduler", async () => {
   }
 }, 600), 5 * 60 * 1000);
 
-// Job worker loop — process durable queue every 2 seconds
+// Job worker loop â€” process durable queue every 2 seconds
 setInterval(async () => {
   try {
     const processed = await drainJobs(10);
@@ -402,7 +403,7 @@ setInterval(async () => {
   }
 }, 2000);
 
-// Job cleanup — purge completed jobs older than 1 day (every hour)
+// Job cleanup â€” purge completed jobs older than 1 day (every hour)
 setInterval(withLease("job_cleanup", () => {
   const cleaned = cleanupCompletedJobs();
   const recovered = recoverStuckJobs();

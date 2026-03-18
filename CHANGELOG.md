@@ -5,6 +5,15 @@ All notable changes to Engram will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.2] - 2026-03-18
+
+### Fixed
+- CI contract tests now connect to correct server port (server starts on 4200, tests defaulted to 4201)
+- CI server readiness: replaced fixed `sleep 5` with polling `/live` endpoint (up to 30s), fixing flaky test failures when ONNX model load takes longer than expected
+- pixi.js graph visualization: added `@pixi/unsafe-eval` polyfill to fix "does not allow unsafe-eval" error in restrictive browser environments
+- Webhook delivery: fire-and-forget promises now tracked in `_inFlight` set; `drainWebhooks()` called during graceful shutdown to prevent dropping in-flight deliveries
+- Webhook auto-disable: failures now correctly route through `recordWebhookFailure()` for threshold counting and structured logging
+
 ## [5.8.1] - 2026-03-18
 
 ### Security
