@@ -4085,7 +4085,7 @@ Return JSON:
       const mem = getMemoryWithoutEmbedding.get(id) as any;
       if (!mem) return errorResponse("Not found", 404);
       if (mem.user_id !== auth.user_id && !auth.is_admin) return errorResponse("Forbidden", 403);
-      deleteMemory.run(id);
+      deleteMemory(id);
       audit(auth.user_id, "memory.delete", "memory", id, null, clientIp, requestId);
       invalidateEmbeddingCache();
       return json({ deleted: true, id });
@@ -4453,7 +4453,7 @@ Return JSON:
     if (url.pathname.match(/^\/gui\/memories\/\d+$/) && method === "DELETE") {
       if (!guiAuthed(req)) return errorResponse("GUI auth required", 401);
       const id = Number(url.pathname.split("/")[3]);
-      deleteMemory.run(id);
+      deleteMemory(id);
       audit(null, "gui.delete", "memory", id, null, clientIp, requestId);
       return json({ deleted: true, id });
     }

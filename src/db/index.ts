@@ -760,7 +760,13 @@ export const listByCategory = db.prepare(
    FROM memories WHERE category = ? AND is_forgotten = 0 AND is_archived = 0 AND status != 'pending' AND user_id = ? ORDER BY created_at DESC LIMIT ?`
 );
 
-export const deleteMemory = db.prepare(`DELETE FROM memories WHERE id = ?`);
+const nullifyParentRefs = db.prepare(`UPDATE memories SET parent_memory_id = NULL WHERE parent_memory_id = ?`);
+const nullifyRootRefs = db.prepare(`UPDATE memories SET root_memory_id = NULL WHERE root_memory_id = ?`);
+export const deleteMemory = db.transaction((id: number) => {
+  nullifyParentRefs.run(id);
+  nullifyRootRefs.run(id);
+  db.prepare(`DELETE FROM memories WHERE id = ?`).run(id);
+});
 export const getMemory = db.prepare(`SELECT * FROM memories WHERE id = ?`);
 
 export const getMemoryWithoutEmbedding = db.prepare(
