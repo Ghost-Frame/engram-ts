@@ -162,7 +162,23 @@ Extracts six signal types from memories: preference, value, motivation, decision
 
 **Schema Versioning** - `schema_versions` table tracks applied migrations. Startup blocks on critical migration failure.
 
-#### v5.8.2 - CI Reliability, Graph Visualization Fix
+#### v5.8.2 - Blended Retrieval, Memory Health, Feedback Loop
+
+**Blended Multi-Strategy Retrieval** - `classifyQuestionMixed` detects mixed-intent queries and blends multiple question types (temporal, fact_recall, reasoning, generalization, preference) with normalized weights. `blendStrategies` produces a weighted combination of SearchStrategy configs -- vector weights, FTS weights, relationship expansion -- so a single query like "what did I decide last week about the API?" gets both temporal proximity boost and fact recall precision.
+
+**Memory Health Endpoint** - `GET /memory-health` returns four diagnostic categories: `stale` (high-importance memories not accessed recently), `duplicates` (pairs above 0.94 cosine similarity), `high_value_unlinked` (importance >= 7 with no graph links), and `contradiction_hints` (memories containing temporal-contradiction language like "no longer", "changed to", "used to").
+
+**Retrieval Feedback** - `POST /feedback` accepts signals (`used`, `ignored`, `corrected`, `irrelevant`, `helpful`) for individual memories or batch via `items[]` array. Auto-adjusts importance: `helpful` +0.5, `irrelevant` -0.3. `GET /feedback/stats` returns signal breakdown, estimated precision, top irrelevant/helpful memories, and agent-level analytics. Accepts `days` parameter for time windowing.
+
+**Search Explainability** - Search results include per-channel score breakdowns (vector, FTS, graph, personality, reranker, decay) via `_channels` annotations. Enables debugging retrieval quality without guesswork.
+
+**Freshness-Weighted Structured Facts** - Facts from the `structured_facts` table are sorted by freshness using linear decay over 365 days. Facts with `valid_at` older than 90 days are tagged `[possibly outdated]` in context output. Ensures recent facts surface first while preserving historical context.
+
+**Contradiction Ranking Penalty** - Non-latest-version memories containing temporal-contradiction keywords ("no longer", "changed to", "used to", "but now", "previously", "was replaced", "switched from") receive a 0.65x score penalty in search ranking. Latest versions are unaffected, ensuring superseding memories rank higher.
+
+**Unified Context Dedup** - Replaced three redundant O(N) cosine dedup scans (semantic, linked, recent phases) with a single `isDuplicateOfExisting()` helper. Default threshold 0.88, overridable via `dedup_threshold` parameter.
+
+**Per-Phase Context Timing** - Context endpoint now reports granular timing: `embed_ms`, `static_ms`, `search_ms`, `rerank_ms`, `semantic_ms`, `evolution_ms`, `episodes_ms`, `linked_ms`, `recent_ms`, `inference_ms`, `assembly_ms`, `total_ms`. Replaces the old `remaining_ms` catch-all.
 
 **CI Fixes** - Contract tests now connect to the correct server port. Server readiness polling replaces fixed sleep, eliminating flaky failures during ONNX model load.
 
@@ -480,6 +496,9 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 | `GET` | `/preferences` | Get stored user preferences |
 | `GET` | `/state` | Get current user state |
 | `POST` | `/profile/synthesize` | Synthesize personality profile from signals |
+| `GET` | `/memory-health` | Diagnostic report: stale, duplicates, unlinked, contradiction hints |
+| `POST` | `/feedback` | Submit retrieval feedback (used/ignored/corrected/irrelevant/helpful) |
+| `GET` | `/feedback/stats` | Feedback analytics: signal breakdown, precision estimate, top memories |
 
 ### Graph & Communities
 

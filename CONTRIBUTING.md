@@ -107,12 +107,23 @@ We always need more coverage:
 4. Update CHANGELOG.md under `[Unreleased]`
 5. Submit a PR with a clear description of what changed and why
 
+## Recent API Additions (v5.8.2)
+
+These endpoints were added in v5.8.2 and may benefit from additional test coverage or documentation:
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /memory-health` | Diagnostic report: stale memories, near-duplicates, high-value unlinked, contradiction hints |
+| `POST /feedback` | Retrieval quality feedback (signals: used, ignored, corrected, irrelevant, helpful). Batch via `items[]` |
+| `GET /feedback/stats` | Feedback analytics with signal breakdown, estimated precision, top memories by signal |
+
+The search pipeline also gained blended multi-strategy retrieval (`classifyQuestionMixed` in `src/memory/search.ts`), per-channel score explainability, freshness-weighted structured facts, and a contradiction ranking penalty for superseded memories.
+
 ## Roadmap (Not Yet Shipped)
 
-- **OpenAPI Spec**: Generate from route definitions, serve Swagger UI at `/docs`
-- **SDKs**: `@engram/sdk` (TypeScript) and `engram-sdk` (Python) -- not yet built
+- **OpenAPI Spec**: Exists in `sdk/` but not yet served at `/docs` via Swagger UI
 - **CLI**: Standalone command-line client
-- **Metrics endpoint**: `/metrics` for request counts, latency, background job stats
+- **Metrics endpoint**: `/metrics` for request counts, latency, background job stats (partial coverage via `/memory-health` and per-phase timing in `/context`)
 
 ## Areas Where Help Is Needed (shipped features that need improvement)
 
@@ -120,6 +131,8 @@ We always need more coverage:
 - **Encryption at rest**: SQLCipher integration or envelope encryption
 - **Scale tests**: Concurrency, long-running background work, 10k+ memory datasets
 - **Agent trust docs**: The passport/signing system needs dedicated documentation and threat model
+- **Feedback loop tuning**: The `/feedback` importance adjustments (+0.5 helpful, -0.3 irrelevant) need real-world validation
+- **Memory health thresholds**: Duplicate threshold (0.94), staleness window, and unlinked importance cutoff (7) may need tuning per deployment
 
 ## License
 
