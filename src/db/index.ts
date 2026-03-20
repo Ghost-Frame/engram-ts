@@ -531,6 +531,8 @@ migrate(`
     CREATE INDEX IF NOT EXISTS idx_reflections_period ON reflections(period_end DESC);
   `);
 
+migrate("ALTER TABLE digests ADD COLUMN failure_count INTEGER NOT NULL DEFAULT 0");
+
 
 // ============================================================================
 // SCHEMA v4 — Multi-tenant: users, API keys, spaces
@@ -725,7 +727,7 @@ export function writeVec(memoryId: number, embArray: Float32Array | null): void 
 }
 
 export const getAllEmbeddings = db.prepare(
-  `SELECT id, user_id, content, category, importance, embedding, is_latest, is_forgotten, is_static, source_count
+  `SELECT id, user_id, content, category, importance, embedding, is_latest, is_forgotten, is_static, source_count, source
    FROM memories WHERE embedding IS NOT NULL AND is_forgotten = 0`
 );
 
@@ -852,6 +854,54 @@ export const getVersionChainForUser = db.prepare(
    FROM memories WHERE (root_memory_id = ? OR id = ?) AND user_id = ?
    ORDER BY version ASC`
 );
+
+// Batch link queries to eliminate N+1 in search
+export function getLinksForUserBatch(
+  ids: number[], userId: number
+): Map<number, Array<{ from_id: number; id: number; similarity: number; type: string; content: string; category: string; importance: number; created_at: string; is_latest: number; is_forgotten: number; version: number; source_count: number; model: string | null; source: string | null }>> {
+  if (ids.length === 0) return new Map();
+  const ph = ids.map(() => "?").join(",");
+  const sql = `
+    SELECT ml.source_id as from_id, ml.target_id as id, ml.similarity, ml.type,
+      m.content, m.category, m.importance, m.created_at,
+      m.is_latest, m.is_forgotten, m.version, m.source_count, m.model, m.source
+    FROM memory_links ml JOIN memories m ON ml.target_id = m.id
+    WHERE ml.source_id IN (${ph}) AND m.user_id = ?
+    UNION ALL
+    SELECT ml.target_id as from_id, ml.source_id as id, ml.similarity, ml.type,
+      m.content, m.category, m.importance, m.created_at,
+      m.is_latest, m.is_forgotten, m.version, m.source_count, m.model, m.source
+    FROM memory_links ml JOIN memories m ON ml.source_id = m.id
+    WHERE ml.target_id IN (${ph}) AND m.user_id = ?
+    ORDER BY similarity DESC`;
+  const rows = db.prepare(sql).all(...ids, userId, ...ids, userId) as any[];
+  const result = new Map<number, Array<any>>();
+  for (const row of rows) {
+    if (!result.has(row.from_id)) result.set(row.from_id, []);
+    result.get(row.from_id)!.push(row);
+  }
+  return result;
+}
+
+export function getVersionChainBatch(
+  rootIds: number[], userId: number
+): Map<number, Array<{ id: number; content: string; category: string; version: number; is_latest: number; created_at: string; source_count: number }>> {
+  if (rootIds.length === 0) return new Map();
+  const unique = [...new Set(rootIds)];
+  const ph = unique.map(() => "?").join(",");
+  const sql = `
+    SELECT root_memory_id, id, content, category, version, is_latest, created_at, source_count
+    FROM memories WHERE (root_memory_id IN (${ph}) OR id IN (${ph})) AND user_id = ?
+    ORDER BY version ASC`;
+  const rows = db.prepare(sql).all(...unique, ...unique, userId) as any[];
+  const result = new Map<number, Array<any>>();
+  for (const row of rows) {
+    const key = row.root_memory_id || row.id;
+    if (!result.has(key)) result.set(key, []);
+    result.get(key)!.push(row);
+  }
+  return result;
+}
 
 export const countNoEmbedding = db.prepare(
   `SELECT COUNT(*) as count FROM memories WHERE embedding IS NULL`

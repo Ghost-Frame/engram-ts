@@ -240,6 +240,108 @@ Rules:
 - For structured_facts: decompose into atomic WHAT/WHEN/WHERE/WHO/WHY dimensions. WHO = subject, WHAT = verb+object, WHEN = date_ref/date_approx, WHERE = location, WHY = context. Include as many dimensions as the content provides.
 - Include "preferences", "state_updates" if applicable`;
 
+// ============================================================================
+// ROBUST JSON PARSING -- repair common LLM output issues
+// ============================================================================
+
+export function repairAndParseJSON(raw: string): unknown | null {
+  let str = raw.trim();
+
+  // 1. Extract JSON body: find first { or [, find last matching } or ]
+  const firstBrace = str.indexOf("{");
+  const firstBracket = str.indexOf("[");
+  let start = -1;
+  let openChar: string;
+  let closeChar: string;
+  if (firstBrace === -1 && firstBracket === -1) return null;
+  if (firstBracket === -1 || (firstBrace !== -1 && firstBrace < firstBracket)) {
+    start = firstBrace; openChar = "{"; closeChar = "}";
+  } else {
+    start = firstBracket; openChar = "["; closeChar = "]";
+  }
+  const lastClose = str.lastIndexOf(closeChar);
+  if (lastClose > start) {
+    str = str.substring(start, lastClose + 1);
+  } else {
+    str = str.substring(start);
+  }
+
+  // 2. Strip markdown fences that survived extraction
+  str = str.replace(/```(?:json)?\s*/g, "").replace(/\s*```/g, "");
+
+  // 3. Fix trailing commas: ,} or ,]
+  str = str.replace(/,\s*([}\]])/g, "$1");
+
+  // 4. Try parse
+  try { return JSON.parse(str); } catch (e1: any) {
+    // 5. Fix unterminated strings + unbalanced braces
+    if (e1.message?.includes("Unterminated") || e1.message?.includes("Expected")) {
+      // Find last unmatched quote and close it
+      let inStr = false;
+      let lastQuoteIdx = -1;
+      for (let i = 0; i < str.length; i++) {
+        if (str[i] === '"' && (i === 0 || str[i - 1] !== '\\')) {
+          inStr = !inStr;
+          if (inStr) lastQuoteIdx = i;
+        }
+      }
+      if (inStr && lastQuoteIdx >= 0) {
+        str = str + '"';
+      }
+
+      // Balance braces/brackets
+      let braces = 0, brackets = 0;
+      let inString = false;
+      for (let i = 0; i < str.length; i++) {
+        if (str[i] === '"' && (i === 0 || str[i - 1] !== '\\')) { inString = !inString; continue; }
+        if (inString) continue;
+        if (str[i] === '{') braces++;
+        else if (str[i] === '}') braces--;
+        else if (str[i] === '[') brackets++;
+        else if (str[i] === ']') brackets--;
+      }
+      while (brackets > 0) { str += "]"; brackets--; }
+      while (braces > 0) { str += "}"; braces--; }
+
+      // Fix trailing commas again after repair
+      str = str.replace(/,\s*([}\]])/g, "$1");
+
+      // 6. Try parse again
+      try {
+        const result = JSON.parse(str);
+        log.debug({ msg: "json_repaired", original_length: raw.length, repaired_length: str.length });
+        return result;
+      } catch { /* fall through */ }
+    }
+
+    // 7. Return null
+    return null;
+  }
+}
+
+async function callLLMAndParse<T>(
+  systemPrompt: string,
+  userPrompt: string,
+  validator: (result: unknown) => result is T
+): Promise<T | null> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await callLLM(systemPrompt, userPrompt);
+      const parsed = repairAndParseJSON(response);
+      if (parsed !== null && validator(parsed)) return parsed;
+      if (attempt === 0) {
+        log.info({ msg: "json_parse_retry", attempt: 1, had_result: parsed !== null });
+      }
+    } catch (e: any) {
+      if (attempt === 0) {
+        log.info({ msg: "json_parse_retry", attempt: 1, error: e.message });
+      }
+    }
+  }
+  log.error({ msg: "json_parse_exhausted", prompt_length: userPrompt.length });
+  return null;
+}
+
 export async function extractFacts(
   content: string,
   category: string,
@@ -255,12 +357,11 @@ export async function extractFacts(
     } else {
       userPrompt += "SIMILAR EXISTING MEMORIES: none found\n";
     }
-    const response = await callLLM(FACT_EXTRACTION_PROMPT, userPrompt);
-    let jsonStr = response.trim();
-    if (jsonStr.startsWith("```")) {
-      jsonStr = jsonStr.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
-    }
-    return JSON.parse(jsonStr) as FactExtractionResult;
+    const result = await callLLMAndParse<FactExtractionResult>(
+      FACT_EXTRACTION_PROMPT, userPrompt,
+      (r): r is FactExtractionResult => !!r && Array.isArray((r as any).facts)
+    );
+    return result;
   } catch (e: any) {
     log.error({ msg: "fact_extraction_failed", error: e.message });
     return null;

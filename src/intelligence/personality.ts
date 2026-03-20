@@ -2,7 +2,7 @@
 // PERSONALITY ENGINE — extraction, synthesis, caching
 // ============================================================================
 
-import { callLLM, isLLMAvailable } from "../llm/index.ts";
+import { callLLM, isLLMAvailable, repairAndParseJSON } from "../llm/index.ts";
 import { log } from "../config/logger.ts";
 import {
   db,
@@ -91,14 +91,7 @@ export async function extractPersonalitySignals(
 
   try {
     const response = await callLLM(EXTRACTION_SYSTEM_PROMPT, content);
-    let jsonStr = response.trim();
-
-    // Strip markdown fences if present
-    if (jsonStr.startsWith("```")) {
-      jsonStr = jsonStr.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
-    }
-
-    const signals = JSON.parse(jsonStr) as PersonalitySignal[];
+    const signals = repairAndParseJSON(response) as PersonalitySignal[] | null;
 
     if (!Array.isArray(signals)) {
       log.warn({ msg: "personality_extraction_not_array", memoryId });

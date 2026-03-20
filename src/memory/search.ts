@@ -13,7 +13,7 @@ import {
   SEARCH_GENERALIZATION_VECTOR_FLOOR,
   SEARCH_PERSONALITY_MIN_SCORE,
 } from "../config/index.ts";
-import { db, searchMemoriesFTS, getMemoryWithoutEmbedding, getVersionChainForUser, getLinksForUser, insertLink } from "../db/index.ts";
+import { db, searchMemoriesFTS, getMemoryWithoutEmbedding, getVersionChainForUser, getLinksForUser, getLinksForUserBatch, getVersionChainBatch, insertLink } from "../db/index.ts";
 import { embed, cosineSimilarity, getCachedEmbeddings, embeddingToVectorJSON } from "../embeddings/index.ts";
 import { calculateDecayScore } from "../fsrs/index.ts";
 import { sanitizeFTS } from "../helpers/index.ts";
@@ -538,6 +538,7 @@ export async function hybridSearch(
   userId: number = 1,
   vectorFloorOrOptions: number | HybridSearchOptions = DEFAULT_VECTOR_FLOOR,
   precomputedEmbedding?: Float32Array | null,
+  sourceFilter?: string,
 ): Promise<SearchResult[]> {
   const _t0 = performance.now();
   const results = new Map<number, SearchResult>();
@@ -554,74 +555,38 @@ export async function hybridSearch(
   const personalityRanked: Array<{ id: number; rawScore: number }> = [];
   const graphRanked: Array<{ id: number; rawScore: number }> = [];
 
-  // 1. Vector search - libsql vector index (primary) with in-memory fallback
+  // 1. Vector search - in-memory cosine scan with event-loop yields
+  // NOTE: vector_top_k SQLite index disabled - it does a synchronous full-table scan
+  // that blocks the event loop for 60-120s on large databases. The in-memory scan
+  // uses getCachedEmbeddings() (all embeddings pre-loaded at startup) and yields
+  // every 500 comparisons via setImmediate, completing in <10ms for typical DB sizes.
   try {
     const queryEmb = precomputedEmbedding || await embed(query);
-    let usedIndex = false;
 
-    // Primary: libsql vector_top_k index scan (disk-backed, scales to millions)
-    try {
-      const vecJson = embeddingToVectorJSON(queryEmb);
-      const vecResults = db.prepare(
-        `SELECT m.id, m.content, m.category, m.importance, m.is_static, m.source_count,
-                vector_distance_cos(m.embedding_vec_1024, vector(?)) as distance
-         FROM vector_top_k('memories_vec_1024_idx', vector(?), ?) AS v
-         JOIN memories m ON m.rowid = v.id
-         WHERE m.is_forgotten = 0 AND m.user_id = ?
-           ${latestOnly ? "AND m.is_latest = 1" : ""}`
-      ).all(vecJson, vecJson, candidateTarget, userId) as Array<{
-        id: number; content: string; category: string; importance: number;
-        is_static: number; source_count: number; distance: number;
-      }>;
-
-      for (const r of vecResults) {
-        const sim = 1 - r.distance; // cosine distance -> similarity
-        if (sim > strategy.vectorFloor) {
-          vectorRanked.push({ id: r.id, rawScore: sim });
-          if (!results.has(r.id)) {
-            results.set(r.id, {
-              id: r.id,
-              content: r.content,
-              category: r.category,
-              importance: r.importance,
-              created_at: "",
-              score: 0,
-              semantic_score: sim,
-              is_static: !!r.is_static,
-              source_count: r.source_count || 1,
-            });
-          }
+    const cached = getCachedEmbeddings(latestOnly, userId);
+    for (let i = 0; i < cached.length; i++) {
+      const mem = cached[i];
+      if (mem.user_id !== userId) continue;
+      if (sourceFilter && (!mem.source || !mem.source.includes(sourceFilter))) continue;
+      const sim = cosineSimilarity(queryEmb, mem.embedding);
+      if (sim > strategy.vectorFloor) {
+        vectorRanked.push({ id: mem.id, rawScore: sim });
+        if (!results.has(mem.id)) {
+          results.set(mem.id, {
+            id: mem.id,
+            content: mem.content,
+            category: mem.category,
+            importance: mem.importance,
+            created_at: "",
+            score: 0,
+            semantic_score: sim,
+            is_static: !!mem.is_static,
+            source_count: mem.source_count || 1,
+          });
         }
       }
-      usedIndex = true;
-    } catch (indexErr: any) {
-      // Index not available (empty, corrupt, or libsql version without vector support)
-      log.debug({ msg: "vector_index_fallback", reason: indexErr.message?.substring(0, 80) });
-    }
-
-    // Fallback: in-memory cosine scan (for when vector index is unavailable)
-    if (!usedIndex) {
-      const cached = getCachedEmbeddings(latestOnly, userId);
-      for (const mem of cached) {
-        if (mem.user_id !== userId) continue;
-        const sim = cosineSimilarity(queryEmb, mem.embedding);
-        if (sim > strategy.vectorFloor) {
-          vectorRanked.push({ id: mem.id, rawScore: sim });
-          if (!results.has(mem.id)) {
-            results.set(mem.id, {
-              id: mem.id,
-              content: mem.content,
-              category: mem.category,
-              importance: mem.importance,
-              created_at: "",
-              score: 0,
-              semantic_score: sim,
-              is_static: !!mem.is_static,
-              source_count: mem.source_count || 1,
-            });
-          }
-        }
-      }
+      // Yield event loop every 500 comparisons to keep HTTP server responsive
+      if (i > 0 && i % 500 === 0) await new Promise<void>(r => setImmediate(r));
     }
   } catch (e: any) {
     log.error({ msg: "vector_search_failed", error: e.message });
@@ -656,6 +621,7 @@ export async function hybridSearch(
 
       for (const r of ftsResults) {
         if (latestOnly && !r.is_latest) continue;
+        if (sourceFilter && (!r.source || !r.source.includes(sourceFilter))) continue;
         ftsRanked.push({ id: r.id, rawScore: Math.abs(r.fts_rank) });
         const existing = results.get(r.id);
         if (existing) {
@@ -845,29 +811,15 @@ export async function hybridSearch(
       .slice(0, strategy.relationshipSeedLimit)
       .map(([id]) => id);
 
+    // Batch hop-1: single query for all seed links
+    const hop1Links = getLinksForUserBatch(topIds, userId);
     const hop1Ids: number[] = [];
     for (const id of topIds) {
-      const links = getLinksForUser.all(id, userId, id, userId) as Array<{
-        id: number;
-        similarity: number;
-        type: string;
-        content: string;
-        category: string;
-        importance: number;
-        created_at: string;
-        is_latest: boolean;
-        is_forgotten: boolean;
-        version: number;
-        source_count: number;
-        model?: string | null;
-        source?: string;
-      }>;
-
+      const links = hop1Links.get(id) || [];
       let added = 0;
       for (const link of links) {
         if (added >= strategy.hop1Limit) break;
         if (link.is_forgotten) continue;
-        // Type-aware weighting: causal/update links score higher than similarity
         const typeWeight = link.type === "caused_by" || link.type === "causes"
           ? 2.0
           : link.type === "updates" || link.type === "corrects"
@@ -882,7 +834,7 @@ export async function hybridSearch(
             id: link.id,
             content: link.content,
             category: link.category,
-            source: link.source,
+            source: link.source || undefined,
             model: link.model || undefined,
             importance: link.importance,
             created_at: link.created_at,
@@ -898,35 +850,24 @@ export async function hybridSearch(
       }
     }
 
-    for (const id of hop1Ids.slice(0, strategy.hop2Limit)) {
-      const links2 = getLinksForUser.all(id, userId, id, userId) as Array<{
-        id: number;
-        similarity: number;
-        type: string;
-        content: string;
-        category: string;
-        importance: number;
-        created_at: string;
-        is_latest: boolean;
-        is_forgotten: boolean;
-        version: number;
-        source_count: number;
-        model?: string | null;
-        source?: string;
-      }>;
+    // Batch hop-2: single query for all hop-1 links
+    const hop2Ids = hop1Ids.slice(0, strategy.hop2Limit);
+    const hop2Links = getLinksForUserBatch(hop2Ids, userId);
+    for (const id of hop2Ids) {
+      const links2 = hop2Links.get(id) || [];
       for (const link of links2) {
         if (link.is_forgotten) continue;
         const typeWeight = link.type === "caused_by" || link.type === "causes" ? 2.0
           : link.type === "updates" || link.type === "corrects" ? 1.5
             : 1.0;
-        const graphScore = link.similarity * typeWeight * strategy.relationshipMultiplier * 0.5; // 2nd hop penalty
+        const graphScore = link.similarity * typeWeight * strategy.relationshipMultiplier * 0.5;
         graphRanked.push({ id: link.id, rawScore: graphScore });
         if (!results.has(link.id)) {
           results.set(link.id, {
             id: link.id,
             content: link.content,
             category: link.category,
-            source: link.source,
+            source: link.source || undefined,
             model: link.model || undefined,
             importance: link.importance,
             created_at: link.created_at,
@@ -991,23 +932,16 @@ export async function hybridSearch(
     }
   }
 
-  // 8. Include linked memories + version chain
+  // 8. Include linked memories + version chain (batched)
   if (includeLinks) {
+    const sortedIds = sorted.map(r => r.id);
+    const allLinks = getLinksForUserBatch(sortedIds, userId);
+    const rootIds = sorted.map(r => r.root_memory_id || r.id);
+    const allChains = getVersionChainBatch(rootIds, userId);
+
     for (const r of sorted) {
-      const links = getLinksForUser.all(r.id, userId, r.id, userId) as Array<{
-        id: number;
-        similarity: number;
-        type: string;
-        content: string;
-        category: string;
-        importance: number;
-        created_at: string;
-        is_latest: boolean;
-        is_forgotten: boolean;
-        version: number;
-        source_count: number;
-      }>;
-      if (links.length > 0) {
+      const links = allLinks.get(r.id);
+      if (links && links.length > 0) {
         r.linked = links
           .filter(l => !l.is_forgotten)
           .map(l => ({
@@ -1020,16 +954,8 @@ export async function hybridSearch(
       }
 
       const rootId = r.root_memory_id || r.id;
-      const chain = getVersionChainForUser.all(rootId, rootId, userId) as Array<{
-        id: number;
-        content: string;
-        category: string;
-        version: number;
-        is_latest: boolean;
-        created_at: string;
-        source_count: number;
-      }>;
-      if (chain.length > 1) {
+      const chain = allChains.get(rootId);
+      if (chain && chain.length > 1) {
         r.version_chain = chain.map(c => ({
           id: c.id,
           content: c.content,
@@ -1041,7 +967,7 @@ export async function hybridSearch(
   }
 
   const _tTotal = performance.now() - _t0;
-  if (_tTotal > 100) {
+  if (_tTotal > 2000) {
     log.info({ msg: "hybrid_search_slow", ms: Math.round(_tTotal), question_type: questionType, candidates: candidateCount, results: sorted.length, expand: strategy.expandRelationships });
   }
 
@@ -1061,10 +987,13 @@ export async function autoLink(memoryId: number, embedding: Float32Array, userId
   const similarities: Array<{ id: number; similarity: number }> = [];
   const ownerId = userId ?? (getMemoryWithoutEmbedding.get(memoryId) as any)?.user_id;
   const cached = getCachedEmbeddings(true, ownerId);
-  for (const mem of cached) {
+  for (let i = 0; i < cached.length; i++) {
+    const mem = cached[i];
     if (mem.id === memoryId) continue;
     const sim = cosineSimilarity(embedding, mem.embedding);
     if (sim >= AUTO_LINK_THRESHOLD) similarities.push({ id: mem.id, similarity: sim });
+    // Yield event loop every 500 comparisons to prevent blocking HTTP requests
+    if (i > 0 && i % 500 === 0) await new Promise<void>(r => setImmediate(r));
   }
 
   similarities.sort((a, b) => b.similarity - a.similarity);

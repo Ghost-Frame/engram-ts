@@ -91,15 +91,21 @@ async function vertexEmbed(text: string): Promise<Float32Array> {
 }
 
 // ============================================================================
-// LOCAL ONNX EMBEDDINGS (original implementation)
+// LOCAL ONNX EMBEDDINGS -- Worker thread implementation
+// ONNX inference runs in a dedicated Worker thread to avoid blocking the
+// main event loop. The main thread sends text, the worker returns Float32Array.
 // ============================================================================
 
-import * as ort from "onnxruntime-node";
-import { resolve } from "path";
-import { readFileSync, existsSync, statSync, mkdirSync, createWriteStream, renameSync } from "fs";
+import { Worker } from "worker_threads";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
+import { existsSync, statSync, mkdirSync, createWriteStream, renameSync } from "fs";
 
-let ortSession: ort.InferenceSession | null = null;
-let tokenizer: BertWordPieceTokenizer | null = null;
+// Worker thread state
+let embeddingWorker: Worker | null = null;
+let workerReady = false;
+let workerRequestId = 0;
+const workerPending = new Map<number, { resolve: (v: Float32Array) => void; reject: (e: Error) => void }>();
 
 // Prepared statements for cache refresh
 const getAllEmbeddings = db.prepare(
@@ -130,154 +136,81 @@ async function ensureModelFiles(): Promise<void> {
   }
 }
 
-class BertWordPieceTokenizer {
-  private vocab: Map<string, number>;
-  private unkId: number;
-  private clsId: number;
-  private sepId: number;
-  private padId: number;
-  private maxCharsPerWord: number;
-  private prefix: string;
+function spawnEmbeddingWorker(): Promise<void> {
+  return new Promise((resolveInit, rejectInit) => {
+    // Worker file lives next to this module
+    const workerPath = resolve(dirname(fileURLToPath(import.meta.url)), "embedding-worker.ts");
+    embeddingWorker = new Worker(workerPath, {
+      workerData: {
+        modelDir: MODEL_DIR,
+        onnxModelFile: ONNX_MODEL_FILE,
+        embeddingDim: EMBEDDING_DIM,
+        embeddingMaxSeq: EMBEDDING_MAX_SEQ,
+        intraOpNumThreads: 4,
+      },
+      // Inherit --experimental-strip-types so worker can load .ts files
+      execArgv: process.execArgv,
+    });
 
-  constructor(tokenizerJsonPath: string) {
-    const raw = JSON.parse(readFileSync(tokenizerJsonPath, "utf-8"));
-    const model = raw.model;
-    this.vocab = new Map(Object.entries(model.vocab) as [string, number][]);
-    this.unkId = this.vocab.get("[UNK]") ?? 100;
-    this.clsId = this.vocab.get("[CLS]") ?? 101;
-    this.sepId = this.vocab.get("[SEP]") ?? 102;
-    this.padId = this.vocab.get("[PAD]") ?? 0;
-    this.maxCharsPerWord = model.max_input_chars_per_word ?? 100;
-    this.prefix = model.continuing_subword_prefix ?? "##";
-  }
-
-  private normalize(text: string): string {
-    let out = "";
-    for (const ch of text) {
-      const cp = ch.codePointAt(0)!;
-      if (cp === 0 || cp === 0xFFFD || isControl(cp)) continue;
-      if (cp === 0x09 || cp === 0x0A || cp === 0x0D) { out += " "; continue; }
-      if (isCJK(cp)) { out += ` ${ch} `; continue; }
-      out += ch;
-    }
-    return out.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  }
-
-  private preTokenize(text: string): string[] {
-    const tokens: string[] = [];
-    let current = "";
-    for (const ch of text) {
-      if (/\s/.test(ch)) {
-        if (current) { tokens.push(current); current = ""; }
-      } else if (isPunct(ch)) {
-        if (current) { tokens.push(current); current = ""; }
-        tokens.push(ch);
+    embeddingWorker.on("message", (msg: any) => {
+      if (msg.type === "ready") {
+        workerReady = true;
+        log.info({ msg: "embedding_worker_ready" });
+        resolveInit();
+        return;
+      }
+      if (msg.type === "error") {
+        rejectInit(new Error(`Embedding worker init failed: ${msg.error}`));
+        return;
+      }
+      // Response to an embed request
+      const pending = workerPending.get(msg.id);
+      if (!pending) return;
+      workerPending.delete(msg.id);
+      if (msg.error) {
+        pending.reject(new Error(msg.error));
       } else {
-        current += ch;
+        pending.resolve(new Float32Array(msg.result));
       }
-    }
-    if (current) tokens.push(current);
-    return tokens;
-  }
+    });
 
-  private wordPiece(word: string): number[] {
-    if (word.length > this.maxCharsPerWord) return [this.unkId];
-    const ids: number[] = [];
-    let start = 0;
-    while (start < word.length) {
-      let end = word.length;
-      let matched = false;
-      while (start < end) {
-        const sub = (start > 0 ? this.prefix : "") + word.slice(start, end);
-        const id = this.vocab.get(sub);
-        if (id !== undefined) {
-          ids.push(id);
-          start = end;
-          matched = true;
-          break;
-        }
-        end--;
+    embeddingWorker.on("error", (err) => {
+      log.error({ msg: "embedding_worker_error", error: err.message });
+      // Reject all pending requests
+      for (const [id, p] of workerPending) {
+        p.reject(new Error(`Worker error: ${err.message}`));
+        workerPending.delete(id);
       }
-      if (!matched) return [this.unkId];
-    }
-    return ids;
-  }
+    });
 
-  encode(text: string, maxLen: number = EMBEDDING_MAX_SEQ): {
-    input_ids: BigInt64Array; attention_mask: BigInt64Array; token_type_ids: BigInt64Array;
-  } {
-    const normalized = this.normalize(text);
-    const words = this.preTokenize(normalized);
-    const tokenIds: number[] = [];
-    for (const w of words) {
-      if (tokenIds.length >= maxLen - 2) break;
-      const wp = this.wordPiece(w);
-      for (const id of wp) {
-        if (tokenIds.length >= maxLen - 2) break;
-        tokenIds.push(id);
+    embeddingWorker.on("exit", (code) => {
+      log.warn({ msg: "embedding_worker_exited", code });
+      workerReady = false;
+      embeddingWorker = null;
+      // Reject all pending requests
+      for (const [id, p] of workerPending) {
+        p.reject(new Error(`Worker exited with code ${code}`));
+        workerPending.delete(id);
       }
-    }
-    const seqLen = tokenIds.length + 2;
-    const input_ids = new BigInt64Array(maxLen);
-    const attention_mask = new BigInt64Array(maxLen);
-    const token_type_ids = new BigInt64Array(maxLen);
-    input_ids[0] = BigInt(this.clsId);
-    attention_mask[0] = 1n;
-    for (let i = 0; i < tokenIds.length; i++) {
-      input_ids[i + 1] = BigInt(tokenIds[i]);
-      attention_mask[i + 1] = 1n;
-    }
-    input_ids[seqLen - 1] = BigInt(this.sepId);
-    attention_mask[seqLen - 1] = 1n;
-    return { input_ids, attention_mask, token_type_ids };
-  }
-}
-
-function isControl(cp: number): boolean {
-  return (cp >= 0x00 && cp <= 0x1F && cp !== 0x09 && cp !== 0x0A && cp !== 0x0D) || (cp >= 0x7F && cp <= 0x9F);
-}
-
-function isCJK(cp: number): boolean {
-  return (cp >= 0x4E00 && cp <= 0x9FFF) || (cp >= 0x3400 && cp <= 0x4DBF) ||
-    (cp >= 0x20000 && cp <= 0x2A6DF) || (cp >= 0x2A700 && cp <= 0x2B73F) ||
-    (cp >= 0x2B740 && cp <= 0x2B81F) || (cp >= 0x2B820 && cp <= 0x2CEAF) ||
-    (cp >= 0xF900 && cp <= 0xFAFF) || (cp >= 0x2F800 && cp <= 0x2FA1F);
-}
-
-const PUNCT_RE = /[\p{P}\p{S}]/u;
-function isPunct(ch: string): boolean {
-  const cp = ch.codePointAt(0)!;
-  if ((cp >= 33 && cp <= 47) || (cp >= 58 && cp <= 64) || (cp >= 91 && cp <= 96) || (cp >= 123 && cp <= 126)) return true;
-  return PUNCT_RE.test(ch);
+    });
+  });
 }
 
 async function localEmbed(text: string): Promise<Float32Array> {
-  if (!ortSession || !tokenizer) throw new Error("Embedding model not loaded");
-  const { input_ids, attention_mask, token_type_ids } = tokenizer.encode(text);
-  const feeds = {
-    input_ids: new ort.Tensor("int64", input_ids, [1, EMBEDDING_MAX_SEQ]),
-    attention_mask: new ort.Tensor("int64", attention_mask, [1, EMBEDDING_MAX_SEQ]),
-    token_type_ids: new ort.Tensor("int64", token_type_ids, [1, EMBEDDING_MAX_SEQ]),
-  };
-  const results = await ortSession.run(feeds);
-  const outputName = ortSession.outputNames[0];
-  const hidden = results[outputName].data as Float32Array;
-  // Mean pool over non-padding tokens
-  const pooled = new Float32Array(EMBEDDING_DIM);
-  let maskSum = 0;
-  for (let i = 0; i < EMBEDDING_MAX_SEQ; i++) {
-    if (attention_mask[i] === 0n) continue;
-    maskSum++;
-    const offset = i * EMBEDDING_DIM;
-    for (let d = 0; d < EMBEDDING_DIM; d++) pooled[d] += hidden[offset + d];
-  }
-  for (let d = 0; d < EMBEDDING_DIM; d++) pooled[d] /= maskSum;
-  // L2 normalize
-  let norm = 0;
-  for (let d = 0; d < EMBEDDING_DIM; d++) norm += pooled[d] * pooled[d];
-  norm = Math.sqrt(norm);
-  if (norm > 0) for (let d = 0; d < EMBEDDING_DIM; d++) pooled[d] /= norm;
-  return pooled;
+  if (!embeddingWorker || !workerReady) throw new Error("Embedding worker not initialized");
+  const id = ++workerRequestId;
+  return new Promise<Float32Array>((resolve, reject) => {
+    // 30s timeout per embedding request
+    const timer = setTimeout(() => {
+      workerPending.delete(id);
+      reject(new Error("Embedding worker timeout (30s)"));
+    }, 30_000);
+    workerPending.set(id, {
+      resolve: (v) => { clearTimeout(timer); resolve(v); },
+      reject: (e) => { clearTimeout(timer); reject(e); },
+    });
+    embeddingWorker!.postMessage({ id, text });
+  });
 }
 
 // ============================================================================
@@ -287,15 +220,10 @@ async function localEmbed(text: string): Promise<Float32Array> {
 export async function initEmbedder(): Promise<void> {
   if (EMBEDDING_PROVIDER === "local") {
     const start = Date.now();
-    log.info({ msg: "loading_embedding_model", provider: "local", model: EMBEDDING_MODEL, file: ONNX_MODEL_FILE });
+    log.info({ msg: "loading_embedding_model", provider: "local", model: EMBEDDING_MODEL, file: ONNX_MODEL_FILE, mode: "worker_thread" });
     await ensureModelFiles();
-    tokenizer = new BertWordPieceTokenizer(resolve(MODEL_DIR, "tokenizer.json"));
-    ortSession = await ort.InferenceSession.create(resolve(MODEL_DIR, ONNX_MODEL_FILE), {
-      executionProviders: ["cpu"],
-      graphOptimizationLevel: "all" as any,
-      intraOpNumThreads: 0,
-    });
-    log.info({ msg: "embedding_model_loaded", provider: "local", model: EMBEDDING_MODEL, dim: EMBEDDING_DIM, ms: Date.now() - start });
+    await spawnEmbeddingWorker();
+    log.info({ msg: "embedding_model_loaded", provider: "local", model: EMBEDDING_MODEL, dim: EMBEDDING_DIM, mode: "worker_thread", ms: Date.now() - start });
   } else if (EMBEDDING_PROVIDER === "google") {
     if (!GOOGLE_API_KEY) throw new Error("GOOGLE_API_KEY required for 'google' embedding provider");
     // Warmup call
@@ -341,7 +269,7 @@ export function cosineSimilarity(a: Float32Array, b: Float32Array): number {
 interface CachedMem {
   id: number; user_id: number; content: string; category: string; importance: number;
   embedding: Float32Array; is_static: boolean; source_count: number;
-  is_latest?: boolean; is_forgotten?: boolean;
+  is_latest?: boolean; is_forgotten?: boolean; source?: string;
 }
 let embeddingCache: CachedMem[] = [];
 export let embeddingCacheLatest: CachedMem[] = [];
@@ -367,6 +295,7 @@ export function refreshEmbeddingCache(): void {
       importance: row.importance, embedding: bufferToEmbedding(row.embedding),
       is_static: !!row.is_static, source_count: row.source_count || 1,
       is_latest: !!row.is_latest, is_forgotten: !!row.is_forgotten,
+      source: row.source || undefined,
     };
     embeddingCache.push(mem);
     if (row.is_latest && !row.is_forgotten) embeddingCacheLatest.push(mem);

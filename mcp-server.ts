@@ -35,7 +35,7 @@ async function engram(path: string, method = "GET", body?: unknown) {
 }
 
 const server = new Server(
-  { name: "engram", version: "5.8.1" },
+  { name: "engram", version: "5.8.3" },
   { capabilities: { tools: {} } },
 );
 

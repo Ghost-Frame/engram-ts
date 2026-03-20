@@ -8,7 +8,7 @@ Store, search, recall, and link memories with automatic embeddings,
 fact extraction, versioning, deduplication, and graph visualization.
 
 [![License: Elastic-2.0](https://img.shields.io/badge/License-Elastic--2.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-5.8.2-gold.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-5.8.3-gold.svg)](CHANGELOG.md)
 
 [Quick Start](#quick-start) · [API Reference](#api-reference) · [SDKs](#sdks) · [MCP Server](#mcp-server) · [CLI](#cli) · [Self-Host](#self-hosting) · [GUI](#gui)
 
@@ -82,109 +82,98 @@ curl -X POST http://localhost:4200/recall \
 
 ---
 
-## What's New in v5.8.2
+## What's New in v5.8.3
 
-### Reciprocal Rank Fusion (RRF) Search
-Replaced simple weighted-sum scoring with **RRF across four channels**: vector similarity (BGE-large), FTS5 full-text, personality signal matching, and graph-based relationships. Type-aware link weighting gives causal links 2x multiplier, updates/corrections 1.5x, and extensions/contradictions 1.3x.
+### Server-Side Source Filtering
+`/search`, `/context`, and `/recall` now accept a `source` parameter for server-side memory filtering. The filter propagates into the hybrid search pipeline, filtering at both the vector scan and FTS5 stages before scoring. This enables proper agent isolation (each agent searches only its own memories) and benchmark isolation against production data.
 
-Question-type-aware scoring adapts retrieval strategy based on intent:
-- `fact_recall` (default), `preference`, `reasoning`, `generalization`, `temporal`
-- Temporal queries get date-aware Gaussian proximity boosts
+### Worker Thread Embeddings
+ONNX embedding inference moved from the main thread to a dedicated `Worker` thread. Embedding calls no longer block the HTTP event loop, improving request latency under concurrent load.
 
-### SimHash Deduplication
-64-bit locality-sensitive hashing via FNV-1a tokenization. Hamming distance <= 3 flags near-duplicates **before** embedding, saving compute. Matching memories get boosted instead of re-embedded.
+### Batch Link Queries
+Relationship expansion in search replaced N+1 individual link queries with a single batch query via `getLinksForUserBatch()`. Reduces search latency for queries with relationship expansion enabled.
 
-### Bi-Temporal Fact Tracking
-Structured facts now carry temporal validity windows (`valid_at`, `invalid_at`) with automatic contradiction-based invalidation. When a new fact contradicts an existing one on the same subject+verb, the old fact is automatically marked invalid. Relative date resolution handles phrases like "last Tuesday" or "3 weeks ago."
+### TypeScript Zero Errors
+Fixed all pre-existing compilation errors: SharedArrayBuffer transfer cast in embedding worker, null-vs-undefined on link source fields in graph expansion. The codebase now compiles cleanly with zero TypeScript errors.
 
-### Entity Cooccurrence Graph
-Entities appearing together in memories build weighted relationships scored by name similarity (0.2), cooccurrence frequency (0.5), and temporal proximity (0.3). Relationships above 0.6 threshold are auto-created. Incremental updates on each memory store.
-
-### Community Detection
-Label propagation algorithm on the memory links graph groups related memories into communities. Type-aware edge weights match the search multipliers. Run via `POST /admin/detect-communities`, browse via `GET /communities`.
-
-### Cross-Encoder Reranker
-BGE-reranker-base (XLM-RoBERTa) with hand-written SentencePiece tokenizer (zero deps). Quantized INT8, ~337MB model, sub-100ms inference. Auto-downloads from Hugging Face on startup. Disable with `ENGRAM_CROSS_ENCODER=0`.
-
-### Personality Engine
-Extracts six signal types from memories: preference, value, motivation, decision, emotion, and identity. Each signal captures subject, valence (positive/negative/neutral/mixed), intensity (0.0-1.0), reasoning, and source text. Synthesizes a coherent personality profile via LLM covering core values, decision-making patterns, emotional tendencies, and growth trajectory. Integrated into search scoring when `includePersonalitySignals` is true.
-
-### Context Depth
-`/context` now supports a `depth` parameter (1/2/3):
-- **Depth 1:** Direct matches only
-- **Depth 2:** 1-hop relationships
-- **Depth 3:** 2-hop relationships with source memories
-
-### New Endpoints
-- `GET /facts` - query structured facts with filtering
-- `GET /communities` - list and browse memory communities
-- `GET /preferences` - get stored user preferences
-- `GET /state` - get current user state
-- `POST /profile/synthesize` - synthesize personality profile from signals
-- `POST /admin/backfill-facts` - re-extract facts from all memories
-- `POST /admin/rebuild-cooccurrences` - rebuild entity cooccurrence graph
-- `POST /admin/detect-communities` - run community detection
-
-### Search & Context Overrides
-`POST /search` accepts optional body parameters: `vector_floor` (minimum similarity threshold), `question_type` (fact_recall/preference/reasoning/generalization/temporal).
-
-`POST /context` supports 12 overrides: `max_memory_tokens`, `dedup_threshold`, `min_relevance`, `semantic_ceiling`, `semantic_limit`, and 7 layer toggles (`episodes`, `linked`, `inference`, `current_state`, `preferences`, `structured_facts`, `working_memory`).
-
-#### v5.8.0 - Intelligence Pipeline Overhaul
-
-**Reciprocal Rank Fusion** - Replaced weighted-sum scoring with RRF across 4 search channels (vector, FTS5, personality, graph). More robust ranking with less parameter tuning.
-
-**SimHash Deduplication** - 64-bit locality-sensitive hashing detects near-duplicate memories before embedding, saving compute. Hamming distance threshold of 3 bits. Existing memories get source_count boosted instead of creating duplicates.
-
-**Bi-Temporal Fact Tracking** - Structured facts now carry valid_at/invalid_at windows inspired by Graphiti/Zep. Old facts are never deleted, just invalidated. Contradiction detection auto-invalidates predecessor facts on the same subject+verb.
-
-**Entity Cooccurrence Graph** - Tracks entity co-mentions with composite scoring (name similarity, frequency, temporal proximity). Auto-creates relationships above threshold.
-
-**Community Detection** - Label propagation on the memory_links graph with type-aware edge weights. Detects memory clusters for browsing and context enrichment.
-
-**Temporal Retrieval** - New "temporal" question type with date-aware Gaussian proximity boost. Resolves relative dates ("last Tuesday", "two weeks ago") against query context.
-
-**Progressive Disclosure** - `/context` accepts depth=1 (core only), depth=2 (+ semantic/preferences), depth=3 (full context). Reduces token usage for simple queries.
-
-**Cross-Encoder Reranker** - Optional re-ranking pass for search results using a cross-encoder model.
-
-**Core Memory Auto-Promotion** - Memories automatically promoted to static when they exceed access, source, and stability thresholds.
-
-#### v5.8.1 - Durable Jobs, Security Hardening, Scheduler Leases
-
-**Durable Job Queue** - Post-store processing (vector write, auto-link, fact extraction, personality signals) moved from fire-and-forget `setTimeout` to a DB-backed `jobs` table with retry, exponential backoff, and crash recovery.
-
-**Scheduler Leases** - All 6 background intervals wrapped with DB-backed leases. Prevents duplicate work in multi-instance deployments. Leases released on graceful shutdown.
-
-**Security** - Atomic memory ownership (eliminates post-insert race), bootstrap hardening (localhost-only or one-time token), cross-tenant scratchpad fix, SSRF redirect blocking on webhooks and digests, passport tenant binding.
-
-**Readiness Probes** - `GET /live` (process up) and `GET /ready` (DB writable + embeddings loaded + LLM available). Returns 503 when degraded.
-
-**Schema Versioning** - `schema_versions` table tracks applied migrations. Startup blocks on critical migration failure.
+<details>
+<summary><strong>Previous releases</strong></summary>
 
 #### v5.8.2 - Blended Retrieval, Memory Health, Feedback Loop
 
-**Blended Multi-Strategy Retrieval** - `classifyQuestionMixed` detects mixed-intent queries and blends multiple question types (temporal, fact_recall, reasoning, generalization, preference) with normalized weights. `blendStrategies` produces a weighted combination of SearchStrategy configs -- vector weights, FTS weights, relationship expansion -- so a single query like "what did I decide last week about the API?" gets both temporal proximity boost and fact recall precision.
+**Blended Multi-Strategy Retrieval** - `classifyQuestionMixed` detects mixed-intent queries and blends multiple question types with normalized weights. `blendStrategies` produces a weighted combination of SearchStrategy configs.
 
-**Memory Health Endpoint** - `GET /memory-health` returns four diagnostic categories: `stale` (high-importance memories not accessed recently), `duplicates` (pairs above 0.94 cosine similarity), `high_value_unlinked` (importance >= 7 with no graph links), and `contradiction_hints` (memories containing temporal-contradiction language like "no longer", "changed to", "used to").
+**Memory Health Endpoint** - `GET /memory-health` returns four diagnostic categories: stale, duplicates, high-value unlinked, and contradiction hints.
 
-**Retrieval Feedback** - `POST /feedback` accepts signals (`used`, `ignored`, `corrected`, `irrelevant`, `helpful`) for individual memories or batch via `items[]` array. Auto-adjusts importance: `helpful` +0.5, `irrelevant` -0.3. `GET /feedback/stats` returns signal breakdown, estimated precision, top irrelevant/helpful memories, and agent-level analytics. Accepts `days` parameter for time windowing.
+**Retrieval Feedback** - `POST /feedback` accepts signals (used, ignored, corrected, irrelevant, helpful). Auto-adjusts importance. `GET /feedback/stats` returns analytics.
 
-**Search Explainability** - Search results include per-channel score breakdowns (vector, FTS, graph, personality, reranker, decay) via `_channels` annotations. Enables debugging retrieval quality without guesswork.
+**Search Explainability** - Per-channel score breakdowns (vector, FTS, graph, personality, reranker, decay) in search results.
 
-**Freshness-Weighted Structured Facts** - Facts from the `structured_facts` table are sorted by freshness using linear decay over 365 days. Facts with `valid_at` older than 90 days are tagged `[possibly outdated]` in context output. Ensures recent facts surface first while preserving historical context.
+**Freshness-Weighted Structured Facts** - Facts sorted by freshness with linear decay. Old facts tagged `[possibly outdated]`.
 
-**Contradiction Ranking Penalty** - Non-latest-version memories containing temporal-contradiction keywords ("no longer", "changed to", "used to", "but now", "previously", "was replaced", "switched from") receive a 0.65x score penalty in search ranking. Latest versions are unaffected, ensuring superseding memories rank higher.
+**Contradiction Ranking Penalty** - Non-latest-version memories with contradiction keywords receive 0.65x score penalty.
 
-**Unified Context Dedup** - Replaced three redundant O(N) cosine dedup scans (semantic, linked, recent phases) with a single `isDuplicateOfExisting()` helper. Default threshold 0.88, overridable via `dedup_threshold` parameter.
+#### v5.8.1 - Durable Jobs, Security Hardening, Scheduler Leases
 
-**Per-Phase Context Timing** - Context endpoint now reports granular timing: `embed_ms`, `static_ms`, `search_ms`, `rerank_ms`, `semantic_ms`, `evolution_ms`, `episodes_ms`, `linked_ms`, `recent_ms`, `inference_ms`, `assembly_ms`, `total_ms`. Replaces the old `remaining_ms` catch-all.
+**Durable Job Queue** - DB-backed jobs table with retry, exponential backoff, and crash recovery.
 
-**CI Fixes** - Contract tests now connect to the correct server port. Server readiness polling replaces fixed sleep, eliminating flaky failures during ONNX model load.
+**Scheduler Leases** - DB-backed leases prevent duplicate background work in multi-instance deployments.
 
-**Graph Visualization** - Added `@pixi/unsafe-eval` polyfill; the WebGL galaxy view no longer errors in browsers with strict CSP.
+**Security** - Atomic memory ownership, bootstrap hardening, cross-tenant scratchpad fix, SSRF redirect blocking, passport tenant binding.
 
-**Webhook Drain** - In-flight webhook deliveries tracked and drained during graceful shutdown to prevent dropped events on restart.
+**Readiness Probes** - `GET /live` and `GET /ready` with 503 when degraded.
+
+#### v5.8.0 - Intelligence Pipeline Overhaul
+
+**Reciprocal Rank Fusion** - 4-channel RRF scoring (vector, FTS5, personality, graph). Question-type-aware strategies.
+
+**SimHash Deduplication** - 64-bit locality-sensitive hashing detects near-duplicates before embedding.
+
+**Bi-Temporal Fact Tracking** - Structured facts with valid_at/invalid_at windows. Contradiction-based invalidation.
+
+**Entity Cooccurrence Graph** - Composite scoring (name similarity, frequency, temporal proximity).
+
+**Community Detection** - Label propagation on memory_links graph.
+
+**Cross-Encoder Reranker** - BGE-reranker-base (INT8, sub-100ms). Optional.
+
+**Personality Engine** - Six signal types: preference, value, motivation, decision, emotion, identity.
+
+**Progressive Disclosure** - `/context` depth=1/2/3 for token budget control.
+
+#### v5.7.0 - BGE-large, Episodic Memory, Multi-Tenant Isolation
+
+BGE-large-en-v1.5 (1024-dim), episodic memory, complete multi-tenant security audit, guardrails, abstention, assistant recall, 2-hop graph traversal, implicit connection inference.
+
+#### v5.6.0 - Node.js 22, Graph Intelligence
+
+Node.js 22+, optimized MCP server, vitest, Graphology knowledge graph.
+
+#### v5.5.0 - Intelligence Layer
+
+LLM fact extraction, auto-tagging, conversation extraction, URL ingest, reflections, derived memories, auto-consolidation.
+
+#### v5.4.0 - Security Hardening
+
+7 security fixes (S1-S7), RBAC, timing-safe auth, rate limiting, HSTS, CSP.
+
+#### v5.3.0 - FSRS-6 Spaced Repetition
+
+FSRS-6 with 21 trained weights, dual-strength model, time travel, smart context, reflections, digests, derived memories, auto-consolidation.
+
+#### v5.0.0 - Multi-Tenant
+
+Users, API keys, spaces, FTS5+vector hybrid search, auto-linking, version chains, libsql.
+
+#### v4.0.0 - SQLite + Local Embeddings
+
+SQLite + FTS5, MiniLM-L6-v2 embeddings, basic CRUD, conversations.
+
+#### v3.0.0 - Initial Release
+
+In-memory storage, basic embedding search.
+
+</details>
 
 <details>
 <summary><strong>Previous releases</strong></summary>

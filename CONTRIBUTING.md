@@ -107,17 +107,23 @@ We always need more coverage:
 4. Update CHANGELOG.md under `[Unreleased]`
 5. Submit a PR with a clear description of what changed and why
 
-## Recent API Additions (v5.8.2)
+## Recent Changes (v5.8.3)
 
-These endpoints were added in v5.8.2 and may benefit from additional test coverage or documentation:
+**Source filtering** - `/search`, `/context`, and `/recall` now accept a `source` parameter for server-side memory filtering. The filter propagates into `hybridSearch()` at both vector scan and FTS5 stages. This enables agent-specific memory isolation and benchmark runs against production data.
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /memory-health` | Diagnostic report: stale memories, near-duplicates, high-value unlinked, contradiction hints |
-| `POST /feedback` | Retrieval quality feedback (signals: used, ignored, corrected, irrelevant, helpful). Batch via `items[]` |
-| `GET /feedback/stats` | Feedback analytics with signal breakdown, estimated precision, top memories by signal |
+**Worker thread embeddings** - ONNX inference moved to a dedicated `Worker` thread (see `src/embeddings/embedding-worker.ts` and `src/embeddings/index.ts`). The main thread sends text via `postMessage`, the worker returns Float32Array.
 
-The search pipeline also gained blended multi-strategy retrieval (`classifyQuestionMixed` in `src/memory/search.ts`), per-channel score explainability, freshness-weighted structured facts, and a contradiction ranking penalty for superseded memories.
+**Batch link queries** - `getLinksForUserBatch()` in `src/db/index.ts` replaces N+1 individual link queries during search relationship expansion.
+
+These areas may benefit from additional test coverage:
+
+| Feature | Location |
+|---------|----------|
+| Source filtering in search | `src/memory/search.ts` `hybridSearch()`, `src/routes/index.ts` |
+| Worker thread embedding | `src/embeddings/index.ts`, `src/embeddings/embedding-worker.ts` |
+| Batch link queries | `src/db/index.ts` `getLinksForUserBatch()` |
+| Memory health diagnostics | `GET /memory-health` |
+| Retrieval feedback loop | `POST /feedback`, `GET /feedback/stats` |
 
 ## Roadmap (Not Yet Shipped)
 

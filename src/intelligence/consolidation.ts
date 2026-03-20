@@ -5,7 +5,7 @@
 import { db, insertMemory, markArchived, insertLink, writeVec, getClusterMembers, getClusterCandidates } from "../db/index.ts";
 import { log } from "../config/logger.ts";
 import { LLM_API_KEY, CONSOLIDATION_THRESHOLD } from "../config/index.ts";
-import { callLLM } from "../llm/index.ts";
+import { callLLM, repairAndParseJSON } from "../llm/index.ts";
 import { embed, embeddingToBuffer } from "../embeddings/index.ts";
 import { autoLink } from "../memory/search.ts";
 
@@ -50,11 +50,11 @@ export async function consolidateCluster(
 
   try {
     const response = await callLLM(CONSOLIDATION_PROMPT, memberContents);
-    let jsonStr = response.trim();
-    if (jsonStr.startsWith("```")) {
-      jsonStr = jsonStr.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+    const result = repairAndParseJSON(response) as { summary: string; title: string; importance: number } | null;
+    if (!result || typeof result.summary !== "string") {
+      log.error({ msg: "consolidation_parse_failed", center_id: centerMemoryId });
+      return null;
     }
-    const result = JSON.parse(jsonStr) as { summary: string; title: string; importance: number };
 
     // Create summary memory
     const embArray = await embed(result.summary);

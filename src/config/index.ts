@@ -4,9 +4,13 @@
 
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
-import { mkdirSync } from "fs";
+import { mkdirSync, readFileSync } from "fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+export const PKG_VERSION: string = JSON.parse(
+  readFileSync(resolve(__dirname, "../../package.json"), "utf-8")
+).version;
 
 export const DATA_DIR = process.env.ENGRAM_DATA_DIR
   ? resolve(process.env.ENGRAM_DATA_DIR)

@@ -5,6 +5,20 @@ All notable changes to Engram will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.3] - 2026-03-20
+
+### Added
+- **Server-side source filtering**: `/search`, `/context`, and `/recall` accept a `source` parameter that filters at the vector scan and FTS5 stages inside `hybridSearch()`. When active, `/search` over-fetches 5x candidates to compensate for filtering, then trims to the requested limit. Enables agent-specific memory isolation and benchmark runs against production data.
+- **Source field in embedding cache**: `CachedMem` now includes `source`, populated from the `getAllEmbeddings` query. Allows early filtering during in-memory vector scan without DB round-trips.
+- **Worker thread embeddings**: ONNX embedding inference moved from main thread to a dedicated `Worker` thread via `postMessage`/`onmessage`. Embedding calls no longer block the HTTP event loop.
+- **Batch link queries**: `getLinksForUserBatch()` replaces N+1 individual `getLinksForUser` calls during search relationship expansion. Single SQL query fetches all hop-1 links for a batch of seed IDs.
+
+### Fixed
+- TypeScript compilation: fixed `SharedArrayBuffer` not assignable to `Transferable` in `embedding-worker.ts` (explicit `as ArrayBuffer` cast)
+- TypeScript compilation: fixed `link.source` type mismatch (`string | null` vs `string | undefined`) at both hop-1 and hop-2 graph expansion sites in `search.ts`
+- MCP server version synced to 5.8.3 (was stuck at 5.8.1)
+- Codebase now compiles with **zero TypeScript errors** (was 3)
+
 ## [5.8.2] - 2026-03-18
 
 ### Fixed

@@ -11,7 +11,7 @@ import { htmlToText } from "html-to-text";
 
 // Config
 import {
-  PORT, HOST, OPEN_ACCESS, CORS_ORIGIN, MAX_BODY_SIZE, MAX_CONTENT_SIZE,
+  PORT, HOST, OPEN_ACCESS, CORS_ORIGIN, MAX_BODY_SIZE, MAX_CONTENT_SIZE, PKG_VERSION,
   ALLOWED_IPS, LLM_URL, LLM_API_KEY, LLM_MODEL, LLM_PROVIDERS, AUTO_LINK_THRESHOLD, AUTO_LINK_MAX,
   DEFAULT_IMPORTANCE, RERANKER_ENABLED, RERANKER_TOP_K, DATA_DIR, DB_PATH, EMBEDDING_MODEL, EMBEDDING_DIM, EMBEDDING_PROVIDER,
   CONSOLIDATION_THRESHOLD, RATE_WINDOW_MS, OPEN_ACCESS_RATE_LIMIT, DEFAULT_RATE_LIMIT,
@@ -929,7 +929,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
       }
       const isAuthed = !!healthAuth;
       if (!isAuthed) {
-        return json({ status: "ok", version: "5.8.2" });
+        return json({ status: "ok", version: PKG_VERSION });
       }
       // Full health for authenticated users — tenant-scoped for non-admins
       const uid = healthAuth.user_id;
@@ -965,7 +965,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
       const dbSize = statSync(DB_PATH).size;
       return json({
         status: "ok",
-        version: "5.8.2",
+        version: PKG_VERSION,
         memories: scopedMemCount.count,
         embedded: embCount.count,
         unembedded: noEmbCount2,
@@ -2181,6 +2181,8 @@ Only include pairs that are actual contradictions.`;
           include_working_memory,
           // Progressive disclosure: depth controls how many layers to load
           depth: disclosureDepth,
+          // Source filtering for benchmark isolation
+          source: contextSourceFilter,
         } = body;
 
         if (!query || typeof query !== "string") return errorResponse("query (string) required");
@@ -2262,7 +2264,8 @@ Only include pairs that are actual contradictions.`;
 
         // ---- Phase 1: Static facts, RANKED by query relevance ----
         if (includeStatic) {
-          const statics = getStaticMemories.all(auth.user_id) as any[];
+          let statics = getStaticMemories.all(auth.user_id) as any[];
+          if (contextSourceFilter) statics = statics.filter((s: any) => s.source && s.source.includes(contextSourceFilter));
           const scored: Array<{ mem: any; relevance: number }> = [];
           for (const s of statics) {
             let relevance = 0.5;
@@ -2300,7 +2303,7 @@ Only include pairs that are actual contradictions.`;
         // Skip relationship expansion here - Phase 3 handles graph expansion separately
         // This avoids the N+1 link queries in hybridSearch which is the biggest latency cost
         const tSearch = Date.now();
-        let semanticResults = await hybridSearch(query, semanticLimit, false, false, true, auth.user_id, undefined, queryEmb);
+        let semanticResults = await hybridSearch(query, semanticLimit, false, false, true, auth.user_id, undefined, queryEmb, contextSourceFilter || undefined);
         timing.search_ms = Date.now() - tSearch;
 
         // Cross-encoder rerank: reorder semantic results so best matches get budget priority
@@ -3475,18 +3478,24 @@ Return JSON:
           }
         }
 
-        const { query, limit, include_links, expand_relationships, latest_only, tag, episode_id: filterEpisode, temporal_sort, vector_floor } = body;
+        const { query, limit, include_links, expand_relationships, latest_only, tag, episode_id: filterEpisode, temporal_sort, vector_floor, source } = body;
         if (!query || typeof query !== "string") return errorResponse("query is required");
+        // When source filter is active, over-fetch candidates to compensate for filtering
+        const effectiveLimit = source ? Math.min((limit || 10) * 5, 200) : Math.min(limit || 10, 50);
         const _searchT1 = performance.now();
         let results = await hybridSearch(
           query,
-          Math.min(limit || 10, 50),
+          effectiveLimit,
           include_links || false,
           expand_relationships ?? true,
           latest_only ?? true,
           auth.user_id,
-          vector_floor != null ? Number(vector_floor) : undefined
+          vector_floor != null ? Number(vector_floor) : undefined,
+          null,
+          source || undefined
         );
+        // Trim back to requested limit after source-filtered search
+        if (source) results = results.slice(0, Math.min(limit || 10, 50));
 
         const _searchT2 = performance.now();
         log.info({ msg: "search_timing", phase: "hybridSearch", ms: (_searchT2 - _searchT1).toFixed(1) });
@@ -3911,19 +3920,21 @@ Return JSON:
         const context = body.context || body.query || ""; // 'query' for BotMemory compat
         const limit = Math.min(Number(body.limit) || 20, 50);
         const includeTags = body.tags as string[] | undefined;
+        const recallSourceFilter = body.source as string | undefined;
         const workingMemorySession = typeof body.session === "string" && body.session.trim() ? body.session.trim() : null;
 
         const results: Map<number, { memory: any; score: number; source: string }> = new Map();
 
         // 1. Static facts (always included, highest priority)
-        const staticFacts = getStaticMemories.all(auth.user_id) as Array<any>;
+        let staticFacts = getStaticMemories.all(auth.user_id) as Array<any>;
+        if (recallSourceFilter) staticFacts = staticFacts.filter((s: any) => s.source && s.source.includes(recallSourceFilter));
         for (const sf of staticFacts) {
           results.set(sf.id, { memory: sf, score: 100, source: "static" });
         }
 
         // 2. Semantic search against context (if provided)
         if (context.trim()) {
-          const semanticResults = await hybridSearch(context, limit, false, true, true, auth.user_id);
+          const semanticResults = await hybridSearch(context, limit, false, true, true, auth.user_id, undefined, null, recallSourceFilter);
           for (const sr of semanticResults) {
             if (!results.has(sr.id)) {
               // Use decay_score instead of raw search score
@@ -6626,6 +6637,38 @@ If no meaningful inferences, return {"derived": []}`;
       } catch (e: any) {
         return safeError("Backup", e, 500, requestId);
       }
+    }
+
+    // ========================================================================
+    // LEGACY ROUTE ALIASES (deprecation warnings)
+    // ========================================================================
+
+    if (url.pathname === "/pending" && method === "GET") {
+      log.warn({ msg: "deprecated_route", path: "/pending", use: "GET /inbox", ip: clientIp, user: auth.user_id });
+      const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
+      const offset = Number(url.searchParams.get("offset") || 0);
+      const pending = listPending.all(auth.user_id, limit, offset) as any[];
+      const total = (countPending.get(auth.user_id) as { count: number }).count;
+      for (const p of pending) {
+        try { if (p.tags) p.tags = JSON.parse(p.tags); } catch { p.tags = []; }
+      }
+      return json({ pending, count: pending.length, total, offset, limit });
+    }
+
+    if (url.pathname === "/approve" && method === "POST") {
+      log.warn({ msg: "deprecated_route", path: "/approve", use: "POST /inbox/{id}/approve", ip: clientIp, user: auth.user_id });
+      if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
+      const body = await req.json().catch(() => ({})) as any;
+      const id = Number(body?.id);
+      if (!id) return errorResponse("Missing 'id' in request body", 400);
+      const mem = getMemoryWithoutEmbedding.get(id) as any;
+      if (!mem) return errorResponse("Not found", 404);
+      if (!canAccessOwnedRow(mem, auth)) return errorResponse("Forbidden", 403);
+      if (mem.status !== "pending") return errorResponse(`Memory is already ${mem.status}`, 400);
+      approveMemory.run(id, auth.user_id);
+      audit(auth.user_id, "inbox.approve", "memory", id, null, clientIp, requestId);
+      emitWebhookEvent("memory.approved", { id }, auth.user_id);
+      return json({ approved: true, id });
     }
 
     // ========================================================================

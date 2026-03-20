@@ -792,31 +792,22 @@ var COLORS = {
   general:   { core: '#b0b8c8', glow: '#8a94a8', r: 176, g: 184, b: 200, hex: 0xb0b8c8 }
 };
 
-var NUCLEUS_R = 400, GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
-var CENTER_HUB_R = 12, NUCLEUS_ORB_R = 8;
-var BG_HEX = 0x0d1832;
+var GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+var CENTER_HUB_R = 12;
+var BG_HEX = 0x050505;
 var GRID_SPACING_BASE = 100;
 var MAX_BRANCH_PARTICLES = 200;
 
-// Animated sky
-var STAR_COUNT = 360;
-var DUST_COUNT = 80;
-var NEBULA_DRIFT_COUNT = 0;
-var SHOOTING_STAR_POOL = 5;
-var SHOOT_MIN = 2.5, SHOOT_MAX = 7;
+// Sky removed — Neural Constellation phase 1: void background
 
-// World effects
-var ORBIT_PER_NUCLEUS = 6;
-var ORBIT_PER_HUB = 5;
-var MAX_PULSE_RINGS = 18;
+// World effects (reduced for hex redesign)
+var ORBIT_PER_HUB = 1;
+var MAX_PULSE_RINGS = 5;
 var PULSE_MIN = 2.5, PULSE_MAX = 5.5;
-var NODE_SPARK_CHANCE = 0.003;
-var MAX_NODE_SPARKS = 60;
+var NODE_SPARK_CHANCE = 0.001;
+var MAX_NODE_SPARKS = 15;
 
-// Orbital motion
-var NUCLEUS_ORBIT_SPEED = 0.003;
-var ROOT_ORBIT_SPEED = 0.005;
-var CHILD_ORBIT_SPEED = 0.007;
+// Gentle hub wobble
 var HUB_WOBBLE = 3;
 
 // Energy pulses
@@ -833,15 +824,13 @@ var dimTarget = 0, dimProgress = 0;
 
 // Layout
 var centerPos = { x: 0, y: 0 };
-var nuclei = {}, nodePositions = {};
-var branchSegs = [], trunkSegs = [];
+var nodePositions = {};
 var hlSet = {}, hlIndexSet = {};
 
 // Cluster state
 var clusters = {};           // { clusterId: { id, cat, label, memIds:[], cx, cy, importance, expanded } }
 var clusterPositions = {};   // { clusterId: { x, y } }
-var clusterOrbitData = {};   // orbital motion params per cluster
-var clusterSprites = {};     // { clusterId: { glow, orb, corona, label, badge } }
+var clusterSprites = {};     // { clusterId: { glow, orb, ring, label, badge } }
 var clusterAnimPos = {};     // animated positions
 var clusterProcessOrder = [];
 var memToCluster = {};       // { memoryId: clusterId }
@@ -853,13 +842,7 @@ var sourceFilter = 'all';    // source filter state
 // Branch particles
 var branchParticles = [];
 
-// Animated sky state
-var stars = [];
-var dustParts = [];
-var nebulaDrifts = [];
-var planetObjs = [];
-var shootPool = [];
-var nextShootTime = 0;
+// Sky state removed — void background
 
 // World effects state
 var orbitParts = [];
@@ -867,14 +850,10 @@ var pulseRings = [];
 var nextPulseTime = {};
 var nodeSparks = [];
 
-// Orbital motion state
-var orbitData = {};
+// Force simulation state
 var _forceSim = null, _forceNodes = [], _fnMap = {};
 var _simSettling = false;
-var nucleiOrbitData = {};
-var nodeProcessOrder = [];
 var nodeAnimPos = {};
-var nucleiAnimPos = {};
 var centerAnimPos = { x: 0, y: 0 };
 
 // Energy pulses state
@@ -899,44 +878,7 @@ function nodeVisible(m) {
   if (mCluster && clusters[mCluster] && !clusters[mCluster].expanded) return false;
   return true;
 }
-function bezierPt(x1, y1, cx, cy, x2, y2, t) {
-  var u = 1 - t;
-  return { x: u*u*x1 + 2*u*t*cx + t*t*x2, y: u*u*y1 + 2*u*t*cy + t*t*y2 };
-}
 function rng(a, b) { return a + Math.random() * (b - a); }
-
-// Dynamic curve endpoint computation from animated positions
-function getSegPts(seg) {
-  var fp, tp;
-  if (seg._isTrunk) {
-    fp = centerAnimPos;
-    tp = nucleiAnimPos[seg.cat] || centerAnimPos;
-  } else {
-    // Resolve fromId — could be null (nucleus), a cluster, or a memory node
-    if (seg.fromId === null) {
-      fp = nucleiAnimPos[seg.cat] || centerAnimPos;
-    } else if (seg.fromCluster || (typeof seg.fromId === 'string' && seg.fromId[0] === 'c')) {
-      fp = clusterAnimPos[seg.fromId] || centerAnimPos;
-    } else {
-      fp = nodeAnimPos[seg.fromId] || centerAnimPos;
-    }
-    // Resolve toId — could be a cluster or a memory node
-    if (seg.isCluster || (typeof seg.toId === 'string' && seg.toId[0] === 'c')) {
-      tp = clusterAnimPos[seg.toId] || centerAnimPos;
-    } else {
-      tp = nodeAnimPos[seg.toId] || centerAnimPos;
-    }
-  }
-  var mx = (fp.x + tp.x) * 0.5, my = (fp.y + tp.y) * 0.5;
-  var dx = tp.x - fp.x, dy = tp.y - fp.y;
-  var len = Math.sqrt(dx * dx + dy * dy) || 1;
-  return {
-    x1: fp.x, y1: fp.y,
-    cx: mx + (-dy / len) * seg._curveOff,
-    cy: my + (dx / len) * seg._curveOff,
-    x2: tp.x, y2: tp.y
-  };
-}
 
 // ===== PixiJS Application =====
 var app = new PIXI.Application({
@@ -954,12 +896,6 @@ document.body.insertBefore(app.view, document.getElementById('topbar'));
 // ===== Scene Graph =====
 // Screen-space layers
 var bgSprite = new PIXI.Sprite(PIXI.Texture.EMPTY);
-var nebulaLayer = new PIXI.Container();
-var planetLayer = new PIXI.Container();
-var starLayer = new PIXI.Container();
-var dustLayer = new PIXI.Container();
-var shootGfx = new PIXI.Graphics();
-var shootHeadLayer = new PIXI.Container();
 var gridGfx = new PIXI.Graphics();
 
 // World-space
@@ -971,18 +907,11 @@ var orbitLayer = new PIXI.Container();
 var sparkLayer = new PIXI.Container();
 var glowLayer = new PIXI.Container();
 var orbLayer = new PIXI.Container();
-var coronaLayer = new PIXI.Container();
 var overlayGfx = new PIXI.Graphics();
 var labelLayer = new PIXI.Container();
 
 // Stage order
 app.stage.addChild(bgSprite);
-app.stage.addChild(nebulaLayer);
-app.stage.addChild(planetLayer);
-app.stage.addChild(starLayer);
-app.stage.addChild(dustLayer);
-app.stage.addChild(shootGfx);
-app.stage.addChild(shootHeadLayer);
 app.stage.addChild(gridGfx);
 app.stage.addChild(world);
 
@@ -994,9 +923,6 @@ world.addChild(orbitLayer);
 world.addChild(sparkLayer);
 world.addChild(glowLayer);
 world.addChild(orbLayer);
-var innerLayer = new PIXI.Container();
-world.addChild(innerLayer);
-world.addChild(coronaLayer);
 world.addChild(overlayGfx);
 world.addChild(labelLayer);
 
@@ -1013,10 +939,7 @@ try {
 
 // Sprite maps
 var nodeSprites = {};
-var nucleiSprites = {};
-var coronaSprites = {};
-var hubGlow = null, hubOrb = null, hubCorona = null, hubLabel = null, hubInnerGalaxy = null, hubInnerCore = null;
-var nucLabels = {};
+var hubGlow = null, hubOrb = null, hubLabel = null;
 
 // ===== Textures =====
 function mkTex(sz, fn) {
@@ -1026,49 +949,41 @@ function mkTex(sz, fn) {
   return PIXI.Texture.from(c);
 }
 
-// Enhanced orb: offset gradient + inner luminance band + specular
+// Hexagon path helper
+function hexPath(g, cx, cy, r, flat) {
+  g.beginPath();
+  for (var i = 0; i < 6; i++) {
+    var a = (Math.PI / 3) * i - (flat ? 0 : Math.PI / 6);
+    var px = cx + r * Math.cos(a), py = cy + r * Math.sin(a);
+    if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+  }
+  g.closePath();
+}
+
+// Clean circular orb: soft radial gradient for fiber-optic node look
 var orbTex = mkTex(128, function(g, sz) {
-  var cx = sz / 2, cy = sz / 2;
-  // Base sphere
-  var grad = g.createRadialGradient(cx * 0.65, cy * 0.6, 0, cx, cy, cx * 0.9);
-  grad.addColorStop(0, 'rgba(255,255,255,1)');
-  grad.addColorStop(0.12, 'rgba(255,255,255,0.75)');
-  grad.addColorStop(0.3, 'rgba(255,255,255,0.45)');
-  grad.addColorStop(0.55, 'rgba(255,255,255,0.2)');
-  grad.addColorStop(0.8, 'rgba(255,255,255,0.07)');
+  var cx = sz / 2, cy = sz / 2, r = sz * 0.44;
+  var grad = g.createRadialGradient(cx, cy, 0, cx, cy, r);
+  grad.addColorStop(0, 'rgba(255,255,255,0.95)');
+  grad.addColorStop(0.3, 'rgba(255,255,255,0.6)');
+  grad.addColorStop(0.6, 'rgba(255,255,255,0.2)');
+  grad.addColorStop(0.85, 'rgba(255,255,255,0.05)');
   grad.addColorStop(1, 'rgba(255,255,255,0)');
   g.fillStyle = grad;
-  g.beginPath(); g.arc(cx, cy, cx * 0.9, 0, Math.PI * 2); g.fill();
-  // Inner luminance ring
-  g.globalCompositeOperation = 'lighter';
-  var ring = g.createRadialGradient(cx, cy, cx * 0.3, cx, cy, cx * 0.7);
-  ring.addColorStop(0, 'rgba(255,255,255,0)');
-  ring.addColorStop(0.35, 'rgba(255,255,255,0.06)');
-  ring.addColorStop(0.5, 'rgba(255,255,255,0.13)');
-  ring.addColorStop(0.65, 'rgba(255,255,255,0.06)');
-  ring.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = ring;
-  g.beginPath(); g.arc(cx, cy, cx * 0.7, 0, Math.PI * 2); g.fill();
-  // Specular highlight
-  var spec = g.createRadialGradient(cx * 0.5, cy * 0.45, 0, cx * 0.5, cy * 0.45, cx * 0.18);
-  spec.addColorStop(0, 'rgba(255,255,255,0.4)');
-  spec.addColorStop(0.5, 'rgba(255,255,255,0.1)');
-  spec.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = spec;
-  g.beginPath(); g.arc(cx * 0.5, cy * 0.45, cx * 0.18, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();
 });
 
-// Glow
+// Soft circular glow halo
 var glowTex = mkTex(128, function(g, sz) {
   var cx = sz / 2, cy = sz / 2;
   var grad = g.createRadialGradient(cx, cy, 0, cx, cy, cx);
-  grad.addColorStop(0, 'rgba(255,255,255,0.6)');
-  grad.addColorStop(0.15, 'rgba(255,255,255,0.25)');
-  grad.addColorStop(0.4, 'rgba(255,255,255,0.08)');
-  grad.addColorStop(0.7, 'rgba(255,255,255,0.02)');
+  grad.addColorStop(0, 'rgba(255,255,255,0.45)');
+  grad.addColorStop(0.15, 'rgba(255,255,255,0.2)');
+  grad.addColorStop(0.4, 'rgba(255,255,255,0.05)');
+  grad.addColorStop(0.7, 'rgba(255,255,255,0.01)');
   grad.addColorStop(1, 'rgba(255,255,255,0)');
   g.fillStyle = grad;
-  g.fillRect(0, 0, sz, sz);
+  g.beginPath(); g.arc(cx, cy, cx, 0, Math.PI * 2); g.fill();
 });
 
 // Particle
@@ -1080,31 +995,6 @@ var particleTex = mkTex(32, function(g, sz) {
   grad.addColorStop(1, 'rgba(255,255,255,0)');
   g.fillStyle = grad;
   g.fillRect(0, 0, sz, sz);
-});
-
-// Star: 4-pointed twinkle
-var starTex = mkTex(32, function(g, sz) {
-  var cx = sz / 2, cy = sz / 2;
-  var grad = g.createRadialGradient(cx, cy, 0, cx, cy, cx * 0.8);
-  grad.addColorStop(0, 'rgba(255,255,255,1)');
-  grad.addColorStop(0.12, 'rgba(255,255,255,0.55)');
-  grad.addColorStop(0.35, 'rgba(255,255,255,0.12)');
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, sz, sz);
-  g.globalCompositeOperation = 'lighter';
-  for (var a = 0; a < 4; a++) {
-    g.save();
-    g.translate(cx, cy);
-    g.rotate(a * Math.PI / 2);
-    var sg = g.createLinearGradient(0, 0, cx * 0.9, 0);
-    sg.addColorStop(0, 'rgba(255,255,255,0.5)');
-    sg.addColorStop(0.5, 'rgba(255,255,255,0.08)');
-    sg.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = sg;
-    g.fillRect(0, -0.8, cx * 0.9, 1.6);
-    g.restore();
-  }
 });
 
 // Spark
@@ -1119,157 +1009,20 @@ var sparkTex = mkTex(16, function(g, sz) {
   g.fillRect(0, 0, sz, sz);
 });
 
-// Corona ring: ring-shaped texture with asymmetry for visible rotation
-var coronaTex = mkTex(64, function(g, sz) {
-  var cx = sz / 2, cy = sz / 2, r = sz / 2;
-  // Ring band
-  var grad = g.createRadialGradient(cx, cy, r * 0.5, cx, cy, r * 0.95);
-  grad.addColorStop(0, 'rgba(255,255,255,0)');
-  grad.addColorStop(0.2, 'rgba(255,255,255,0.06)');
-  grad.addColorStop(0.45, 'rgba(255,255,255,0.22)');
-  grad.addColorStop(0.6, 'rgba(255,255,255,0.18)');
-  grad.addColorStop(0.8, 'rgba(255,255,255,0.06)');
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = grad;
-  g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();
-  // Asymmetric bright patch for rotation visibility
-  g.globalCompositeOperation = 'lighter';
-  var ag = g.createRadialGradient(cx * 0.55, cy * 0.55, 0, cx * 0.7, cy * 0.7, r * 0.5);
-  ag.addColorStop(0, 'rgba(255,255,255,0.12)');
-  ag.addColorStop(0.5, 'rgba(255,255,255,0.04)');
-  ag.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = ag;
-  g.beginPath(); g.arc(cx * 0.7, cy * 0.7, r * 0.5, 0, Math.PI * 2); g.fill();
+// Ring texture for cluster halos
+var ringTex = mkTex(64, function(g, sz) {
+  var cx = sz / 2, cy = sz / 2, r = sz * 0.42;
+  g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2);
+  g.strokeStyle = 'rgba(255,255,255,0.35)';
+  g.lineWidth = 1.5;
+  g.stroke();
+  g.beginPath(); g.arc(cx, cy, r * 1.08, 0, Math.PI * 2);
+  g.strokeStyle = 'rgba(255,255,255,0.08)';
+  g.lineWidth = 3;
+  g.stroke();
 });
 
-// ===== Inner Life Textures =====
-// Mini spiral galaxy — lives inside each memory orb
-var innerGalaxyTex = mkTex(64, function(g, sz) {
-  var cx = sz / 2, cy = sz / 2, r = sz / 2;
-  g.clearRect(0, 0, sz, sz);
-
-  // Tight spiral — 3 arms, concentrated toward center, rapid edge fade
-  for (var arm = 0; arm < 3; arm++) {
-    var offset = arm * (Math.PI * 2 / 3);
-    for (var t = 0.2; t < 4.0; t += 0.08) {
-      var spiralR = 1.5 + t * (r * 0.09);
-      var a = t * 2.2 + offset;
-      var x = cx + Math.cos(a) * spiralR;
-      var y = cy + Math.sin(a) * spiralR;
-      // Distance from center as 0-1
-      var dNorm = spiralR / (r * 0.45);
-      // Sharp radial fade — disappear well before edge
-      var radFade = Math.max(0, 1 - dNorm * dNorm);
-      var dotR = (0.3 + (1 - t / 4.0) * 0.9) * radFade;
-      var br = ((1 - t / 4.0) * 0.6 + 0.05) * radFade;
-      if (br < 0.01) continue;
-      // Soft halo
-      g.fillStyle = 'rgba(255,255,255,' + (br * 0.2) + ')';
-      g.beginPath(); g.arc(x, y, dotR * 2, 0, Math.PI * 2); g.fill();
-      // Bright dot
-      g.fillStyle = 'rgba(255,255,255,' + br + ')';
-      g.beginPath(); g.arc(x, y, dotR, 0, Math.PI * 2); g.fill();
-    }
-    // Scatter stars near arms — also radially faded
-    var seed = arm * 137 + 42;
-    for (var s = 0; s < 8; s++) {
-      seed = (seed * 16807) % 2147483647;
-      var st = 0.4 + (seed % 1000) / 1000 * 2.8;
-      seed = (seed * 16807) % 2147483647;
-      var sOff = ((seed % 1000) / 1000 - 0.5) * r * 0.12;
-      var spiralR2 = 1.5 + st * (r * 0.09);
-      var dN2 = spiralR2 / (r * 0.45);
-      var rF2 = Math.max(0, 1 - dN2 * dN2);
-      if (rF2 < 0.05) continue;
-      var a2 = st * 2.2 + offset;
-      var sx = cx + Math.cos(a2) * spiralR2 + Math.cos(a2 + 1.5) * sOff;
-      var sy = cy + Math.sin(a2) * spiralR2 + Math.sin(a2 + 1.5) * sOff;
-      var sBr = (0.1 + (seed % 100) / 100 * 0.2) * rF2;
-      g.fillStyle = 'rgba(255,255,255,' + sBr + ')';
-      g.beginPath(); g.arc(sx, sy, 0.3 + (seed % 50) / 50 * 0.4, 0, Math.PI * 2); g.fill();
-    }
-  }
-  // Tiny bright nucleus
-  var cGrad = g.createRadialGradient(cx, cy, 0, cx, cy, r * 0.12);
-  cGrad.addColorStop(0, 'rgba(255,255,255,0.5)');
-  cGrad.addColorStop(0.5, 'rgba(255,255,255,0.15)');
-  cGrad.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = cGrad;
-  g.beginPath(); g.arc(cx, cy, r * 0.12, 0, Math.PI * 2); g.fill();
-});
-
-// Inner core — bright pulsing heart
-var innerCoreTex = mkTex(32, function(g, sz) {
-  var cx = sz / 2, cy = sz / 2;
-  var grad = g.createRadialGradient(cx, cy, 0, cx, cy, cx * 0.7);
-  grad.addColorStop(0, 'rgba(255,255,255,1)');
-  grad.addColorStop(0.2, 'rgba(255,255,255,0.7)');
-  grad.addColorStop(0.5, 'rgba(255,255,255,0.2)');
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = grad;
-  g.beginPath(); g.arc(cx, cy, cx * 0.7, 0, Math.PI * 2); g.fill();
-});
-
-// Nebula drift texture: soft irregular cloud blob
-var nebulaDriftTex = mkTex(256, function(g, sz) {
-  var cx = sz / 2, cy = sz / 2;
-  // Main soft blob
-  var grad = g.createRadialGradient(cx * 0.85, cy * 0.9, 0, cx, cy, cx * 0.92);
-  grad.addColorStop(0, 'rgba(255,255,255,0.18)');
-  grad.addColorStop(0.15, 'rgba(255,255,255,0.12)');
-  grad.addColorStop(0.35, 'rgba(255,255,255,0.06)');
-  grad.addColorStop(0.6, 'rgba(255,255,255,0.02)');
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, sz, sz);
-  // Secondary offset lobe for irregularity
-  g.globalCompositeOperation = 'lighter';
-  var g2 = g.createRadialGradient(cx * 1.25, cy * 0.65, 0, cx * 1.1, cy * 0.8, cx * 0.55);
-  g2.addColorStop(0, 'rgba(255,255,255,0.08)');
-  g2.addColorStop(0.4, 'rgba(255,255,255,0.03)');
-  g2.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = g2;
-  g.fillRect(0, 0, sz, sz);
-  // Third lobe
-  var g3 = g.createRadialGradient(cx * 0.6, cy * 1.3, 0, cx * 0.7, cy * 1.15, cx * 0.45);
-  g3.addColorStop(0, 'rgba(255,255,255,0.06)');
-  g3.addColorStop(0.5, 'rgba(255,255,255,0.02)');
-  g3.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = g3;
-  g.fillRect(0, 0, sz, sz);
-});
-
-// ===== Background (enhanced galaxy) =====
-
-// Simple hash-based value noise for nebula generation
-function _bgNoise(seed) {
-  function hash(x, y) {
-    var h = (x * 374761393 + y * 668265263 + seed * 1274126177) | 0;
-    h = Math.imul(h ^ (h >>> 13), 1103515245);
-    h = h ^ (h >>> 16);
-    return (h & 0x7fffffff) / 0x7fffffff;
-  }
-  function lerp(a, b, t) { return a + (b - a) * t; }
-  function smooth(t) { return t * t * (3 - 2 * t); }
-  return function(x, y) {
-    var ix = Math.floor(x), iy = Math.floor(y);
-    var fx = smooth(x - ix), fy = smooth(y - iy);
-    var a = hash(ix, iy), b = hash(ix + 1, iy);
-    var c = hash(ix, iy + 1), d = hash(ix + 1, iy + 1);
-    return lerp(lerp(a, b, fx), lerp(c, d, fx), fy);
-  };
-}
-
-function _bgFbm(noise, x, y, octaves) {
-  var val = 0, amp = 0.5, freq = 1, max = 0;
-  for (var i = 0; i < octaves; i++) {
-    val += noise(x * freq, y * freq) * amp;
-    max += amp;
-    amp *= 0.5;
-    freq *= 2.1;
-  }
-  return val / max;
-}
+// ===== Background: void =====
 
 function buildBackground() {
   var bw = Math.round(screenW * 0.5), bh = Math.round(screenH * 0.5);
@@ -1278,116 +1031,17 @@ function buildBackground() {
   c.width = bw; c.height = bh;
   var g = c.getContext('2d');
 
-  // ===== Rich gradient base (deep blue → indigo → purple edge) =====
-  // Corner-to-corner linear for depth
-  var bgLin = g.createLinearGradient(0, 0, bw, bh);
-  bgLin.addColorStop(0, '#0a1628');
-  bgLin.addColorStop(0.3, '#0d1832');
-  bgLin.addColorStop(0.5, '#101535');
-  bgLin.addColorStop(0.7, '#150e30');
-  bgLin.addColorStop(1, '#1a0a2e');
-  g.fillStyle = bgLin;
+  // Pure black base
+  g.fillStyle = '#000000';
   g.fillRect(0, 0, bw, bh);
 
-  // Radial center brightening
-  var bgRad = g.createRadialGradient(bw * 0.45, bh * 0.45, 0, bw * 0.5, bh * 0.5, bw * 0.55);
-  bgRad.addColorStop(0, 'rgba(18,28,55,0.6)');
-  bgRad.addColorStop(0.5, 'rgba(12,18,40,0.3)');
-  bgRad.addColorStop(1, 'rgba(0,0,0,0)');
-  g.fillStyle = bgRad;
+  // Subtle vignette: very faint darkening at edges
+  var vg = g.createRadialGradient(bw / 2, bh / 2, bw * 0.2, bw / 2, bh / 2, bw * 0.7);
+  vg.addColorStop(0, 'rgba(5,5,5,1)');
+  vg.addColorStop(0.6, 'rgba(3,3,3,1)');
+  vg.addColorStop(1, 'rgba(0,0,0,1)');
+  g.fillStyle = vg;
   g.fillRect(0, 0, bw, bh);
-
-  // ===== Color regions (visible blue/purple/teal washes) =====
-  g.globalCompositeOperation = 'lighter';
-  var washes = [
-    [0.30, 0.35, 0.45, 'rgba(25,40,100,0.08)'],
-    [0.70, 0.60, 0.40, 'rgba(60,20,90,0.06)'],
-    [0.15, 0.70, 0.35, 'rgba(15,50,80,0.05)'],
-    [0.80, 0.20, 0.30, 'rgba(45,25,85,0.05)'],
-    [0.50, 0.50, 0.55, 'rgba(20,30,70,0.04)'],
-    [0.25, 0.15, 0.30, 'rgba(10,35,65,0.04)']
-  ];
-  for (var i = 0; i < washes.length; i++) {
-    var w = washes[i];
-    var wg = g.createRadialGradient(w[0]*bw, w[1]*bh, 0, w[0]*bw, w[1]*bh, w[2]*Math.max(bw,bh));
-    wg.addColorStop(0, w[3]);
-    wg.addColorStop(0.7, w[3].replace(/[\d.]+\)$/, '0.01)'));
-    wg.addColorStop(1, 'rgba(0,0,0,0)');
-    g.fillStyle = wg;
-    g.fillRect(0, 0, bw, bh);
-  }
-
-  // ===== Star field =====
-  var seed = 42;
-  function sr() { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }
-
-  // Layer 1: Dense micro-stars
-  var microCount = Math.round(500 * (bw * bh) / (1920 * 1080));
-  for (var i = 0; i < microCount; i++) {
-    var sx = sr() * bw, sy = sr() * bh;
-    var br = 0.03 + sr() * 0.10;
-    var ss = 0.15 + sr() * 0.3;
-    g.fillStyle = 'rgba(200,210,240,' + br + ')';
-    g.beginPath(); g.arc(sx, sy, ss, 0, Math.PI * 2); g.fill();
-  }
-
-  // Layer 2: Star clusters
-  var clusterCount = 5;
-  for (var ci = 0; ci < clusterCount; ci++) {
-    var clx = sr() * bw, cly = sr() * bh;
-    var clRad = 20 + sr() * 40;
-    var clStars = 25 + (sr() * 40) | 0;
-    for (var si = 0; si < clStars; si++) {
-      var ca = sr() * Math.PI * 2;
-      var cd = sr() * sr() * clRad;
-      var csx = clx + Math.cos(ca) * cd;
-      var csy = cly + Math.sin(ca) * cd;
-      var cbr = 0.06 + sr() * 0.20;
-      var css = 0.2 + sr() * 0.45;
-      var ct = sr();
-      var cr, cg, cb;
-      if (ct < 0.3) { cr = 180 + sr()*70|0; cg = 195 + sr()*55|0; cb = 240 + sr()*15|0; }
-      else if (ct < 0.6) { cr = 235 + sr()*20|0; cg = 228 + sr()*27|0; cb = 200 + sr()*50|0; }
-      else { cr = 215 + sr()*40|0; cg = 215 + sr()*40|0; cb = 220 + sr()*35|0; }
-      g.fillStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',' + cbr + ')';
-      g.beginPath(); g.arc(csx, csy, css, 0, Math.PI * 2); g.fill();
-    }
-  }
-
-  // Layer 3: Medium stars with spectral colors
-  var medCount = Math.round(250 * (bw * bh) / (1920 * 1080));
-  for (var i = 0; i < medCount; i++) {
-    var sx = sr() * bw, sy = sr() * bh;
-    var isBright = sr() < 0.04;
-    var br = isBright ? (0.35 + sr() * 0.5) : (0.05 + sr() * 0.18);
-    var ss = isBright ? (0.5 + sr() * 1.4) : (0.2 + sr() * 0.5);
-    var ct = sr();
-    var cr, cg, cb;
-    if (ct < 0.15) { cr = 155+sr()*50|0; cg = 175+sr()*50|0; cb = 240+sr()*15|0; }
-    else if (ct < 0.30) { cr = 200+sr()*55|0; cg = 210+sr()*45|0; cb = 240+sr()*15|0; }
-    else if (ct < 0.50) { cr = 240+sr()*15|0; cg = 230+sr()*25|0; cb = 195+sr()*40|0; }
-    else if (ct < 0.65) { cr = 245+sr()*10|0; cg = 220+sr()*30|0; cb = 150+sr()*55|0; }
-    else if (ct < 0.80) { cr = 240+sr()*15|0; cg = 180+sr()*40|0; cb = 120+sr()*50|0; }
-    else { cr = 185+sr()*70|0; cg = 190+sr()*65|0; cb = 210+sr()*45|0; }
-    g.fillStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',' + br + ')';
-    g.beginPath(); g.arc(sx, sy, ss, 0, Math.PI * 2); g.fill();
-    if (isBright) {
-      var spLen = ss * 2.5 + sr() * 3;
-      g.strokeStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',' + (br * 0.2) + ')';
-      g.lineWidth = 0.3;
-      g.beginPath(); g.moveTo(sx - spLen, sy); g.lineTo(sx + spLen, sy); g.stroke();
-      g.beginPath(); g.moveTo(sx, sy - spLen * 0.7); g.lineTo(sx, sy + spLen * 0.7); g.stroke();
-    }
-  }
-
-  // ===== Vignette =====
-  g.globalCompositeOperation = 'source-over';
-  var vg = g.createRadialGradient(bw / 2, bh / 2, bw * 0.15, bw / 2, bh / 2, bw * 0.6);
-  vg.addColorStop(0, 'rgba(4,6,16,0)');
-  vg.addColorStop(0.6, 'rgba(4,6,16,0)');
-  vg.addColorStop(0.85, 'rgba(8,12,25,0.3)');
-  vg.addColorStop(1, 'rgba(5,8,18,0.55)');
-  g.fillStyle = vg; g.fillRect(0, 0, bw, bh);
 
   if (bgSprite.texture !== PIXI.Texture.EMPTY) bgSprite.texture.destroy(true);
   bgSprite.texture = PIXI.Texture.from(c);
@@ -1396,112 +1050,8 @@ function buildBackground() {
 }
 
 
-// ===== Animated Sky =====
-var STAR_COLORS = [0xd0d8ff, 0xeef0ff, 0xffe8d0, 0xddccff, 0xcce8ff, 0xffd0d0, 0xc8e0ff];
-var SHOOT_COLORS = [0xeef0ff, 0xdde4ff, 0xffe8d0, 0xeeccff, 0xffffff, 0xaaccff];
-
-var NEBULA_DRIFT_TINTS = [0x5a37a0, 0x2244aa, 0x6a2888, 0x883868, 0x224488, 0x443388, 0x884468, 0x2a5588, 0x663388];
-
-function buildSky() {
-  var old;
-  old = nebulaLayer.removeChildren(); for (var i = 0; i < old.length; i++) old[i].destroy();
-  old = starLayer.removeChildren(); for (var i = 0; i < old.length; i++) old[i].destroy();
-  old = dustLayer.removeChildren(); for (var i = 0; i < old.length; i++) old[i].destroy();
-  old = shootHeadLayer.removeChildren(); for (var i = 0; i < old.length; i++) old[i].destroy();
-
-  stars = [];
-  dustParts = [];
-  nebulaDrifts = [];
-  shootPool = [];
-
-  // Nebula drift sprites — large soft blobs that slowly move and pulse
-  for (var i = 0; i < NEBULA_DRIFT_COUNT; i++) {
-    var spr = new PIXI.Sprite(nebulaDriftTex);
-    spr.anchor.set(0.5);
-    spr.blendMode = PIXI.BLEND_MODES.ADD;
-    var size = 180 + Math.random() * 350;
-    spr.scale.set(size / 256);
-    spr.tint = NEBULA_DRIFT_TINTS[Math.random() * NEBULA_DRIFT_TINTS.length | 0];
-    spr.position.set(Math.random() * screenW, Math.random() * screenH);
-    spr.rotation = Math.random() * Math.PI * 2;
-    nebulaLayer.addChild(spr);
-    nebulaDrifts.push({
-      sprite: spr,
-      baseX: spr.x, baseY: spr.y,
-      vx: (Math.random() - 0.5) * 3,
-      vy: (Math.random() - 0.5) * 2.5,
-      baseAlpha: 0.004 + Math.random() * 0.008,
-      freq: 0.03 + Math.random() * 0.08,
-      phase: Math.random() * Math.PI * 2,
-      rotSpeed: (Math.random() - 0.5) * 0.02,
-      scaleFreq: 0.015 + Math.random() * 0.04,
-      scalePhase: Math.random() * Math.PI * 2,
-      baseScale: spr.scale.x
-    });
-  }
-
-  for (var i = 0; i < STAR_COUNT; i++) {
-    var spr = new PIXI.Sprite(starTex);
-    spr.anchor.set(0.5);
-    spr.blendMode = PIXI.BLEND_MODES.ADD;
-    var size = 0.5 + Math.random() * 2.5;
-    // Some larger bright stars
-    if (Math.random() < 0.04) size = 2.5 + Math.random() * 2.0;
-    spr.scale.set(size / 32);
-    spr.tint = STAR_COLORS[Math.random() * STAR_COLORS.length | 0];
-    spr.position.set(Math.random() * screenW, Math.random() * screenH);
-    starLayer.addChild(spr);
-    stars.push({
-      sprite: spr,
-      baseAlpha: 0.12 + Math.random() * 0.68,
-      freq: 0.15 + Math.random() * 4.5,
-      phase: Math.random() * Math.PI * 2,
-      freq2: 1.2 + Math.random() * 7.0,
-      flickerAmt: Math.random() * 0.35
-    });
-  }
-
-  for (var i = 0; i < DUST_COUNT; i++) {
-    var spr = new PIXI.Sprite(particleTex);
-    spr.anchor.set(0.5);
-    spr.blendMode = PIXI.BLEND_MODES.ADD;
-    spr.tint = STAR_COLORS[Math.random() * STAR_COLORS.length | 0];
-    var size = 1.2 + Math.random() * 4.0;
-    spr.scale.set(size / 32);
-    spr.position.set(Math.random() * screenW, Math.random() * screenH);
-    dustLayer.addChild(spr);
-    dustParts.push({
-      sprite: spr,
-      baseX: spr.x, baseY: spr.y,
-      vx: (Math.random() - 0.5) * 4,
-      vy: (Math.random() - 0.5) * 3,
-      baseAlpha: 0.02 + Math.random() * 0.08,
-      freq: 0.08 + Math.random() * 0.35,
-      phase: Math.random() * Math.PI * 2,
-      parallax: 0.01 + Math.random() * 0.04
-    });
-  }
-
-  for (var i = 0; i < SHOOTING_STAR_POOL; i++) {
-    var head = new PIXI.Sprite(glowTex);
-    head.anchor.set(0.5);
-    head.blendMode = PIXI.BLEND_MODES.ADD;
-    head.visible = false;
-    shootHeadLayer.addChild(head);
-    var flash = new PIXI.Sprite(glowTex);
-    flash.anchor.set(0.5);
-    flash.blendMode = PIXI.BLEND_MODES.ADD;
-    flash.visible = false;
-    shootHeadLayer.addChild(flash);
-    shootPool.push({
-      active: false, x: 0, y: 0, startX: 0, startY: 0,
-      vx: 0, vy: 0, life: 0, maxLife: 0,
-      brightness: 0, color: 0xeef0ff,
-      head: head, flash: flash
-    });
-  }
-  nextShootTime = time + rng(0.5, 2);
-}
+// ===== Sky removed — void background =====
+function buildSky() {}
 
 // ===== Layout Engine =====
 
@@ -1560,58 +1110,34 @@ function computeLayout() {
 
   var activeCats = catList.filter(function(c) { return catGroups[c] && catGroups[c].length > 0; });
 
-  // Scale nucleus radius based on total memory count
-  var totalMems = memories.length;
-  var dynamicR = Math.max(400, 250 + Math.sqrt(totalMems) * 18);
-  NUCLEUS_R = dynamicR;
-
-  nuclei = {};
-  nucleiOrbitData = {};
-  trunkSegs = [];
-
-  for (var i = 0; i < activeCats.length; i++) {
-    var cat = activeCats[i];
-    var angle = (i / activeCats.length) * Math.PI * 2 - Math.PI / 2;
-    var nx = cx + Math.cos(angle) * NUCLEUS_R;
-    var ny = cy + Math.sin(angle) * NUCLEUS_R;
-    nuclei[cat] = { x: nx, y: ny, angle: angle, count: catGroups[cat].length };
-
-    var dir = Math.sin(i * 3.7 + 0.5) > 0 ? 1 : -1;
-    nucleiOrbitData[cat] = {
-      baseAngle: angle,
-      angSpeed: NUCLEUS_ORBIT_SPEED * (0.8 + Math.sin(i * 2.7) * 0.4) * dir
-    };
-
-    var curvature = 25 + Math.sin(i * 1.7) * 15;
-    trunkSegs.push({ _isTrunk: true, _curveOff: curvature, col: COLORS[cat], cat: cat });
-  }
+  // No nuclei -- organic force layout only
 
   // ===== d3-force positioning =====
   clusters = {};
   clusterPositions = {};
-  clusterOrbitData = {};
   clusterProcessOrder = [];
   memToCluster = {};
   nodePositions = {};
-  orbitData = {};
-  nodeProcessOrder = [];
-  branchSegs = [];
 
-  // Build force simulation nodes — one per memory
+  // Build force simulation nodes -- one per memory
+  // Seed positions using angular category sectors with jitter for initial separation
   var forceNodes = [];
   var fnMap = {};
   for (var i = 0; i < memories.length; i++) {
     var m = memories[i];
     var cat = m.category || 'general';
-    var nuc = nuclei[cat];
-    // Seed position near category nucleus with jitter
+    var catIdx = activeCats.indexOf(cat);
+    var sectorAngle = catIdx >= 0
+      ? (catIdx / activeCats.length) * Math.PI * 2 - Math.PI / 2
+      : Math.random() * Math.PI * 2;
+    var spreadR = 120 + Math.random() * 200;
     var fn = {
       id: m.id,
       category: cat,
       importance: m.importance || 5,
       radius: nodeRadius(m),
-      x: (nuc ? nuc.x : cx) + (Math.random() - 0.5) * 160,
-      y: (nuc ? nuc.y : cy) + (Math.random() - 0.5) * 160
+      x: cx + Math.cos(sectorAngle + (Math.random() - 0.5) * 0.8) * spreadR,
+      y: cy + Math.sin(sectorAngle + (Math.random() - 0.5) * 0.8) * spreadR
     };
     forceNodes.push(fn);
     fnMap[m.id] = fn;
@@ -1628,7 +1154,7 @@ function computeLayout() {
     }
   }
 
-  // Run d3-force simulation
+  // Run d3-force simulation -- organic layout driven by links + repulsion
   var sim = d3.forceSimulation(forceNodes)
     .force('charge', d3.forceManyBody()
       .strength(function(d) { return -20 - d.radius * 4; })
@@ -1640,13 +1166,7 @@ function computeLayout() {
     .force('collision', d3.forceCollide()
       .radius(function(d) { return d.radius * 2 + 2; })
       .strength(0.6))
-    .force('categoryX', d3.forceX()
-      .x(function(d) { var n = nuclei[d.category]; return n ? n.x : cx; })
-      .strength(0.06))
-    .force('categoryY', d3.forceY()
-      .y(function(d) { var n = nuclei[d.category]; return n ? n.y : cy; })
-      .strength(0.06))
-    .force('center', d3.forceCenter(cx, cy).strength(0.008))
+    .force('center', d3.forceCenter(cx, cy).strength(0.02))
     .alphaDecay(0.02)
     .velocityDecay(0.35);
 
@@ -1667,7 +1187,6 @@ function computeLayout() {
   activeCats.forEach(function(cat) {
     var mems = catGroups[cat];
     if (!mems || mems.length === 0) return;
-    var nuc = nuclei[cat];
     var col = COLORS[cat] || COLORS.general;
 
     var catIdSet = {};
@@ -1711,20 +1230,7 @@ function computeLayout() {
       };
       group.forEach(function(mid) { memToCluster[mid] = cid; });
       clusterPositions[cid] = { x: clx, y: cly };
-
-      // Orbital data for gentle drift
-      var cAngle = Math.atan2(cly - nuc.y, clx - nuc.x);
-      var cDist = Math.sqrt((clx - nuc.x) * (clx - nuc.x) + (cly - nuc.y) * (cly - nuc.y));
-      var cDir = Math.sin(group[0] * 3.1) > 0 ? 1 : -1;
-      clusterOrbitData[cid] = {
-        parentType: 'nucleus', parentKey: cat,
-        baseAngle: cAngle, baseDist: cDist,
-        angSpeed: ROOT_ORBIT_SPEED * 0.3 * cDir
-      };
       clusterProcessOrder.push(cid);
-
-      var bCurve = cDist * 0.2 * (Math.sin(group[0] * 2.1) > 0 ? 1 : -1);
-      branchSegs.push({ _isTrunk: false, _curveOff: bCurve, col: col, depth: 0, fromId: null, toId: cid, cat: cat, isCluster: true });
 
       // Place children if expanded
       if (clusters[cid].expanded) {
@@ -1732,16 +1238,6 @@ function computeLayout() {
           var fn = fnMap[mid];
           if (fn) {
             nodePositions[mid] = { x: fn.x, y: fn.y, depth: 1 };
-            var mAngle = Math.atan2(fn.y - cly, fn.x - clx);
-            var mDist = Math.sqrt((fn.x - clx) * (fn.x - clx) + (fn.y - cly) * (fn.y - cly));
-            var mDir = Math.sin(mid * 2.7) > 0 ? 1 : -1;
-            orbitData[mid] = {
-              parentType: 'cluster', parentKey: cid,
-              baseAngle: mAngle, baseDist: mDist,
-              angSpeed: CHILD_ORBIT_SPEED * 0.2 * mDir
-            };
-            nodeProcessOrder.push(mid);
-            branchSegs.push({ _isTrunk: false, _curveOff: mDist * 0.15 * (Math.sin(mid * 1.9) > 0 ? 1 : -1), col: col, depth: 1, fromId: cid, toId: mid, cat: cat, fromCluster: true });
           }
         });
       }
@@ -1752,20 +1248,6 @@ function computeLayout() {
       var fn = fnMap[m.id];
       if (!fn) return;
       nodePositions[m.id] = { x: fn.x, y: fn.y, depth: 0 };
-
-      // Compute angle/dist from nucleus for gentle orbital drift
-      var mAngle = Math.atan2(fn.y - nuc.y, fn.x - nuc.x);
-      var mDist = Math.sqrt((fn.x - nuc.x) * (fn.x - nuc.x) + (fn.y - nuc.y) * (fn.y - nuc.y));
-      var rDir = Math.sin(m.id * 3.1) > 0 ? 1 : -1;
-      orbitData[m.id] = {
-        parentType: 'nucleus', parentKey: cat,
-        baseAngle: mAngle, baseDist: mDist,
-        angSpeed: ROOT_ORBIT_SPEED * 0.4 * (0.6 + Math.sin(m.id * 1.3) * 0.4) * rDir
-      };
-      nodeProcessOrder.push(m.id);
-
-      var bCurve2 = mDist * 0.2 * (Math.sin(m.id * 2.1) > 0 ? 1 : -1);
-      branchSegs.push({ _isTrunk: false, _curveOff: bCurve2, col: col, depth: 0, fromId: null, toId: m.id, cat: cat });
     });
   });
 
@@ -1785,17 +1267,6 @@ function placeClusterChildren(cid, clx, cly, baseAngle, col, cat) {
     var mx = clx + Math.cos(childAngle) * childDist;
     var my = cly + Math.sin(childAngle) * childDist;
     nodePositions[m.id] = { x: mx, y: my, depth: 1 };
-
-    var cDir = Math.sin(m.id * 2.7) > 0 ? 1 : -1;
-    orbitData[m.id] = {
-      parentType: 'cluster', parentKey: cid,
-      baseAngle: childAngle, baseDist: childDist,
-      angSpeed: CHILD_ORBIT_SPEED * 0.6 * (0.5 + Math.sin(m.id * 2.1) * 0.5) * cDir
-    };
-    nodeProcessOrder.push(m.id);
-
-    var bCurve = childDist * 0.15 * (Math.sin(m.id * 1.9) > 0 ? 1 : -1);
-    branchSegs.push({ _isTrunk: false, _curveOff: bCurve, col: col, depth: 1, fromId: cid, toId: m.id, cat: cat, fromCluster: true });
   }
 }
 
@@ -1815,31 +1286,17 @@ function placeChildren(parentId, px, py, parentAngle, parentDist, depth, col, ca
     var cyp = py + Math.sin(childAngle) * actualDist;
     nodePositions[child.id] = { x: cxp, y: cyp, depth: depth };
 
-    var cDir = Math.sin(child.id * 2.7) > 0 ? 1 : -1;
-    orbitData[child.id] = {
-      parentType: 'node', parentKey: parentId,
-      baseAngle: childAngle, baseDist: actualDist,
-      angSpeed: CHILD_ORBIT_SPEED * (0.5 + Math.sin(child.id * 2.1) * 0.5) * cDir / (1 + depth * 0.3)
-    };
-    nodeProcessOrder.push(child.id);
-
-    var bCurve = actualDist * 0.15 * (Math.sin(child.id * 1.9) > 0 ? 1 : -1);
-    branchSegs.push({ _isTrunk: false, _curveOff: bCurve, col: col, depth: depth, fromId: parentId, toId: child.id, cat: cat });
-
     placeChildren(child.id, cxp, cyp, childAngle, actualDist, depth + 1, col, cat, childrenOf);
   }
 }
 
 function initParticles() {
   branchParticles = [];
-  var total = branchSegs.length + trunkSegs.length;
-  if (total === 0) return;
-  var maxP = Math.min(total * 1.5, MAX_BRANCH_PARTICLES) | 0;
+  if (links.length === 0) return;
+  var maxP = Math.min(links.length * 1.5, MAX_BRANCH_PARTICLES) | 0;
   for (var i = 0; i < maxP; i++) {
-    var isTrunk = trunkSegs.length > 0 && Math.random() < 0.25;
     branchParticles.push({
-      isTrunk: isTrunk,
-      segIdx: isTrunk ? (Math.random() * trunkSegs.length | 0) : (Math.random() * branchSegs.length | 0),
+      linkIdx: Math.random() * links.length | 0,
       t: Math.random(),
       speed: 0.002 + Math.random() * 0.004,
       size: 0.6 + Math.random() * 0.8,
@@ -1854,84 +1311,49 @@ function computeAnimatedPositions() {
   centerAnimPos.x = centerPos.x + Math.sin(time * 0.15) * HUB_WOBBLE + Math.sin(time * 0.31) * HUB_WOBBLE * 0.5;
   centerAnimPos.y = centerPos.y + Math.cos(time * 0.19) * HUB_WOBBLE + Math.cos(time * 0.37) * HUB_WOBBLE * 0.5;
 
-  // Nuclei orbit center
-  var ck = Object.keys(nucleiOrbitData);
-  for (var i = 0; i < ck.length; i++) {
-    var cat = ck[i], od = nucleiOrbitData[cat];
-    var a = od.baseAngle + od.angSpeed * time;
-    nucleiAnimPos[cat] = {
-      x: centerAnimPos.x + Math.cos(a) * NUCLEUS_R,
-      y: centerAnimPos.y + Math.sin(a) * NUCLEUS_R
-    };
+  // Node positions from live force simulation
+  if (_fnMap) {
+    var ids = Object.keys(_fnMap);
+    for (var i = 0; i < ids.length; i++) {
+      var fn = _fnMap[ids[i]];
+      if (fn) nodeAnimPos[fn.id] = { x: fn.x, y: fn.y };
+    }
   }
 
-  // Cluster orbit positions (parent-first order)
-  for (var i = 0; i < clusterProcessOrder.length; i++) {
-    var cid = clusterProcessOrder[i];
-    var od = clusterOrbitData[cid];
-    if (!od) {
+  // Cluster positions as centroid of member node positions
+  var cids = Object.keys(clusters);
+  for (var i = 0; i < cids.length; i++) {
+    var cid = cids[i];
+    var cluster = clusters[cid];
+    if (!cluster) continue;
+    var sx = 0, sy = 0, cnt = 0;
+    for (var j = 0; j < cluster.memIds.length; j++) {
+      var nap = nodeAnimPos[cluster.memIds[j]];
+      if (nap) { sx += nap.x; sy += nap.y; cnt++; }
+    }
+    if (cnt > 0) {
+      clusterAnimPos[cid] = { x: sx / cnt, y: sy / cnt };
+    } else {
       var bp = clusterPositions[cid];
-      clusterAnimPos[cid] = bp ? { x: bp.x, y: bp.y } : { x: 0, y: 0 };
-      continue;
+      clusterAnimPos[cid] = bp ? { x: bp.x, y: bp.y } : { x: centerAnimPos.x, y: centerAnimPos.y };
     }
-    var a = od.baseAngle + od.angSpeed * time;
-    var pcx, pcy;
-    if (od.parentType === 'nucleus') {
-      var nap = nucleiAnimPos[od.parentKey];
-      pcx = nap ? nap.x : centerAnimPos.x;
-      pcy = nap ? nap.y : centerAnimPos.y;
-    } else {
-      var pap = clusterAnimPos[od.parentKey];
-      pcx = pap ? pap.x : centerAnimPos.x;
-      pcy = pap ? pap.y : centerAnimPos.y;
-    }
-    clusterAnimPos[cid] = { x: pcx + Math.cos(a) * od.baseDist, y: pcy + Math.sin(a) * od.baseDist };
-  }
-
-  // Nodes orbit in parent-first order
-  for (var i = 0; i < nodeProcessOrder.length; i++) {
-    var id = nodeProcessOrder[i];
-    var od = orbitData[id];
-    if (!od) {
-      var bp = nodePositions[id];
-      nodeAnimPos[id] = bp ? { x: bp.x, y: bp.y } : { x: 0, y: 0 };
-      continue;
-    }
-    var a = od.baseAngle + od.angSpeed * time;
-    var pcx, pcy;
-    if (od.parentType === 'nucleus') {
-      var nap = nucleiAnimPos[od.parentKey];
-      pcx = nap ? nap.x : centerAnimPos.x;
-      pcy = nap ? nap.y : centerAnimPos.y;
-    } else if (od.parentType === 'cluster') {
-      var cap = clusterAnimPos[od.parentKey];
-      pcx = cap ? cap.x : centerAnimPos.x;
-      pcy = cap ? cap.y : centerAnimPos.y;
-    } else {
-      var pap = nodeAnimPos[od.parentKey];
-      pcx = pap ? pap.x : centerAnimPos.x;
-      pcy = pap ? pap.y : centerAnimPos.y;
-    }
-    nodeAnimPos[id] = { x: pcx + Math.cos(a) * od.baseDist, y: pcy + Math.sin(a) * od.baseDist };
   }
 }
 
 function getHighlightPath(memId) {
-  var path = [], visited = {}, cur = memId;
-  while (cur && !visited[cur]) {
-    visited[cur] = true;
-    var found = false;
-    for (var i = 0; i < branchSegs.length; i++) {
-      if (branchSegs[i].toId === cur) { path.push(i); cur = branchSegs[i].fromId; found = true; break; }
+  // Return indices into links array where memId is source or target (1-hop neighbors)
+  var path = [];
+  for (var i = 0; i < links.length; i++) {
+    if (links[i].source === memId || links[i].target === memId) {
+      path.push(i);
     }
-    if (!found) break;
   }
   return path;
 }
 
 // ===== Scene Building =====
 function clearScene() {
-  var layers = [glowLayer, orbLayer, coronaLayer, innerLayer, particleLayer, orbitLayer, sparkLayer];
+  var layers = [glowLayer, orbLayer, particleLayer, orbitLayer, sparkLayer];
   for (var l = 0; l < layers.length; l++) {
     var ch = layers[l].removeChildren();
     for (var i = 0; i < ch.length; i++) ch[i].destroy();
@@ -1942,11 +1364,8 @@ function clearScene() {
   overlayGfx.clear();
   pulseGfx.clear();
   nodeSprites = {};
-  nucleiSprites = {};
   clusterSprites = {};
-  coronaSprites = {};
-  nucLabels = {};
-  hubGlow = null; hubOrb = null; hubCorona = null; hubLabel = null; hubInnerGalaxy = null; hubInnerCore = null;
+  hubGlow = null; hubOrb = null; hubLabel = null;
   orbitParts = [];
   pulseRings = [];
   nodeSparks = [];
@@ -1962,11 +1381,12 @@ function buildScene() {
   hlSet = {}; hlIndexSet = {};
   if (selectedNode) {
     var hlIndices = getHighlightPath(selectedNode.id);
+    hlSet[selectedNode.id] = true;
     for (var i = 0; i < hlIndices.length; i++) {
       hlIndexSet[hlIndices[i]] = true;
-      var seg = branchSegs[hlIndices[i]];
-      hlSet[seg.toId] = true;
-      if (seg.fromId) hlSet[seg.fromId] = true;
+      var l = links[hlIndices[i]];
+      hlSet[l.source] = true;
+      hlSet[l.target] = true;
     }
   }
 
@@ -1983,29 +1403,6 @@ function buildScene() {
   hubOrb.tint = 0xf0e0c0;
   hubOrb.position.set(centerAnimPos.x, centerAnimPos.y);
   orbLayer.addChild(hubOrb);
-
-  hubCorona = new PIXI.Sprite(coronaTex);
-  hubCorona.anchor.set(0.5);
-  hubCorona.tint = 0xf0e0c0;
-  hubCorona.blendMode = PIXI.BLEND_MODES.ADD;
-  hubCorona.position.set(centerAnimPos.x, centerAnimPos.y);
-  coronaLayer.addChild(hubCorona);
-
-  // Hub inner galaxy
-  hubInnerGalaxy = new PIXI.Sprite(innerGalaxyTex);
-  hubInnerGalaxy.anchor.set(0.5);
-  hubInnerGalaxy.tint = 0xf0e0c0;
-  hubInnerGalaxy.blendMode = PIXI.BLEND_MODES.ADD;
-  hubInnerGalaxy.position.set(centerAnimPos.x, centerAnimPos.y);
-  innerLayer.addChild(hubInnerGalaxy);
-
-  // Hub inner core
-  hubInnerCore = new PIXI.Sprite(innerCoreTex);
-  hubInnerCore.anchor.set(0.5);
-  hubInnerCore.tint = 0xffffff;
-  hubInnerCore.blendMode = PIXI.BLEND_MODES.ADD;
-  hubInnerCore.position.set(centerAnimPos.x, centerAnimPos.y);
-  innerLayer.addChild(hubInnerCore);
 
   hubLabel = new PIXI.Text('ENGRAM', {
     fontFamily: 'Inter, sans-serif', fontSize: 20, fontWeight: '500', fill: 0xf0e0c0
@@ -2035,73 +1432,6 @@ function buildScene() {
   }
   nextPulseTime['__hub'] = time + rng(1, 4);
 
-  // ===== Category Nuclei =====
-  var catKeys = Object.keys(nuclei);
-  for (var ni = 0; ni < catKeys.length; ni++) {
-    var cat = catKeys[ni];
-    var nap = nucleiAnimPos[cat] || nuclei[cat];
-    var col = COLORS[cat];
-
-    var ng = new PIXI.Sprite(glowTex);
-    ng.anchor.set(0.5);
-    ng.tint = col.hex;
-    ng.blendMode = PIXI.BLEND_MODES.ADD;
-    ng.position.set(nap.x, nap.y);
-    glowLayer.addChild(ng);
-
-    var no = new PIXI.Sprite(orbTex);
-    no.anchor.set(0.5);
-    no.tint = col.hex;
-    no.position.set(nap.x, nap.y);
-    orbLayer.addChild(no);
-
-    var nc = new PIXI.Sprite(coronaTex);
-    nc.anchor.set(0.5);
-    nc.tint = col.hex;
-    nc.blendMode = PIXI.BLEND_MODES.ADD;
-    nc.position.set(nap.x, nap.y);
-    coronaLayer.addChild(nc);
-
-    nucleiSprites[cat] = { glow: ng, orb: no, corona: nc };
-
-    var nameLabel = new PIXI.Text(cat.toUpperCase(), {
-      fontFamily: 'Inter, sans-serif', fontSize: 20, fontWeight: '600', fill: col.hex
-    });
-    nameLabel.anchor.set(0.5, 0);
-    nameLabel.position.set(nap.x, nap.y + NUCLEUS_ORB_R + 4);
-    labelLayer.addChild(nameLabel);
-
-    var countLabel = new PIXI.Text(nuclei[cat].count + ' memories', {
-      fontFamily: 'JetBrains Mono, monospace', fontSize: 16, fill: col.hex
-    });
-    countLabel.anchor.set(0.5, 0);
-    countLabel.position.set(nap.x, nap.y + NUCLEUS_ORB_R + 22);
-    labelLayer.addChild(countLabel);
-
-    nucLabels[cat] = { name: nameLabel, count: countLabel };
-
-    // Nucleus orbit particles
-    for (var oi = 0; oi < ORBIT_PER_NUCLEUS; oi++) {
-      var ospr = new PIXI.Sprite(particleTex);
-      ospr.anchor.set(0.5);
-      ospr.blendMode = PIXI.BLEND_MODES.ADD;
-      ospr.tint = col.hex;
-      orbitLayer.addChild(ospr);
-      orbitParts.push({
-        cx: nap.x, cy: nap.y,
-        angle: (oi / ORBIT_PER_NUCLEUS) * Math.PI * 2,
-        speed: 0.35 + Math.random() * 0.45,
-        radiusX: NUCLEUS_ORB_R * (1.8 + Math.random() * 2.2),
-        radiusY: NUCLEUS_ORB_R * (1.0 + Math.random() * 2.0),
-        tilt: Math.random() * Math.PI * 0.4,
-        size: 0.7 + Math.random() * 1.3,
-        alpha: 0.2 + Math.random() * 0.3,
-        sprite: ospr, isHub: false, cat: cat
-      });
-    }
-    nextPulseTime[cat] = time + rng(0.5, PULSE_MAX);
-  }
-
   // ===== Cluster Constellation Orbs =====
   clusterSprites = {};
   var cids = Object.keys(clusters);
@@ -2120,28 +1450,20 @@ function buildScene() {
     cg.position.set(ap.x, ap.y);
     glowLayer.addChild(cg);
 
-    // Cluster orb — bigger, uses count to scale
+    // Cluster orb -- bigger, uses count to scale
     var co = new PIXI.Sprite(orbTex);
     co.anchor.set(0.5);
     co.tint = col.hex;
     co.position.set(ap.x, ap.y);
     orbLayer.addChild(co);
 
-    // Cluster corona
-    var cc = new PIXI.Sprite(coronaTex);
-    cc.anchor.set(0.5);
-    cc.tint = col.hex;
-    cc.blendMode = PIXI.BLEND_MODES.ADD;
-    cc.position.set(ap.x, ap.y);
-    coronaLayer.addChild(cc);
-
-    // Inner galaxy for cluster
-    var cig = new PIXI.Sprite(innerGalaxyTex);
-    cig.anchor.set(0.5);
-    cig.tint = col.hex;
-    cig.blendMode = PIXI.BLEND_MODES.ADD;
-    cig.position.set(ap.x, ap.y);
-    innerLayer.addChild(cig);
+    // Neon halo ring
+    var cr = new PIXI.Sprite(ringTex);
+    cr.anchor.set(0.5);
+    cr.tint = col.hex;
+    cr.blendMode = PIXI.BLEND_MODES.ADD;
+    cr.position.set(ap.x, ap.y);
+    orbLayer.addChild(cr);
 
     // Count badge label
     var badgeText = cluster.memIds.length + '';
@@ -2162,7 +1484,7 @@ function buildScene() {
     clLabel.position.set(ap.x, ap.y + 20);
     labelLayer.addChild(clLabel);
 
-    clusterSprites[cid] = { glow: cg, orb: co, corona: cc, innerGalaxy: cig, badge: badge, label: clLabel };
+    clusterSprites[cid] = { glow: cg, orb: co, ring: cr, badge: badge, label: clLabel };
   }
 
   // ===== Memory Nodes =====
@@ -2190,30 +1512,7 @@ function buildScene() {
     mo.position.set(ap.x, ap.y);
     orbLayer.addChild(mo);
 
-    var mc = new PIXI.Sprite(coronaTex);
-    mc.anchor.set(0.5);
-    mc.tint = col.hex;
-    mc.blendMode = PIXI.BLEND_MODES.ADD;
-    mc.position.set(ap.x, ap.y);
-    coronaLayer.addChild(mc);
-
-    // Inner galaxy spiral
-    var mig = new PIXI.Sprite(innerGalaxyTex);
-    mig.anchor.set(0.5);
-    mig.tint = col.hex;
-    mig.blendMode = PIXI.BLEND_MODES.ADD;
-    mig.position.set(ap.x, ap.y);
-    innerLayer.addChild(mig);
-
-    // Inner pulsing core
-    var mic = new PIXI.Sprite(innerCoreTex);
-    mic.anchor.set(0.5);
-    mic.tint = 0xffffff;
-    mic.blendMode = PIXI.BLEND_MODES.ADD;
-    mic.position.set(ap.x, ap.y);
-    innerLayer.addChild(mic);
-
-    nodeSprites[m.id] = { glow: mg, orb: mo, corona: mc, innerGalaxy: mig, innerCore: mic };
+    nodeSprites[m.id] = { glow: mg, orb: mo };
   }
 
   // ===== Branch Particle Sprites =====
@@ -2240,191 +1539,80 @@ function buildScene() {
 
 // ===== Update Functions =====
 
-function updateStars() {
-  for (var i = 0; i < stars.length; i++) {
-    var s = stars[i];
-    var twinkle = 0.35 + 0.65 * Math.sin(time * s.freq + s.phase);
-    var flicker = 1 - s.flickerAmt + s.flickerAmt * Math.sin(time * s.freq2 + s.phase * 2.3);
-    s.sprite.alpha = s.baseAlpha * twinkle * flicker;
-  }
-}
-
-function updateNebulaDrifts(dt) {
-  for (var i = 0; i < nebulaDrifts.length; i++) {
-    var n = nebulaDrifts[i];
-    n.baseX += n.vx * dt;
-    n.baseY += n.vy * dt;
-    // Wrap around screen edges with generous margin
-    var margin = 200;
-    if (n.baseX < -margin) n.baseX = screenW + margin;
-    if (n.baseX > screenW + margin) n.baseX = -margin;
-    if (n.baseY < -margin) n.baseY = screenH + margin;
-    if (n.baseY > screenH + margin) n.baseY = -margin;
-    n.sprite.x = n.baseX;
-    n.sprite.y = n.baseY;
-    n.sprite.rotation += n.rotSpeed * dt;
-    // Breathing alpha
-    n.sprite.alpha = n.baseAlpha * (0.5 + 0.5 * Math.sin(time * n.freq + n.phase));
-    // Subtle scale breathing
-    var scalePulse = 1 + 0.06 * Math.sin(time * n.scaleFreq + n.scalePhase);
-    n.sprite.scale.set(n.baseScale * scalePulse);
-  }
-}
-
-function updateDust(dt) {
-  for (var i = 0; i < dustParts.length; i++) {
-    var d = dustParts[i];
-    d.baseX += d.vx * dt;
-    d.baseY += d.vy * dt;
-    if (d.baseX < -30) d.baseX = screenW + 30;
-    if (d.baseX > screenW + 30) d.baseX = -30;
-    if (d.baseY < -30) d.baseY = screenH + 30;
-    if (d.baseY > screenH + 30) d.baseY = -30;
-    d.sprite.x = d.baseX - transform.x * d.parallax;
-    d.sprite.y = d.baseY - transform.y * d.parallax;
-    d.sprite.alpha = d.baseAlpha * (0.4 + 0.6 * Math.sin(time * d.freq + d.phase));
-  }
-}
-
-function launchShootingStar(ss) {
-  ss.active = true;
-  ss.color = SHOOT_COLORS[Math.random() * SHOOT_COLORS.length | 0];
-  ss.maxLife = rng(0.6, 1.8);
-  ss.life = ss.maxLife;
-  ss.brightness = rng(0.5, 1.0);
-  var edge = Math.random() * 4 | 0;
-  var angle;
-  if (edge === 0) { ss.x = Math.random() * screenW; ss.y = -10; angle = rng(0.3, 2.8); }
-  else if (edge === 1) { ss.x = screenW + 10; ss.y = Math.random() * screenH; angle = rng(1.8, 4.3); }
-  else if (edge === 2) { ss.x = Math.random() * screenW; ss.y = screenH + 10; angle = rng(3.5, 5.8); }
-  else { ss.x = -10; ss.y = Math.random() * screenH; angle = rng(-0.8, 0.8); }
-  var speed = rng(350, 900);
-  ss.vx = Math.cos(angle) * speed;
-  ss.vy = Math.sin(angle) * speed;
-  ss.startX = ss.x;
-  ss.startY = ss.y;
-}
-
-function updateShootingStars(dt) {
-  if (time > nextShootTime) {
-    for (var i = 0; i < shootPool.length; i++) {
-      if (!shootPool[i].active) { launchShootingStar(shootPool[i]); break; }
-    }
-    nextShootTime = time + rng(SHOOT_MIN, SHOOT_MAX);
-  }
-  shootGfx.clear();
-  for (var i = 0; i < shootPool.length; i++) {
-    var ss = shootPool[i];
-    if (!ss.active) { ss.head.visible = false; ss.flash.visible = false; continue; }
-    ss.life -= dt;
-    if (ss.life <= 0) { ss.active = false; ss.head.visible = false; ss.flash.visible = false; continue; }
-    ss.x += ss.vx * dt;
-    ss.y += ss.vy * dt;
-    var lifeRatio = ss.life / ss.maxLife;
-    var fadeIn = Math.min(1, (ss.maxLife - ss.life) / 0.1);
-    var fadeOut = lifeRatio < 0.25 ? lifeRatio / 0.25 : 1;
-    var alpha = fadeIn * fadeOut * ss.brightness;
-    ss.head.visible = true;
-    ss.head.position.set(ss.x, ss.y);
-    ss.head.tint = ss.color;
-    ss.head.scale.set(0.1 + alpha * 0.06);
-    ss.head.alpha = alpha * 0.9;
-    var flashAge = ss.maxLife - ss.life;
-    if (flashAge < 0.3) {
-      ss.flash.visible = true;
-      ss.flash.position.set(ss.startX, ss.startY);
-      ss.flash.tint = 0xffffff;
-      var flashAlpha = (1 - flashAge / 0.3) * ss.brightness * 0.6;
-      ss.flash.scale.set(0.15 * flashAlpha);
-      ss.flash.alpha = flashAlpha;
-    } else {
-      ss.flash.visible = false;
-    }
-    var speed = Math.sqrt(ss.vx * ss.vx + ss.vy * ss.vy);
-    var trailLen = speed * 0.18 * fadeOut;
-    var ddx = -ss.vx / speed, ddy = -ss.vy / speed;
-    var segments = 8;
-    for (var s = 0; s < segments; s++) {
-      var t0 = s / segments, t1 = (s + 1) / segments;
-      var segAlpha = alpha * (1 - t1) * (1 - t0) * 0.6;
-      if (segAlpha < 0.003) continue;
-      var w = (2.5 - t0 * 2.0) * (0.5 + alpha * 0.5);
-      shootGfx.lineStyle(Math.max(0.3, w), ss.color, segAlpha);
-      shootGfx.moveTo(ss.x + ddx * trailLen * t0, ss.y + ddy * trailLen * t0);
-      shootGfx.lineTo(ss.x + ddx * trailLen * t1, ss.y + ddy * trailLen * t1);
-    }
-  }
-}
+// Sky updates removed — void background
+function updateStars() {}
+function updateNebulaDrifts() {}
+function updateDust() {}
+function updateShootingStars() {}
 
 function updateGrid() {
   gridGfx.clear();
 }
 
-// Dynamic curves using animated positions
+// Direct data links — straight lines from similarity connections
 function updateCurves(phaseTrunk, phaseBranch, dimEased) {
   curvesGfx.clear();
-  var trunkAlpha = easeOutExpo(phaseTrunk);
-  var branchAlpha = easeOutExpo(phaseBranch);
+  var alpha = easeOutExpo(phaseBranch);
+  if (alpha < 0.005) return;
 
-  // Trunk curves
-  for (var ti = 0; ti < trunkSegs.length; ti++) {
-    var ts = trunkSegs[ti];
-    if (currentFilter !== 'all' && ts.cat !== currentFilter) continue;
-    var tA = trunkAlpha * 0.35;
-    if (selectedNode && ts.cat !== selectedNode.category) tA *= (1 - dimEased * 0.85);
-    if (tA < 0.005) continue;
-    var pts = getSegPts(ts);
-    // Trunk glow
-    curvesGfx.lineStyle(2.0 / transform.k, ts.col.hex, tA * 0.08);
-    curvesGfx.moveTo(pts.x1, pts.y1);
-    curvesGfx.quadraticCurveTo(pts.cx, pts.cy, pts.x2, pts.y2);
-    // Trunk core
-    curvesGfx.lineStyle(0.8 / transform.k, ts.col.hex, tA * 0.9);
-    curvesGfx.moveTo(pts.x1, pts.y1);
-    curvesGfx.quadraticCurveTo(pts.cx, pts.cy, pts.x2, pts.y2);
-  }
+  for (var i = 0; i < links.length; i++) {
+    var l = links[i];
+    var sp = nodeAnimPos[l.source] || clusterAnimPos[l.source];
+    var tp = nodeAnimPos[l.target] || clusterAnimPos[l.target];
+    if (!sp || !tp) continue;
 
-  // Branch curves
-  for (var bi = 0; bi < branchSegs.length; bi++) {
-    var bs = branchSegs[bi];
-    if (currentFilter !== 'all' && bs.cat !== currentFilter) continue;
-    // Hide curves to nodes inside collapsed clusters
-    if (bs.fromCluster && typeof bs.fromId === 'string' && clusters[bs.fromId] && !clusters[bs.fromId].expanded) continue;
-    // Hide curves to collapsed cluster orbs if cluster is expanded (children show individual curves)
-    if (bs.isCluster && clusters[bs.toId] && clusters[bs.toId].expanded) continue;
-    var isHL = hlIndexSet[bi] || false;
-    var bA = branchAlpha * 0.28 / (1 + bs.depth * 0.18);
+    // Category filtering
+    var srcMem = nodeMap[l.source], tgtMem = nodeMap[l.target];
+    if (currentFilter !== 'all') {
+      var srcCat = srcMem ? srcMem.category : null;
+      var tgtCat = tgtMem ? tgtMem.category : null;
+      if (srcCat !== currentFilter && tgtCat !== currentFilter) continue;
+    }
+
+    // Visibility: skip links to nodes inside collapsed clusters
+    var srcCluster = memToCluster[l.source], tgtCluster = memToCluster[l.target];
+    if (srcCluster && clusters[srcCluster] && !clusters[srcCluster].expanded) continue;
+    if (tgtCluster && clusters[tgtCluster] && !clusters[tgtCluster].expanded) continue;
+
+    // Alpha from similarity strength
+    var sim = l.similarity || 0.5;
+    var lA = alpha * (0.05 + sim * 0.25);
+
+    // Highlight connected links
+    var isHL = hlSet[l.source] && hlSet[l.target];
     if (selectedNode) {
-      if (isHL) bA = 0.7;
-      else bA *= (1 - dimEased * 0.88);
+      if (isHL) lA = 0.6;
+      else if (hlSet[l.source] || hlSet[l.target]) lA *= 0.5;
+      else lA *= (1 - dimEased * 0.88);
     }
-    if (bA < 0.005) continue;
-    var pts = getSegPts(bs);
+    if (lA < 0.005) continue;
 
-    if (isHL) {
-      curvesGfx.lineStyle(2.5 / transform.k, bs.col.hex, 0.08);
-      curvesGfx.moveTo(pts.x1, pts.y1);
-      curvesGfx.quadraticCurveTo(pts.cx, pts.cy, pts.x2, pts.y2);
-      curvesGfx.lineStyle(0.8 / transform.k, bs.col.hex, bA);
-      curvesGfx.moveTo(pts.x1, pts.y1);
-      curvesGfx.quadraticCurveTo(pts.cx, pts.cy, pts.x2, pts.y2);
-    } else {
-      curvesGfx.lineStyle(Math.max(0.3, 0.6 - bs.depth * 0.06) / transform.k, bs.col.hex, Math.min(bA * 1.2, 0.3));
-      curvesGfx.moveTo(pts.x1, pts.y1);
-      curvesGfx.quadraticCurveTo(pts.cx, pts.cy, pts.x2, pts.y2);
+    var col = srcMem ? (COLORS[srcMem.category] || COLORS.general) : COLORS.general;
+
+    // Fiber optic glow — wider faint line beneath
+    if (isHL || sim > 0.6) {
+      curvesGfx.lineStyle(2.0 / transform.k, col.hex, lA * 0.12);
+      curvesGfx.moveTo(sp.x, sp.y);
+      curvesGfx.lineTo(tp.x, tp.y);
     }
 
-    // Endpoint glow dot at node
-    if (bA > 0.05) {
+    // Core line — thin bright fiber
+    var lineW = Math.max(0.3, 0.4 + sim * 0.4) / transform.k;
+    curvesGfx.lineStyle(lineW, col.hex, Math.min(lA * 1.2, 0.35));
+    curvesGfx.moveTo(sp.x, sp.y);
+    curvesGfx.lineTo(tp.x, tp.y);
+
+    // Endpoint dots
+    if (lA > 0.05) {
       curvesGfx.lineStyle(0);
-      curvesGfx.beginFill(bs.col.hex, bA * 0.35);
-      curvesGfx.drawCircle(pts.x2, pts.y2, 0.8 / transform.k);
+      curvesGfx.beginFill(col.hex, lA * 0.3);
+      curvesGfx.drawCircle(tp.x, tp.y, 0.6 / transform.k);
       curvesGfx.endFill();
     }
   }
 }
 
-// Branch particles using dynamic positions
+// Data packets traveling along direct links
 function updateParticles(entryEased, dimEased) {
   for (var pi = 0; pi < branchParticles.length; pi++) {
     var bp = branchParticles[pi];
@@ -2434,55 +1622,57 @@ function updateParticles(entryEased, dimEased) {
     bp.t += bp.speed;
     if (bp.t > 1) {
       bp.t -= 1;
-      bp.segIdx = bp.isTrunk
-        ? (Math.random() * trunkSegs.length | 0)
-        : (Math.random() * branchSegs.length | 0);
+      bp.linkIdx = Math.random() * links.length | 0;
     }
 
-    var seg = bp.isTrunk ? trunkSegs[bp.segIdx] : branchSegs[bp.segIdx];
-    if (!seg) { spr.visible = false; continue; }
-    if (currentFilter !== 'all' && seg.cat !== currentFilter) { spr.visible = false; continue; }
+    var l = links[bp.linkIdx];
+    if (!l) { spr.visible = false; continue; }
 
-    var pts = getSegPts(seg);
-    var pt = bezierPt(pts.x1, pts.y1, pts.cx, pts.cy, pts.x2, pts.y2, bp.t);
+    var sp = nodeAnimPos[l.source] || clusterAnimPos[l.source];
+    var tp = nodeAnimPos[l.target] || clusterAnimPos[l.target];
+    if (!sp || !tp) { spr.visible = false; continue; }
+
+    var srcMem = nodeMap[l.source];
+    if (currentFilter !== 'all' && srcMem && srcMem.category !== currentFilter) { spr.visible = false; continue; }
+
+    // Linear interpolation along straight link
+    var x = sp.x + (tp.x - sp.x) * bp.t;
+    var y = sp.y + (tp.y - sp.y) * bp.t;
     var fadeT = Math.min(bp.t, 1 - bp.t) * 4;
     var pAlpha = bp.alpha * Math.min(1, fadeT) * entryEased;
-    if (selectedNode && seg.cat !== selectedNode.category) pAlpha *= 0.08;
+    if (selectedNode && srcMem && srcMem.category !== selectedNode.category) pAlpha *= 0.08;
     if (pAlpha < 0.02) { spr.visible = false; continue; }
 
     spr.visible = true;
-    spr.position.set(pt.x, pt.y);
-    spr.tint = seg.col.hex;
+    spr.position.set(x, y);
+    spr.tint = srcMem ? (COLORS[srcMem.category] || COLORS.general).hex : COLORS.general.hex;
     var pScale = bp.size * 2 / 32;
     spr.scale.set(pScale / transform.k);
     spr.alpha = pAlpha;
   }
 }
 
-// Energy pulses — bright signals traveling along connections
+// Energy pulses — bright data packets traveling along direct links
 function updateEnergyPulses(dt, entryEased, dimEased) {
   // Spawn
-  if (entryEased > 0.8 && energyPulses.length < MAX_ENERGY_PULSES) {
-    var allLen = branchSegs.length + trunkSegs.length;
-    if (allLen > 0) {
-      for (var attempt = 0; attempt < 2; attempt++) {
-        if (Math.random() < 0.12 * dt * 60) {
-          var idx = Math.random() * allLen | 0;
-          var isTrunk = idx >= branchSegs.length;
-          var sIdx = isTrunk ? idx - branchSegs.length : idx;
-          var seg = isTrunk ? trunkSegs[sIdx] : branchSegs[sIdx];
-          if (!seg || (currentFilter !== 'all' && seg.cat !== currentFilter)) continue;
-          var freeSpr = null;
-          for (var j = 0; j < energyPulsePool.length; j++) {
-            if (!energyPulsePool[j].visible) { freeSpr = energyPulsePool[j]; break; }
-          }
-          if (!freeSpr) break;
-          energyPulses.push({
-            segIdx: sIdx, isTrunk: isTrunk,
-            t: 0, speed: 0.4 + Math.random() * 0.5,
-            sprite: freeSpr, cat: seg.cat
-          });
+  if (entryEased > 0.8 && links.length > 0 && energyPulses.length < MAX_ENERGY_PULSES) {
+    for (var attempt = 0; attempt < 2; attempt++) {
+      if (Math.random() < 0.12 * dt * 60) {
+        var idx = Math.random() * links.length | 0;
+        var l = links[idx];
+        if (!l) continue;
+        var srcMem = nodeMap[l.source];
+        if (currentFilter !== 'all' && srcMem && srcMem.category !== currentFilter) continue;
+        var freeSpr = null;
+        for (var j = 0; j < energyPulsePool.length; j++) {
+          if (!energyPulsePool[j].visible) { freeSpr = energyPulsePool[j]; break; }
         }
+        if (!freeSpr) break;
+        energyPulses.push({
+          linkIdx: idx,
+          t: 0, speed: 0.4 + Math.random() * 0.5,
+          sprite: freeSpr, cat: srcMem ? srcMem.category : 'general'
+        });
       }
     }
   }
@@ -2493,44 +1683,31 @@ function updateEnergyPulses(dt, entryEased, dimEased) {
     ep.t += ep.speed * dt;
     if (ep.t >= 1) { ep.sprite.visible = false; energyPulses.splice(i, 1); continue; }
 
-    var seg = ep.isTrunk ? trunkSegs[ep.segIdx] : branchSegs[ep.segIdx];
-    if (!seg) { ep.sprite.visible = false; energyPulses.splice(i, 1); continue; }
+    var l = links[ep.linkIdx];
+    if (!l) { ep.sprite.visible = false; energyPulses.splice(i, 1); continue; }
 
-    var pts = getSegPts(seg);
-    var pt = bezierPt(pts.x1, pts.y1, pts.cx, pts.cy, pts.x2, pts.y2, ep.t);
+    var sp = nodeAnimPos[l.source] || clusterAnimPos[l.source];
+    var tp = nodeAnimPos[l.target] || clusterAnimPos[l.target];
+    if (!sp || !tp) { ep.sprite.visible = false; energyPulses.splice(i, 1); continue; }
+
+    // Linear interpolation
+    var x = sp.x + (tp.x - sp.x) * ep.t;
+    var y = sp.y + (tp.y - sp.y) * ep.t;
+
     var fadeT = Math.min(ep.t * 5, (1 - ep.t) * 5, 1);
     var alpha = fadeT * 0.55 * entryEased;
-    if (selectedNode && seg.cat !== selectedNode.category) alpha *= 0.1;
+    if (selectedNode && ep.cat !== selectedNode.category) alpha *= 0.1;
 
     ep.sprite.visible = alpha > 0.02;
-    ep.sprite.position.set(pt.x, pt.y);
-    ep.sprite.tint = (COLORS[seg.cat] || COLORS.general).hex;
+    ep.sprite.position.set(x, y);
+    ep.sprite.tint = (COLORS[ep.cat] || COLORS.general).hex;
     ep.sprite.scale.set((0.06 + alpha * 0.03) / transform.k);
     ep.sprite.alpha = alpha;
   }
 }
 
-// Pulse rings using animated positions
+// Pulse rings using animated positions -- hub only (nuclei removed)
 function updatePulseRings(entryEased, dimEased) {
-  var catKeys = Object.keys(nuclei);
-  for (var ni = 0; ni < catKeys.length; ni++) {
-    var cat = catKeys[ni];
-    if (nextPulseTime[cat] && time > nextPulseTime[cat] && pulseRings.length < MAX_PULSE_RINGS) {
-      if (currentFilter === 'all' || cat === currentFilter) {
-        var nap = nucleiAnimPos[cat];
-        if (nap) {
-          pulseRings.push({
-            x: nap.x, y: nap.y,
-            startR: NUCLEUS_ORB_R,
-            maxR: NUCLEUS_ORB_R + 55 + Math.random() * 50,
-            duration: 1.8 + Math.random() * 1.2,
-            born: time, color: COLORS[cat].hex, cat: cat
-          });
-        }
-      }
-      nextPulseTime[cat] = time + rng(PULSE_MIN, PULSE_MAX);
-    }
-  }
   if (nextPulseTime['__hub'] && time > nextPulseTime['__hub'] && pulseRings.length < MAX_PULSE_RINGS) {
     pulseRings.push({
       x: centerAnimPos.x, y: centerAnimPos.y,
@@ -2561,19 +1738,16 @@ function updatePulseRings(entryEased, dimEased) {
   }
 }
 
-// Orbit particles — follow animated centers
+// Orbit particles -- follow animated centers (hub only, nuclei removed)
 function updateOrbitParticles(dt, entryEased, dimEased) {
   for (var i = 0; i < orbitParts.length; i++) {
     var op = orbitParts[i];
     var spr = op.sprite;
 
-    // Update orbit center to animated position
+    // Update orbit center to animated position (hub only)
     if (op.isHub) {
       op.cx = centerAnimPos.x;
       op.cy = centerAnimPos.y;
-    } else if (op.cat) {
-      var nap = nucleiAnimPos[op.cat];
-      if (nap) { op.cx = nap.x; op.cy = nap.y; }
     }
 
     if (op.cat && currentFilter !== 'all' && op.cat !== currentFilter) { spr.visible = false; continue; }
@@ -2673,30 +1847,7 @@ function updateHub(phaseCenter) {
   hubOrb.position.set(centerAnimPos.x, centerAnimPos.y);
   hubOrb.scale.set(orbDiam / 128);
   hubOrb.alpha = alpha;
-  hubOrb.rotation = time * 0.05;
-
-  if (hubCorona) {
-    hubCorona.position.set(centerAnimPos.x, centerAnimPos.y);
-    hubCorona.rotation = time * 0.06;
-    hubCorona.scale.set(r * 3.5 / 64);
-    hubCorona.alpha = alpha * 0.2;
-  }
-
-  // Hub inner galaxy — slow counter-rotate
-  if (typeof hubInnerGalaxy !== 'undefined' && hubInnerGalaxy) {
-    hubInnerGalaxy.position.set(centerAnimPos.x, centerAnimPos.y);
-    hubInnerGalaxy.scale.set(r * 1.8 / 64, r * 1.2 / 64);
-    hubInnerGalaxy.rotation = -time * 0.04;
-    hubInnerGalaxy.alpha = alpha * 0.45;
-  }
-
-  // Hub inner core — heartbeat
-  if (typeof hubInnerCore !== 'undefined' && hubInnerCore) {
-    var hubHeart = Math.pow(Math.abs(Math.sin(time * 1.2)), 0.4) * 0.5 + 0.5;
-    hubInnerCore.position.set(centerAnimPos.x, centerAnimPos.y);
-    hubInnerCore.scale.set(r * 0.45 * hubHeart / 32);
-    hubInnerCore.alpha = alpha * (0.4 + hubHeart * 0.5);
-  }
+  hubOrb.rotation = 0;
 
   if (hubLabel) {
     hubLabel.visible = transform.k > 0.4;
@@ -2706,73 +1857,7 @@ function updateHub(phaseCenter) {
   }
 }
 
-// Category nuclei — animated positions + rotation
-function updateNuclei(phaseNuclei, dimEased) {
-  var nucAlpha = easeOutExpo(phaseNuclei);
-  var catKeys = Object.keys(nuclei);
-
-  for (var ni = 0; ni < catKeys.length; ni++) {
-    var cat = catKeys[ni];
-    var nap = nucleiAnimPos[cat];
-    if (!nap) continue;
-    var ns = nucleiSprites[cat];
-    if (!ns) continue;
-
-    var vis = currentFilter === 'all' || cat === currentFilter;
-    ns.glow.visible = vis;
-    ns.orb.visible = vis;
-    ns.corona.visible = vis;
-    if (!vis) {
-      if (nucLabels[cat]) { nucLabels[cat].name.visible = false; nucLabels[cat].count.visible = false; }
-      continue;
-    }
-
-    var alpha = nucAlpha;
-    if (selectedNode && selectedNode.category !== cat) alpha *= (1 - dimEased * 0.85);
-    if (alpha < 0.01) {
-      ns.glow.visible = false; ns.orb.visible = false; ns.corona.visible = false;
-      if (nucLabels[cat]) { nucLabels[cat].name.visible = false; nucLabels[cat].count.visible = false; }
-      continue;
-    }
-
-    var pulse = 1
-      + Math.sin(time * 1.0 + ni * 1.5) * 0.08
-      + Math.sin(time * 2.1 + ni * 2.3) * 0.04
-      + Math.sin(time * 3.7 + ni * 0.7) * 0.02;
-    var r = NUCLEUS_ORB_R * pulse;
-
-    var glowBreath = 1 + Math.sin(time * 0.6 + ni * 0.9) * 0.22 + Math.sin(time * 1.8 + ni * 1.7) * 0.08;
-    var glowDiam = r * 2;
-    ns.glow.position.set(nap.x, nap.y);
-    ns.glow.scale.set(glowDiam / 128);
-    ns.glow.alpha = alpha * 0.12 * glowBreath;
-
-    var orbDiam = r * 2.8;
-    ns.orb.position.set(nap.x, nap.y);
-    ns.orb.scale.set(orbDiam / 128);
-    ns.orb.alpha = Math.min(1, alpha * 1.3);
-    ns.orb.rotation = time * 0.08 * (ni % 2 === 0 ? 1 : -1);
-
-    ns.corona.position.set(nap.x, nap.y);
-    ns.corona.rotation = time * (0.1 + ni * 0.015) * (ni % 2 === 0 ? -1 : 1);
-    ns.corona.scale.set(r * 3.0 / 64);
-    ns.corona.alpha = alpha * 0.2;
-
-    if (nucLabels[cat]) {
-      var showLabels = transform.k > 0.3;
-      nucLabels[cat].name.visible = showLabels;
-      nucLabels[cat].count.visible = showLabels;
-      if (showLabels) {
-        nucLabels[cat].name.position.set(nap.x, nap.y + r + 14 / transform.k);
-        nucLabels[cat].name.scale.set(0.45 / transform.k);
-        nucLabels[cat].name.alpha = 0.7 * alpha;
-        nucLabels[cat].count.position.set(nap.x, nap.y + r + 24 / transform.k);
-        nucLabels[cat].count.scale.set(0.5 / transform.k);
-        nucLabels[cat].count.alpha = 0.4 * alpha;
-      }
-    }
-  }
-}
+// Category nuclei removed — organic force layout
 
 // Cluster constellation orbs — animated positions + count badges
 function updateClusters(phaseNodes, dimEased) {
@@ -2789,14 +1874,13 @@ function updateClusters(phaseNodes, dimEased) {
 
     cs.glow.visible = vis;
     cs.orb.visible = vis;
-    cs.corona.visible = vis;
-    cs.innerGalaxy.visible = vis;
+    cs.ring.visible = vis;
     cs.badge.visible = vis && transform.k > 0.15;
     cs.label.visible = vis && transform.k > 0.3;
     if (!vis) continue;
 
     var ap = clusterAnimPos[cid];
-    if (!ap) { cs.glow.visible = false; cs.orb.visible = false; cs.corona.visible = false; cs.innerGalaxy.visible = false; cs.badge.visible = false; cs.label.visible = false; continue; }
+    if (!ap) { cs.glow.visible = false; cs.orb.visible = false; cs.ring.visible = false; cs.badge.visible = false; cs.label.visible = false; continue; }
 
     // Cluster radius based on member count — bigger clusters = bigger orbs
     var count = cluster.memIds.length;
@@ -2821,22 +1905,14 @@ function updateClusters(phaseNodes, dimEased) {
     cs.orb.position.set(ap.x, ap.y);
     cs.orb.scale.set(orbDiam / 128);
     cs.orb.alpha = Math.min(1, alpha * 1.2);
-    cs.orb.rotation = time * 0.08 * (ci % 2 === 0 ? 1 : -1);
+    cs.orb.rotation = 0;
 
-    // Corona
-    cs.corona.position.set(ap.x, ap.y);
-    cs.corona.rotation = time * 0.1 * (ci % 3 === 0 ? -1 : 1);
-    var coronaScale = pr * 3.4 / 64;
-    cs.corona.scale.set(coronaScale);
-    cs.corona.alpha = alpha * 0.15;
-    cs.corona.visible = vis && transform.k > 0.15;
-
-    // Inner galaxy
-    cs.innerGalaxy.position.set(ap.x, ap.y);
-    var igScale = pr * 2.2 / 64;
-    cs.innerGalaxy.scale.set(igScale, igScale * 0.6);
-    cs.innerGalaxy.rotation = -time * 0.04 * (ci % 2 === 0 ? 1 : -1);
-    cs.innerGalaxy.alpha = alpha * 0.5;
+    // Neon halo ring
+    cs.ring.position.set(ap.x, ap.y);
+    var ringScale = pr * 3.4 / 64;
+    cs.ring.scale.set(ringScale);
+    cs.ring.alpha = alpha * 0.25;
+    cs.ring.visible = vis && transform.k > 0.15;
 
     // Badge (count number)
     cs.badge.position.set(ap.x, ap.y);
@@ -2851,7 +1927,7 @@ function updateClusters(phaseNodes, dimEased) {
   }
 }
 
-// Memory nodes — animated positions + orb rotation + corona
+// Memory nodes — animated glow + orb
 function updateNodes(phaseNodes, dimEased) {
   for (var mi = 0; mi < memories.length; mi++) {
     var m = memories[mi];
@@ -2861,13 +1937,10 @@ function updateNodes(phaseNodes, dimEased) {
     var vis = nodeVisible(m);
     ns.glow.visible = vis;
     ns.orb.visible = vis;
-    ns.corona.visible = vis;
-    if (ns.innerGalaxy) ns.innerGalaxy.visible = vis;
-    if (ns.innerCore) ns.innerCore.visible = vis;
     if (!vis) continue;
 
     var ap = nodeAnimPos[m.id];
-    if (!ap) { ns.glow.visible = false; ns.orb.visible = false; ns.corona.visible = false; if (ns.innerGalaxy) ns.innerGalaxy.visible = false; if (ns.innerCore) ns.innerCore.visible = false; continue; }
+    if (!ap) { ns.glow.visible = false; ns.orb.visible = false; continue; }
 
     var r = nodeRadius(m);
     var isSelected = selectedNode && selectedNode.id === m.id;
@@ -2882,7 +1955,7 @@ function updateNodes(phaseNodes, dimEased) {
     var alpha = nodeEntry;
     if (selectedNode && !isSelected && !isOnPath) alpha *= (1 - dimEased * 0.88);
     if (m.is_forgotten) alpha *= 0.25;
-    if (alpha < 0.01) { ns.glow.visible = false; ns.orb.visible = false; ns.corona.visible = false; if (ns.innerGalaxy) ns.innerGalaxy.visible = false; if (ns.innerCore) ns.innerCore.visible = false; continue; }
+    if (alpha < 0.01) { ns.glow.visible = false; ns.orb.visible = false; continue; }
 
     // Compound breathing
     var pulse = 1
@@ -2900,50 +1973,28 @@ function updateNodes(phaseNodes, dimEased) {
     ns.glow.alpha = alpha * (isSelected || isHovered ? 0.3 : 0.12) * glowBreath;
     ns.glow.visible = true;
 
-    // Orb with rotation
+    // Orb (hex — no rotation)
     var orbDiam = pr * 3.2;
     ns.orb.position.set(ap.x, ap.y);
     ns.orb.scale.set(orbDiam / 128);
     ns.orb.alpha = Math.min(1, alpha * 1.3);
-    ns.orb.rotation = time * (0.12 + (m.id % 17) * 0.008) * (m.id % 2 === 0 ? 1 : -1);
+    ns.orb.rotation = 0;
     ns.orb.visible = true;
-
-    // Corona ring
-    ns.corona.position.set(ap.x, ap.y);
-    ns.corona.rotation = time * (0.15 + (m.id % 13) * 0.01) * (m.id % 3 === 0 ? -1 : 1);
-    var coronaScale = pr * 3.0 / 64;
-    ns.corona.scale.set(coronaScale);
-    var coronaAlpha = alpha * (0.06 + ((m.importance || 1) / 10) * 0.18);
-    ns.corona.alpha = coronaAlpha;
-    ns.corona.visible = coronaAlpha > 0.01 && transform.k > 0.2;
-
-    // Inner galaxy — counter-rotates inside orb, perspective-tilted
-    if (ns.innerGalaxy) {
-      var igBase = pr * 1.95 / 64;
-      // Perspective tilt — squish Y for 3D disk look
-      var tiltAngle = 0.5 + (m.id % 7) * 0.12;
-      ns.innerGalaxy.position.set(ap.x, ap.y);
-      ns.innerGalaxy.scale.set(igBase, igBase * (0.5 + Math.cos(tiltAngle) * 0.2));
-      ns.innerGalaxy.rotation = -time * (0.06 + (m.id % 11) * 0.004) * (m.id % 2 === 0 ? 1 : -1);
-      ns.innerGalaxy.alpha = alpha * 0.5;
-      ns.innerGalaxy.visible = true;
-    }
-
-    // Inner core — independent heartbeat pulse
-    if (ns.innerCore) {
-      // Heartbeat: quick expand, slow contract (asymmetric sine)
-      var heartPhase = (time * 1.8 + m.id * 0.9) % (Math.PI * 2);
-      var heartbeat = Math.pow(Math.abs(Math.sin(heartPhase)), 0.4) * 0.5 + 0.5;
-      var coreScale = pr * 0.6 * heartbeat / 32;
-      ns.innerCore.position.set(ap.x, ap.y);
-      ns.innerCore.scale.set(coreScale);
-      ns.innerCore.alpha = alpha * (0.3 + heartbeat * 0.5);
-      ns.innerCore.visible = true;
-    }
   }
 }
 
-// Overlay — uses animated positions
+// Draw a flat-top hex outline on a PIXI.Graphics object.
+// cx/cy = center, R = circumradius, gfx = PIXI.Graphics instance.
+function drawHexOutline(gfx, cx, cy, R) {
+  for (var i = 0; i < 6; i++) {
+    var angle = (Math.PI / 3) * i; // flat-top: 0, 60, 120 ...
+    var px = cx + R * Math.cos(angle);
+    var py = cy + R * Math.sin(angle);
+    if (i === 0) gfx.moveTo(px, py); else gfx.lineTo(px, py);
+  }
+  gfx.closePath();
+}
+
 function updateOverlay() {
   overlayGfx.clear();
 
@@ -2958,6 +2009,7 @@ function updateOverlay() {
       var r = nodeRadius(m);
       var col = COLORS[m.category] || COLORS.general;
 
+      // Forgotten: X cross
       if (m.is_forgotten) {
         var cs = r * 0.5;
         overlayGfx.lineStyle(1.5 / transform.k, 0xef4444, 0.6);
@@ -2965,30 +2017,33 @@ function updateOverlay() {
         overlayGfx.moveTo(ap.x + cs, ap.y - cs); overlayGfx.lineTo(ap.x - cs, ap.y + cs);
       }
 
+      // New (< 24h): small dot at top-right corner of hex
       var createdAt = m.created_at ? new Date(m.created_at).getTime() : 0;
       if (createdAt > oneDayAgo) {
         overlayGfx.lineStyle(0); overlayGfx.beginFill(0x22c55e, 0.8);
-        overlayGfx.drawCircle(ap.x + r * 0.7, ap.y - r * 0.7, 2.5 / transform.k);
+        overlayGfx.drawCircle(ap.x + r * 0.75, ap.y - r * 0.55, 2.5 / transform.k);
         overlayGfx.endFill();
       }
 
+      // Expiring soon: pulsing hex outline
       if (m.forget_after) {
         var expiresAt = new Date(m.forget_after).getTime();
         var hoursLeft = (expiresAt - now) / 3600000;
         if (hoursLeft > 0 && hoursLeft < 48) {
           overlayGfx.lineStyle(1 / transform.k, 0xfbbf24, 0.4 + Math.sin(time * 2) * 0.15);
-          overlayGfx.drawCircle(ap.x, ap.y, r + 2 / transform.k);
+          drawHexOutline(overlayGfx, ap.x, ap.y, r + 2 / transform.k);
         }
       }
 
+      // Static memory: faint hex border
       if (m.is_static) {
         overlayGfx.lineStyle(0.8 / transform.k, col.hex, 0.2);
-        overlayGfx.drawCircle(ap.x, ap.y, r + 4 / transform.k);
+        drawHexOutline(overlayGfx, ap.x, ap.y, r + 4 / transform.k);
       }
     }
   }
 
-  // Selected ring
+  // Selected hex ring — double outline with pulse
   if (selectedNode) {
     var ap = nodeAnimPos[selectedNode.id];
     if (ap) {
@@ -2999,20 +2054,20 @@ function updateOverlay() {
       var selR = pr + (5 + selPulse * 3) / transform.k;
       var col = COLORS[selectedNode.category] || COLORS.general;
       overlayGfx.lineStyle(3 / transform.k, col.hex, 0.1 + selPulse * 0.08);
-      overlayGfx.drawCircle(ap.x, ap.y, selR + 2 / transform.k);
+      drawHexOutline(overlayGfx, ap.x, ap.y, selR + 2 / transform.k);
       overlayGfx.lineStyle(1.2 / transform.k, col.hex, 0.3 + selPulse * 0.25);
-      overlayGfx.drawCircle(ap.x, ap.y, selR);
+      drawHexOutline(overlayGfx, ap.x, ap.y, selR);
     }
   }
 
-  // Hover ring
+  // Hover hex ring
   if (hoveredNode && (!selectedNode || hoveredNode.id !== selectedNode.id)) {
     var ap = nodeAnimPos[hoveredNode.id];
     if (ap) {
       var r = nodeRadius(hoveredNode);
       var col = COLORS[hoveredNode.category] || COLORS.general;
       overlayGfx.lineStyle(0.8 / transform.k, col.hex, 0.35);
-      overlayGfx.drawCircle(ap.x, ap.y, r + 4 / transform.k);
+      drawHexOutline(overlayGfx, ap.x, ap.y, r + 4 / transform.k);
     }
   }
 }
@@ -3036,7 +2091,6 @@ app.ticker.add(function() {
   // Entry phases
   var phaseCenter = clamp01(entryProgress / 0.15);
   var phaseTrunk = clamp01((entryProgress - 0.12) / 0.23);
-  var phaseNuclei = clamp01((entryProgress - 0.3) / 0.2);
   var phaseBranch = clamp01((entryProgress - 0.45) / 0.3);
   var phaseNodes = clamp01((entryProgress - 0.6) / 0.4);
   var entryEased = easeOutExpo(entryProgress);
@@ -3078,7 +2132,6 @@ app.ticker.add(function() {
   updateOrbitParticles(dt, entryEased, dimEased);
   updateNodeSparks(dt, entryEased, dimEased);
   updateHub(phaseCenter);
-  updateNuclei(phaseNuclei, dimEased);
   updateClusters(phaseNodes, dimEased);
   updateNodes(phaseNodes, dimEased);
   updateOverlay();
@@ -3098,6 +2151,16 @@ function screenToWorld(sx, sy) {
   return [(sx - transform.x) / transform.k, (sy - transform.y) / transform.k];
 }
 
+// Point-in-flat-top-hex test. cx/cy = center, R = circumradius.
+function pointInHex(px, py, cx, cy, R) {
+  var dx = px - cx, dy = py - cy;
+  // Flat-top hex: width = 2R, height = sqrt(3)*R
+  var hw = R, hh = R * 0.866025; // half-width, half-height
+  if (Math.abs(dx) > hw || Math.abs(dy) > hh * 1.155) return false; // fast bbox reject
+  // The two diagonal edges: |dx| + |dy| / 0.577 <= R  =>  |dx| * 0.577 + |dy| <= R * 0.577 * 1.155
+  return (Math.abs(dx) * 0.57735 + Math.abs(dy)) <= R * 1.1547;
+}
+
 function findNode(sx, sy) {
   var wxy = screenToWorld(sx, sy), wx = wxy[0], wy = wxy[1];
   var closest = null, closestDist = Infinity;
@@ -3109,10 +2172,12 @@ function findNode(sx, sy) {
     if (mCluster && !clusters[mCluster].expanded) continue;
     var ap = nodeAnimPos[m.id];
     if (!ap) continue;
+    var r = nodeRadius(m);
+    var hitR = r + 8 / transform.k;
+    if (!pointInHex(wx, wy, ap.x, ap.y, hitR)) continue;
     var dx = ap.x - wx, dy = ap.y - wy;
     var dist = Math.sqrt(dx * dx + dy * dy);
-    var hitR = nodeRadius(m) + 8 / transform.k;
-    if (dist < hitR && dist < closestDist) { closest = m; closestDist = dist; }
+    if (dist < closestDist) { closest = m; closestDist = dist; }
   }
   return closest;
 }
@@ -3149,18 +2214,6 @@ function toggleCluster(cid) {
   buildScene();
   entryProgress = 1; // skip entry animation
   if (listPanelOpen) renderListPanel();
-}
-
-function findNucleus(sx, sy) {
-  var wxy = screenToWorld(sx, sy), wx = wxy[0], wy = wxy[1];
-  var cats = Object.keys(nuclei);
-  for (var i = 0; i < cats.length; i++) {
-    var nap = nucleiAnimPos[cats[i]];
-    if (!nap) continue;
-    var dx = nap.x - wx, dy = nap.y - wy;
-    if (Math.sqrt(dx * dx + dy * dy) < NUCLEUS_ORB_R + 6 / transform.k) return cats[i];
-  }
-  return null;
 }
 
 function hitCenterHub(sx, sy) {
@@ -3207,9 +2260,8 @@ app.view.addEventListener('mousemove', function(e) {
   var clHit = !node ? findCluster(e.clientX, e.clientY) : null;
   if (node !== hoveredNode) {
     hoveredNode = node;
-    var nucHit = !node && !clHit ? findNucleus(e.clientX, e.clientY) : null;
-    var hubHit = !node && !nucHit && !clHit ? hitCenterHub(e.clientX, e.clientY) : false;
-    app.view.style.cursor = (node || nucHit || hubHit || clHit) ? 'pointer' : 'default';
+    var hubHit = !node && !clHit ? hitCenterHub(e.clientX, e.clientY) : false;
+    app.view.style.cursor = (node || hubHit || clHit) ? 'pointer' : 'default';
     if (node) {
       showTooltip(node, e.clientX, e.clientY);
     } else if (clHit) {
@@ -3230,8 +2282,6 @@ app.view.addEventListener('click', function(e) {
   if (node) { openSidebar(node); return; }
   var clusterHit = findCluster(e.clientX, e.clientY);
   if (clusterHit) { toggleCluster(clusterHit); return; }
-  var nucHit = findNucleus(e.clientX, e.clientY);
-  if (nucHit) { currentFilter = currentFilter === nucHit ? 'all' : nucHit; return; }
   if (hitCenterHub(e.clientX, e.clientY)) { currentFilter = 'all'; closeSidebar(); return; }
 });
 
@@ -3242,11 +2292,12 @@ function openSidebar(m) {
 
   hlSet = {}; hlIndexSet = {};
   var hlIndices = getHighlightPath(m.id);
+  hlSet[m.id] = true;
   for (var i = 0; i < hlIndices.length; i++) {
     hlIndexSet[hlIndices[i]] = true;
-    var seg = branchSegs[hlIndices[i]];
-    hlSet[seg.toId] = true;
-    if (seg.fromId) hlSet[seg.fromId] = true;
+    var l = links[hlIndices[i]];
+    hlSet[l.source] = true;
+    hlSet[l.target] = true;
   }
 
   var sb = document.getElementById('sidebar-inner');

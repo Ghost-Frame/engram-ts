@@ -1,13 +1,13 @@
-﻿#!/usr/bin/env -S node --experimental-strip-types
+#!/usr/bin/env -S node --experimental-strip-types
 // ============================================================================
-// ENGRAM SERVER â€” Modular entry point
+// ENGRAM SERVER �?" Modular entry point
 // Run: node --experimental-strip-types server-split.ts
 // ============================================================================
 
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
 
 // Config
-import { PORT, HOST, OPEN_ACCESS, CORS_ORIGIN, ALLOWED_IPS, CONSOLIDATION_INTERVAL, FORGET_SWEEP_INTERVAL } from "./src/config/index.ts";
+import { PORT, HOST, OPEN_ACCESS, CORS_ORIGIN, ALLOWED_IPS, CONSOLIDATION_INTERVAL, FORGET_SWEEP_INTERVAL, PKG_VERSION } from "./src/config/index.ts";
 import { log } from "./src/config/logger.ts";
 
 // Database (importing triggers schema creation + migrations)
@@ -59,6 +59,20 @@ import { LLM_API_KEY } from "./src/config/index.ts";
 await initEmbedder();
 await initReranker();
 
+// WAL checkpoint at startup - merge WAL into main DB file before serving requests.
+// Without this, a large WAL (from previous sessions) causes synchronous SQLite reads
+// to scan the WAL for every page, making all DB queries extremely slow.
+{
+  const _walStart = Date.now();
+  try {
+    const result = db.pragma("wal_checkpoint(TRUNCATE)") as Array<{ busy: number; log: number; checkpointed: number }>;
+    const r = result[0] || {};
+    log.info({ msg: "wal_checkpoint", busy: r.busy, log: r.log, checkpointed: r.checkpointed, ms: Date.now() - _walStart });
+  } catch (e: any) {
+    log.warn({ msg: "wal_checkpoint_failed", error: e.message });
+  }
+}
+
 // Pre-warm: load embedding cache + JIT-compile ONNX model
 {
   const _warmStart = Date.now();
@@ -68,7 +82,7 @@ await initReranker();
 }
 
 // ============================================================================
-// JOB HANDLERS â€” Durable processing for post-store pipeline
+// JOB HANDLERS �?" Durable processing for post-store pipeline
 // ============================================================================
 
 registerJobHandler("post_store", async (payload) => {
@@ -99,10 +113,13 @@ registerJobHandler("post_store", async (payload) => {
   if (LLM_API_KEY || isLLMAvailable()) {
     const allMems = getCachedEmbeddings(true, userId);
     const similarities: Array<{ id: number; content: string; category: string; score: number }> = [];
-    for (const mem of allMems) {
+    for (let i = 0; i < allMems.length; i++) {
+      const mem = allMems[i];
       if (mem.id === memoryId) continue;
       const sim = cosineSimilarity(embArray, mem.embedding);
       if (sim > 0.4) similarities.push({ id: mem.id, content: mem.content, category: mem.category, score: sim });
+      // Yield event loop every 500 comparisons to prevent blocking HTTP requests
+      if (i > 0 && i % 500 === 0) await new Promise<void>(r => setImmediate(r));
     }
     similarities.sort((a, b) => b.score - a.score);
     const extraction = await extractFacts(content, category, similarities.slice(0, 3));
@@ -185,6 +202,12 @@ const server = createServer(async (nodeReq, nodeRes) => {
   }
 });
 
+// HTTP timeouts to prevent connection accumulation and detect hung requests
+server.timeout = 120_000;           // 2min max request lifetime
+server.keepAliveTimeout = 30_000;   // 30s idle keep-alive before close
+server.headersTimeout = 15_000;     // 15s to receive headers
+server.requestTimeout = 120_000;    // 2min to receive full request
+
 server.listen(PORT, HOST, () => {
   log.info({ msg: "node_http_server_listening", host: HOST, port: PORT });
 });
@@ -248,14 +271,16 @@ process.on("SIGHUP", () => reloadGuiHtml());
 // STARTUP TASKS
 // ============================================================================
 
-// Backfill unembedded memories
+// Backfill unembedded memories (deferred to let HTTP server stabilize first)
 const countNoEmbedding = db.prepare("SELECT COUNT(*) as count FROM memories WHERE embedding IS NULL");
 const noEmb = (countNoEmbedding.get() as { count: number }).count;
 if (noEmb > 0) {
-  log.info({ msg: "backfill_start", count: noEmb });
-  backfillEmbeddings(200).then((n) => {
-    log.info({ msg: "backfill_done", backfilled: n, remaining: noEmb - n });
-  }).catch(e => log.error({ msg: "backfill_error", error: String(e) }));
+  log.info({ msg: "backfill_scheduled", count: noEmb, delay_s: 30 });
+  setTimeout(() => {
+    backfillEmbeddings(10).then((n) => {
+      log.info({ msg: "backfill_done", backfilled: n, remaining: noEmb - n });
+    }).catch(e => log.error({ msg: "backfill_error", error: String(e) }));
+  }, 30_000);
 }
 
 // Auto-forget sweep timer (lease-protected)
@@ -264,7 +289,7 @@ setInterval(withLease("forget_sweep", () => {
   if (swept > 0) log.info({ msg: "auto_forget_sweep", swept });
 }, 600), FORGET_SWEEP_INTERVAL);
 
-// Scratchpad TTL sweep â€” summarize expired sessions before purging (lease-protected)
+// Scratchpad TTL sweep �?" summarize expired sessions before purging (lease-protected)
 setInterval(withLease("scratchpad_ttl", async () => {
   try {
     // Fetch all expired entries before deleting them
@@ -286,7 +311,7 @@ setInterval(withLease("scratchpad_ttl", async () => {
 
     let summarized = 0;
     for (const [_key, rows] of sessions) {
-      // Only summarize multi-entry sessions â€” single entries aren't worth an LLM call
+      // Only summarize multi-entry sessions �?" single entries aren't worth an LLM call
       if (rows.length >= 2 && isLLMAvailable()) {
         const userId = rows[0].user_id;
         const session = rows[0].session;
@@ -383,7 +408,7 @@ purgeExpiredScratchpad();
   }
 }
 
-// Digest scheduler â€” check every 5 minutes for due digests (lease-protected)
+// Digest scheduler �?" check every 5 minutes for due digests (lease-protected)
 setInterval(withLease("digest_scheduler", async () => {
   try {
     const sent = await processScheduledDigests();
@@ -393,17 +418,23 @@ setInterval(withLease("digest_scheduler", async () => {
   }
 }, 600), 5 * 60 * 1000);
 
-// Job worker loop â€” process durable queue every 2 seconds
+// Job worker loop �?" process durable queue every 2 seconds
+// Concurrency lock prevents overlapping drains from stacking CPU-bound work
+let jobWorkerRunning = false;
 setInterval(async () => {
+  if (jobWorkerRunning) return; // skip if previous drain is still running
+  jobWorkerRunning = true;
   try {
-    const processed = await drainJobs(10);
+    const processed = await drainJobs(3);
     if (processed > 0) log.debug({ msg: "jobs_drained", count: processed });
   } catch (e: any) {
     log.error({ msg: "job_worker_error", error: e.message });
+  } finally {
+    jobWorkerRunning = false;
   }
 }, 2000);
 
-// Job cleanup â€” purge completed jobs older than 1 day (every hour)
+// Job cleanup �?" purge completed jobs older than 1 day (every hour)
 setInterval(withLease("job_cleanup", () => {
   const cleaned = cleanupCompletedJobs();
   const recovered = recoverStuckJobs();
@@ -424,4 +455,4 @@ import { GUI_AUTH_CONFIGURED } from "./src/gui/index.ts";
   }
 }
 
-log.info({ msg: "server_started", version: "5.8.1", host: HOST, port: PORT, open_access: OPEN_ACCESS, cors: CORS_ORIGIN, log_level: process.env.ENGRAM_LOG_LEVEL || "info", allowed_ips: ALLOWED_IPS.length || "any" });
+log.info({ msg: "server_started", version: PKG_VERSION, host: HOST, port: PORT, open_access: OPEN_ACCESS, cors: CORS_ORIGIN, log_level: process.env.ENGRAM_LOG_LEVEL || "info", allowed_ips: ALLOWED_IPS.length || "any" });
