@@ -107,7 +107,7 @@ import {
 
 // GUI
 import {
-  GUI_PASSWORD, GUI_AUTH_CONFIGURED, GUI_COOKIE_ATTRIBUTES, GUI_COOKIE_MAX_AGE,
+  GUI_PASSWORD, GUI_AUTH_CONFIGURED, guiCookieAttributes, GUI_COOKIE_MAX_AGE,
   guiSignCookie, guiAuthed, getGuiHtml, getLoginHtml, reloadGuiHtml,
 } from "../gui/index.ts";
 
@@ -412,7 +412,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
           return new Response(JSON.stringify({ ok: true }), {
             headers: securityHeaders({
               "Content-Type": "application/json",
-              "Set-Cookie": `engram_auth=${cookie}; ${GUI_COOKIE_ATTRIBUTES}; Max-Age=${GUI_COOKIE_MAX_AGE}`,
+              "Set-Cookie": `engram_auth=${cookie}; ${guiCookieAttributes(req)}; Max-Age=${GUI_COOKIE_MAX_AGE}`,
             })
           });
         }
@@ -431,7 +431,10 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
         headers: securityHeaders({
           "Content-Type": "text/html; charset=utf-8",
           "Content-Security-Policy": GUI_CONTENT_SECURITY_POLICY,
-          "Set-Cookie": `engram_auth=; ${GUI_COOKIE_ATTRIBUTES}; Max-Age=0`,
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
+          "Set-Cookie": `engram_auth=; ${guiCookieAttributes(req)}; Max-Age=0`,
         })
       });
     }
@@ -445,6 +448,9 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
           headers: securityHeaders({
             "Content-Type": "text/html; charset=utf-8",
             "Content-Security-Policy": GUI_CONTENT_SECURITY_POLICY,
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
           })
         });
       }
@@ -452,6 +458,9 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
         headers: securityHeaders({
           "Content-Type": "text/html; charset=utf-8",
           "Content-Security-Policy": GUI_CONTENT_SECURITY_POLICY,
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
         })
       });
     }
@@ -2893,7 +2902,7 @@ Return JSON:
       if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
       try {
         const body = await req.json() as any;
-        const { content, category, source, session_id, importance, tags, episode, model } = body;
+        const { content, category, source, session_id, importance, tags, episode, model, skip_processing } = body;
         if (!content || typeof content !== "string" || content.trim().length === 0) {
           return errorResponse("content is required and must be a non-empty string");
         }
@@ -3012,7 +3021,27 @@ Return JSON:
         }, auth.user_id);
 
         // Synchronous fast extraction (regex-based, no LLM, instant)
-        fastExtractFacts(content.trim(), result.id, auth.user_id, episodeId);
+        // Skip extraction for agent task logs, compactions, and bot conversations
+        // to prevent garbage preferences/state from non-user content
+        const extractionCategory = (category || "general").toLowerCase();
+        const skipExtraction = skip_processing === true
+          || ["task", "issue", "plan"].includes(extractionCategory)
+          || (content.trim().startsWith("Session compaction summary"))
+          || (content.trim().startsWith("[Consolidated:"))
+          || (content.trim().startsWith("[auto-captured]"));
+        if (!skipExtraction) {
+          fastExtractFacts(content.trim(), result.id, auth.user_id, episodeId);
+        }
+
+        // Eagerly add to in-memory embedding cache so searches see this memory immediately
+        // (without waiting for the async job worker to process it)
+        if (embArray) {
+          addToEmbeddingCache({
+            id: result.id, user_id: auth.user_id, content: content.trim(),
+            category: category || "general", importance: imp, embedding: embArray,
+            is_static: !!isStatic, source_count: 1, is_latest: true, is_forgotten: false,
+          });
+        }
 
         // Return response IMMEDIATELY — vector indexing + autoLink + fact extraction happen async
         const response = json({
@@ -3044,6 +3073,7 @@ Return JSON:
             userId: auth.user_id,
             importance: imp,
             embeddingBase64: embBase64,
+            lightweight: !!skip_processing,
           });
         }
 
@@ -5896,6 +5926,20 @@ If no meaningful inferences, return {"derived": []}`;
           }
         }
 
+        // Phase 6: Prune orphan memory nodes (no edges) to avoid floating dots
+        if (!center) {
+          const connectedIds = new Set<string>();
+          for (const e of edges) {
+            connectedIds.add(String(e.source));
+            connectedIds.add(String(e.target));
+          }
+          for (const [id] of nodes) {
+            if (id.startsWith("m") && !connectedIds.has(id)) {
+              nodes.delete(id);
+            }
+          }
+        }
+
         const result = { nodes: [...nodes.values()], edges, links: edges.slice(), node_count: nodes.size, edge_count: edges.length };
         setGraphCache({ key: cacheKey, data: result, ts: Date.now() });
         log.info({ msg: "graph_served", nodes: nodes.size, edges: edges.length, cached: false, rid: requestId });
@@ -6381,6 +6425,26 @@ If no meaningful inferences, return {"derived": []}`;
       }
     }
 
+    // DELETE /state — delete state entries by key pattern or purge all
+    if (url.pathname === "/state" && method === "DELETE") {
+      try {
+        const body = await req.json() as any;
+        const key = body.key as string | undefined;
+        const purge_all = body.purge_all === true;
+        let result;
+        if (purge_all) {
+          result = db.prepare("DELETE FROM current_state WHERE user_id = ?").run(auth.user_id);
+        } else if (key) {
+          result = db.prepare("DELETE FROM current_state WHERE user_id = ? AND key LIKE ?").run(auth.user_id, `%${key}%`);
+        } else {
+          return errorResponse("key (string) or purge_all (true) required");
+        }
+        return json({ ok: true, deleted: result.changes });
+      } catch (e: any) {
+        return safeError("State delete", e);
+      }
+    }
+
     // ========================================================================
     // USER PREFERENCES — query extracted preferences
     // ========================================================================
@@ -6400,6 +6464,26 @@ If no meaningful inferences, return {"derived": []}`;
         return json({ preferences: rows, count: (rows as any[]).length });
       } catch (e: any) {
         return safeError("Preferences query", e);
+      }
+    }
+
+    // DELETE /preferences — delete preferences by domain or purge all
+    if (url.pathname === "/preferences" && method === "DELETE") {
+      try {
+        const body = await req.json() as any;
+        const domain = body.domain as string | undefined;
+        const purge_all = body.purge_all === true;
+        let result;
+        if (purge_all) {
+          result = db.prepare("DELETE FROM user_preferences WHERE user_id = ?").run(auth.user_id);
+        } else if (domain) {
+          result = db.prepare("DELETE FROM user_preferences WHERE user_id = ? AND domain = ?").run(auth.user_id, domain);
+        } else {
+          return errorResponse("domain (string) or purge_all (true) required");
+        }
+        return json({ ok: true, deleted: result.changes });
+      } catch (e: any) {
+        return safeError("Preferences delete", e);
       }
     }
 
