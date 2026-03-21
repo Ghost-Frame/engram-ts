@@ -42,6 +42,7 @@
     "backup-drill": "bash scripts/backup-restore-drill.sh"
   },
   "dependencies": {
+    "@libsql/linux-x64-gnu": "^0.5.28",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "graphology": "^0.26.0",
     "graphology-communities-louvain": "^2.0.2",
