@@ -4,7 +4,8 @@
 
 import { createHash } from "crypto";
 import { db } from "../db/index.ts";
-import { RATE_WINDOW_MS, OPEN_ACCESS } from "../config/index.ts";
+import { upsertRateLimit } from "../db/index.ts";
+import { RATE_WINDOW_MS, OPEN_ACCESS, OPEN_ACCESS_SCOPES } from "../config/index.ts";
 
 export interface AuthContext {
   user_id: number;
@@ -22,6 +23,18 @@ export function isAuthError(r: AuthContext | AuthError | null): r is AuthError {
 }
 
 const rateLimitMap = new Map<number, { count: number; reset: number }>();
+const lastUsedBatch = new Set<number>();
+
+const flushLastUsed = db.prepare(
+  `UPDATE api_keys SET last_used_at = datetime('now') WHERE id IN (SELECT value FROM json_each(?))`
+);
+
+setInterval(() => {
+  if (lastUsedBatch.size === 0) return;
+  const ids = Array.from(lastUsedBatch);
+  lastUsedBatch.clear();
+  try { flushLastUsed.run(JSON.stringify(ids)); } catch {}
+}, 30_000);
 
 export function authenticate(req: Request): AuthContext | AuthError | null {
   const authHeader = req.headers.get("Authorization");
@@ -39,18 +52,37 @@ export function authenticate(req: Request): AuthContext | AuthError | null {
 
   if (!row) return null;
 
-  // Update last_used_at (non-blocking)
-  db.prepare("UPDATE api_keys SET last_used_at = datetime('now') WHERE id = ?").run(row.id);
+  // Check key expiration
+  if (row.expires_at) {
+    const expiresAt = new Date(row.expires_at + "Z").getTime();
+    if (Date.now() > expiresAt) {
+      return { error: "API key expired", status: 401 };
+    }
+  }
 
-  // Rate limiting
+  // Rate limiting -- hybrid: in-memory fast path + DB persistence
   const now = Date.now();
   let rl = rateLimitMap.get(row.id);
   if (!rl || now > rl.reset) {
-    rl = { count: 0, reset: now + RATE_WINDOW_MS };
+    const dbRl = upsertRateLimit.get(`key:${row.id}`, Math.ceil(RATE_WINDOW_MS / 1000)) as any;
+    if (dbRl && dbRl.count > 1) {
+      rl = { count: dbRl.count, reset: now + RATE_WINDOW_MS };
+    } else {
+      rl = { count: 0, reset: now + RATE_WINDOW_MS };
+    }
     rateLimitMap.set(row.id, rl);
   }
   rl.count++;
-  if (rl.count > row.rate_limit) return { error: "Rate limit exceeded", status: 429, headers: { "Retry-After": String(Math.ceil((rl.reset - now) / 1000)) } };
+  // Persist to DB every 10 requests to reduce write pressure
+  if (rl.count % 10 === 0) {
+    try { upsertRateLimit.get(`key:${row.id}`, Math.ceil(RATE_WINDOW_MS / 1000)); } catch {}
+  }
+  if (rl.count > row.rate_limit) {
+    return { error: "Rate limit exceeded", status: 429, headers: { "Retry-After": String(Math.ceil((rl.reset - now) / 1000)) } };
+  }
+
+  // Batch last_used_at updates
+  lastUsedBatch.add(row.id);
 
   // Determine space — only filter by space if explicitly requested
   let space_id: number | null = null;
@@ -103,8 +135,7 @@ export function getAuthOrDefault(req: Request, guiAuthed: (req: Request) => bool
     return { user_id: 1, space_id: null, key_id: null, agent_id: null, scopes: ["read", "write"], is_admin: false };
   }
   if (OPEN_ACCESS) {
-    // S7 FIX: OPEN_ACCESS grants read+write but NOT admin
-    return { user_id: 1, space_id: null, key_id: null, agent_id: null, scopes: ["read", "write"], is_admin: false };
+    return { user_id: 1, space_id: null, key_id: null, agent_id: null, scopes: OPEN_ACCESS_SCOPES, is_admin: false };
   }
   return null;
 }

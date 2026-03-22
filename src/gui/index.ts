@@ -24,7 +24,16 @@ export const GUI_PASSWORD = (() => {
 })();
 
 export const GUI_AUTH_CONFIGURED = GUI_PASSWORD !== null;
-export const GUI_COOKIE_ATTRIBUTES = "Path=/; HttpOnly; Secure; SameSite=Strict";
+// Returns cookie attributes; omits Secure when the request arrives over plain HTTP
+// so that local/LAN access (http://) works without the cookie being silently discarded.
+export function guiCookieAttributes(req?: Request): string {
+  const isHttps = req
+    ? (req.url.startsWith("https://") || req.headers.get("x-forwarded-proto") === "https")
+    : false;
+  return isHttps
+    ? "Path=/; HttpOnly; Secure; SameSite=Strict"
+    : "Path=/; HttpOnly; SameSite=Lax";
+}
 
 // HMAC secret for cookie signing (top-level await)
 const GUI_HMAC_SECRET = await (async () => {

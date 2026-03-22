@@ -2,7 +2,7 @@
 // HELPERS — Response builders, security headers, FTS sanitization
 // ============================================================================
 
-import { CORS_ORIGIN } from "../config/index.ts";
+import { CORS_ORIGIN, PKG_VERSION, WEBHOOK_ALLOWED_HOSTS } from "../config/index.ts";
 import { log } from "../config/logger.ts";
 import { resolve as dnsResolve } from "dns/promises";
 
@@ -62,6 +62,11 @@ export async function validatePublicUrlWithDNS(rawUrl: string, label: string): P
     const parsed = new URL(rawUrl);
     if (!["http:", "https:"].includes(parsed.protocol)) return `${label} must be http or https`;
 
+    // Allowlist bypass for trusted internal hosts (e.g., n8n on the same Tailscale network)
+    if (WEBHOOK_ALLOWED_HOSTS.length > 0 && WEBHOOK_ALLOWED_HOSTS.includes(parsed.hostname)) {
+      return null;
+    }
+
     if (isPrivateHostname(parsed.hostname)) return `${label} cannot point to private/internal addresses`;
 
     // DNS resolution to prevent TOCTOU rebinding attacks
@@ -93,6 +98,7 @@ export function securityHeaders(extra: Record<string, string> = {}): Record<stri
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
     "Content-Security-Policy": DEFAULT_CONTENT_SECURITY_POLICY,
+    "X-Engram-Version": PKG_VERSION,
   };
 
   if (CORS_ORIGIN) {

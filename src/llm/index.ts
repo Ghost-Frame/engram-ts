@@ -6,6 +6,7 @@
 
 import { LLM_URL, LLM_API_KEY, LLM_MODEL, LLM_PROVIDERS, LLM_STRATEGY, type LLMProvider, RERANKER_ENABLED, RERANKER_TOP_K } from "../config/index.ts";
 import { log, opsCounters } from "../config/logger.ts";
+import { withSpan } from "../tracing.ts";
 import { postProcessNewFacts } from "../intelligence/temporal.ts";
 import { getVertexAccessToken } from "../auth/google-auth.ts";
 
@@ -146,40 +147,42 @@ async function callProvider(provider: LLMProvider, systemPrompt: string, userPro
 let _rrIndex = 0;
 
 export async function callLLM(systemPrompt: string, userPrompt: string, model?: string): Promise<string> {
-  const providers = LLM_PROVIDERS.filter(isProviderAvailable);
-  if (providers.length === 0) throw new Error("No LLM providers configured");
+  return withSpan("engram.callLLM", { "llm.strategy": LLM_STRATEGY, "llm.model": model || LLM_MODEL, "llm.prompt_length": userPrompt.length }, async (span) => {
+    const providers = LLM_PROVIDERS.filter(isProviderAvailable);
+    if (providers.length === 0) throw new Error("No LLM providers configured");
 
-  // Round-robin: rotate starting provider each call, still fall through on failure
-  const startIdx = LLM_STRATEGY === "round-robin" ? _rrIndex % providers.length : 0;
-  if (LLM_STRATEGY === "round-robin") _rrIndex++;
+    const startIdx = LLM_STRATEGY === "round-robin" ? _rrIndex % providers.length : 0;
+    if (LLM_STRATEGY === "round-robin") _rrIndex++;
 
-  let lastError: Error | null = null;
-  for (let i = 0; i < providers.length; i++) {
-    const provider = providers[(startIdx + i) % providers.length];
-    try {
-      const result = await callProvider(provider, systemPrompt, userPrompt, model);
-      _llmReachable = true;
-      if (LLM_STRATEGY === "round-robin" && providers.length > 1) {
-        log.info({ msg: "llm_round_robin", provider: provider.name, index: (startIdx + i) % providers.length });
+    let lastError: Error | null = null;
+    for (let i = 0; i < providers.length; i++) {
+      const provider = providers[(startIdx + i) % providers.length];
+      try {
+        const result = await callProvider(provider, systemPrompt, userPrompt, model);
+        _llmReachable = true;
+        span.setAttribute("llm.provider_used", provider.name);
+        span.setAttribute("llm.response_length", result.length);
+        if (LLM_STRATEGY === "round-robin" && providers.length > 1) {
+          log.info({ msg: "llm_round_robin", provider: provider.name, index: (startIdx + i) % providers.length });
+        }
+        return result;
+      } catch (e: any) {
+        lastError = e;
+        const status = e?.status || 0;
+        const isConn = e?.cause?.code === "ECONNREFUSED" || e?.message?.includes("ECONNREFUSED") || e?.message?.includes("fetch failed");
+
+        if (isConn || isRetryable(status)) {
+          log.warn({ msg: "llm_provider_failed", provider: provider.name, status, error: e.message, remaining: providers.length - i - 1 });
+          span.addEvent("llm_provider_failed", { provider: provider.name, status });
+          continue;
+        }
+        throw e;
       }
-      return result;
-    } catch (e: any) {
-      lastError = e;
-      const status = e?.status || 0;
-      const isConn = e?.cause?.code === "ECONNREFUSED" || e?.message?.includes("ECONNREFUSED") || e?.message?.includes("fetch failed");
-
-      if (isConn || isRetryable(status)) {
-        log.warn({ msg: "llm_provider_failed", provider: provider.name, status, error: e.message, remaining: providers.length - i - 1 });
-        continue; // try next provider
-      }
-      // Non-retryable error (400, 401, etc.) - don't try fallbacks
-      throw e;
     }
-  }
 
-  // All providers exhausted
-  _llmReachable = false;
-  throw lastError || new Error("All LLM providers failed");
+    _llmReachable = false;
+    throw lastError || new Error("All LLM providers failed");
+  });
 }
 
 const FACT_EXTRACTION_PROMPT = `You are a fact extraction engine for a persistent memory system. Your job is to analyze new content being stored and compare it with existing memories.

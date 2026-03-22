@@ -2,7 +2,8 @@
 // MEMORY SEARCH - Hybrid semantic + full-text
 // ============================================================================
 
-import { log } from "../config/logger.ts";
+import { log, opsCounters } from "../config/logger.ts";
+import { startSpan, SpanStatusCode } from "../tracing.ts";
 import {
   RERANKER_TOP_K,
   AUTO_LINK_THRESHOLD,
@@ -14,7 +15,7 @@ import {
   SEARCH_PERSONALITY_MIN_SCORE,
 } from "../config/index.ts";
 import { db, searchMemoriesFTS, getMemoryWithoutEmbedding, getVersionChainForUser, getLinksForUser, getLinksForUserBatch, getVersionChainBatch, insertLink } from "../db/index.ts";
-import { embed, cosineSimilarity, getCachedEmbeddings, embeddingToVectorJSON } from "../embeddings/index.ts";
+import { embed, cosineSimilarity, getCachedEmbeddings, embeddingToVectorJSON, shouldUseANN, annSearch } from "../embeddings/index.ts";
 import { calculateDecayScore } from "../fsrs/index.ts";
 import { sanitizeFTS } from "../helpers/index.ts";
 
@@ -540,7 +541,9 @@ export async function hybridSearch(
   precomputedEmbedding?: Float32Array | null,
   sourceFilter?: string,
 ): Promise<SearchResult[]> {
-  const _t0 = performance.now();
+  const _traceSpan = startSpan("engram.hybridSearch", { "search.query_length": query.length, "search.limit": limit, "search.user_id": userId, "search.source_filter": sourceFilter || "" });
+  const searchStart = performance.now();
+  const _t0 = searchStart;
   const results = new Map<number, SearchResult>();
   const { questionType, strategy } = mergeSearchOptions(expandRelationships, vectorFloorOrOptions, query);
   const candidateTarget = Math.max(
@@ -563,10 +566,20 @@ export async function hybridSearch(
   try {
     const queryEmb = precomputedEmbedding || await embed(query);
 
+    let annFiltered: Set<number> | null = null;
+    if (shouldUseANN(userId)) {
+      const annIds = annSearch(queryEmb, userId, candidateTarget);
+      if (annIds.length > 0) {
+        annFiltered = new Set(annIds);
+        log.debug({ msg: "ann_prefilter", candidates: annIds.length });
+      }
+    }
+
     const cached = getCachedEmbeddings(latestOnly, userId);
     for (let i = 0; i < cached.length; i++) {
       const mem = cached[i];
       if (mem.user_id !== userId) continue;
+      if (annFiltered && !annFiltered.has(mem.id)) continue;
       if (sourceFilter && (!mem.source || !mem.source.includes(sourceFilter))) continue;
       const sim = cosineSimilarity(queryEmb, mem.embedding);
       if (sim > strategy.vectorFloor) {
@@ -967,10 +980,18 @@ export async function hybridSearch(
   }
 
   const _tTotal = performance.now() - _t0;
+  opsCounters.search_count++;
+  opsCounters.search_latency_sum_ms += (performance.now() - searchStart);
   if (_tTotal > 2000) {
     log.info({ msg: "hybrid_search_slow", ms: Math.round(_tTotal), question_type: questionType, candidates: candidateCount, results: sorted.length, expand: strategy.expandRelationships });
   }
 
+  _traceSpan.setAttribute("search.results", sorted.length);
+  _traceSpan.setAttribute("search.candidates", candidateCount);
+  _traceSpan.setAttribute("search.question_type", questionType);
+  _traceSpan.setAttribute("search.latency_ms", performance.now() - searchStart);
+  _traceSpan.setStatus({ code: SpanStatusCode.OK });
+  _traceSpan.end();
   return applyDiagnostics(sorted, {
     question_type: questionType,
     reranked: false,

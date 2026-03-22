@@ -4,14 +4,37 @@
 // Run: node --experimental-strip-types server-split.ts
 // ============================================================================
 
+// OTel tracing -- must be first import to instrument HTTP
+import "./src/tracing.ts";
+
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
+import { existsSync, copyFileSync, statSync, unlinkSync, readdirSync } from "fs";
+import { resolve } from "path";
 
 // Config
-import { PORT, HOST, OPEN_ACCESS, CORS_ORIGIN, ALLOWED_IPS, CONSOLIDATION_INTERVAL, FORGET_SWEEP_INTERVAL, PKG_VERSION } from "./src/config/index.ts";
+import { PORT, HOST, OPEN_ACCESS, CORS_ORIGIN, ALLOWED_IPS, CONSOLIDATION_INTERVAL, FORGET_SWEEP_INTERVAL, PKG_VERSION, BACKUP_DIR, BACKUP_RETENTION_DAYS, BACKUP_SCHEDULE_HOURS, DATA_DIR } from "./src/config/index.ts";
 import { log } from "./src/config/logger.ts";
 
+// Pre-migration schema backup (Phase 6.2)
+{
+  const _dbPath = process.env.ENGRAM_DATA_DIR
+    ? resolve(process.env.ENGRAM_DATA_DIR, "memory.db")
+    : resolve(process.cwd(), "data", "memory.db");
+  const _dataDir = process.env.ENGRAM_DATA_DIR || resolve(process.cwd(), "data");
+  if (existsSync(_dbPath)) {
+    const preBackupPath = resolve(_dataDir, `pre-migration-${Date.now()}.db`);
+    try {
+      copyFileSync(_dbPath, preBackupPath);
+      const files = readdirSync(_dataDir).filter((f: string) => f.startsWith("pre-migration-")).sort().reverse();
+      for (const f of files.slice(3)) {
+        try { unlinkSync(resolve(_dataDir, f)); } catch {}
+      }
+    } catch {}
+  }
+}
+
 // Database (importing triggers schema creation + migrations)
-import { db, updateMemoryEmbedding, writeVec, purgeExpiredScratchpad, getExpiredScratchSessions, insertMemory, updateMemoryVec } from "./src/db/index.ts";
+import { db, updateMemoryEmbedding, writeVec, purgeExpiredScratchpad, getExpiredScratchSessions, insertMemory, updateMemoryVec, cleanupOldUsage } from "./src/db/index.ts";
 
 // Embeddings
 import { initEmbedder, embed, refreshEmbeddingCache, embeddingCacheLatest, embeddingToBuffer, embeddingToVectorJSON, addToEmbeddingCache } from "./src/embeddings/index.ts";
@@ -44,6 +67,7 @@ import { drainWebhooks } from "./src/platform/webhooks.ts";
 
 // Jobs
 import { registerJobHandler, drainJobs, getJobStats, cleanupCompletedJobs, recoverStuckJobs } from "./src/jobs/index.ts";
+import { cleanupRateLimits } from "./src/db/index.ts";
 import { withLease, releaseAllLeases, INSTANCE_ID } from "./src/jobs/scheduler.ts";
 
 // Extraction + Personality (for job handlers)
@@ -86,7 +110,7 @@ await initReranker();
 // ============================================================================
 
 registerJobHandler("post_store", async (payload) => {
-  const { memoryId, content, category, userId, importance, embeddingBase64 } = payload;
+  const { memoryId, content, category, userId, importance, embeddingBase64, lightweight } = payload;
   const embArray = embeddingBase64 ? new Float32Array(Buffer.from(embeddingBase64, "base64").buffer) : null;
 
   if (!embArray) return;
@@ -106,28 +130,33 @@ registerJobHandler("post_store", async (payload) => {
     is_static: false, source_count: 1, is_latest: true, is_forgotten: false,
   });
 
-  // 2. Auto-link
-  await autoLink(memoryId, embArray, userId);
+  // 2-4: Heavy processing (skip if lightweight/benchmark mode)
+  if (!lightweight) {
+    // 2. Auto-link
+    await autoLink(memoryId, embArray, userId);
 
-  // 3. Fact extraction
-  if (LLM_API_KEY || isLLMAvailable()) {
-    const allMems = getCachedEmbeddings(true, userId);
-    const similarities: Array<{ id: number; content: string; category: string; score: number }> = [];
-    for (let i = 0; i < allMems.length; i++) {
-      const mem = allMems[i];
-      if (mem.id === memoryId) continue;
-      const sim = cosineSimilarity(embArray, mem.embedding);
-      if (sim > 0.4) similarities.push({ id: mem.id, content: mem.content, category: mem.category, score: sim });
-      // Yield event loop every 500 comparisons to prevent blocking HTTP requests
-      if (i > 0 && i % 500 === 0) await new Promise<void>(r => setImmediate(r));
+    // 3. Fact extraction
+    if (LLM_API_KEY || isLLMAvailable()) {
+      const allMems = getCachedEmbeddings(true, userId);
+      const similarities: Array<{ id: number; content: string; category: string; score: number }> = [];
+      for (let i = 0; i < allMems.length; i++) {
+        const mem = allMems[i];
+        if (mem.id === memoryId) continue;
+        const sim = cosineSimilarity(embArray, mem.embedding);
+        if (sim > 0.4) similarities.push({ id: mem.id, content: mem.content, category: mem.category, score: sim });
+        // Yield event loop every 500 comparisons to prevent blocking HTTP requests
+        if (i > 0 && i % 500 === 0) await new Promise<void>(r => setImmediate(r));
+      }
+      similarities.sort((a, b) => b.score - a.score);
+      const extraction = await extractFacts(content, category, similarities.slice(0, 3));
+      if (extraction) processExtractionResult(memoryId, extraction, embArray, userId);
     }
-    similarities.sort((a, b) => b.score - a.score);
-    const extraction = await extractFacts(content, category, similarities.slice(0, 3));
-    if (extraction) processExtractionResult(memoryId, extraction, embArray, userId);
-  }
 
-  // 4. Personality signals
-  await extractPersonalitySignals(content, memoryId, userId);
+    // 4. Personality signals
+    await extractPersonalitySignals(content, memoryId, userId);
+  } else {
+    log.info({ msg: "post_store_lightweight", memory_id: memoryId });
+  }
 });
 
 // Recover any jobs that were running when the process crashed
@@ -217,8 +246,13 @@ server.listen(PORT, HOST, () => {
 // ============================================================================
 function walCheckpoint() {
   try {
-    const result = db.prepare("PRAGMA wal_checkpoint(PASSIVE)").get() as any;
-    if (result && result.checkpointed > 0) log.debug({ msg: "wal_checkpoint", ...result });
+    const cpStart = performance.now();
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    const cpMs = (performance.now() - cpStart).toFixed(1);
+    log.info({ msg: "wal_checkpoint", ms: cpMs });
+    if (Number(cpMs) > 1000) {
+      log.warn({ msg: "wal_checkpoint_slow", ms: cpMs });
+    }
   } catch (e: any) {
     log.error({ msg: "wal_checkpoint_failed", error: e.message });
   }
@@ -438,8 +472,59 @@ setInterval(async () => {
 setInterval(withLease("job_cleanup", () => {
   const cleaned = cleanupCompletedJobs();
   const recovered = recoverStuckJobs();
+  cleanupRateLimits.run();
   if (cleaned > 0 || recovered > 0) log.info({ msg: "job_maintenance", cleaned, recovered });
 }, 7200), 60 * 60 * 1000);
+
+// Auto backup schedule (Phase 2.3.4)
+if (BACKUP_SCHEDULE_HOURS > 0) {
+  const backupIntervalMs = BACKUP_SCHEDULE_HOURS * 60 * 60 * 1000;
+  setInterval(withLease("auto_backup", async () => {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const backupPath = resolve(BACKUP_DIR, `engram-auto-${timestamp}.db`);
+    try {
+      db.exec(`VACUUM INTO '${backupPath.replace(/'/g, "''")}'`);
+      const size = statSync(backupPath).size;
+      log.info({ msg: "auto_backup_created", path: backupPath, size_mb: Math.round(size / 1048576 * 100) / 100 });
+
+      const files = readdirSync(BACKUP_DIR).filter((f: string) => f.startsWith("engram-auto-") && f.endsWith(".db"));
+      const cutoff = Date.now() - BACKUP_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+      for (const f of files) {
+        const fPath = resolve(BACKUP_DIR, f);
+        try {
+          if (statSync(fPath).mtimeMs < cutoff) {
+            unlinkSync(fPath);
+            log.info({ msg: "auto_backup_pruned", path: fPath });
+          }
+        } catch {}
+      }
+    } catch (e: any) {
+      log.error({ msg: "auto_backup_failed", error: e.message });
+    }
+  }), backupIntervalMs);
+  log.info({ msg: "auto_backup_enabled", interval_hours: BACKUP_SCHEDULE_HOURS, retention_days: BACKUP_RETENTION_DAYS });
+}
+
+// Daily garbage collection (runs at 4 AM, lease-protected)
+setInterval(withLease("garbage_collection", async () => {
+  const hour = new Date().getHours();
+  if (hour !== 4) return;
+  try {
+    const forgotten = db.prepare("DELETE FROM memories WHERE is_forgotten = 1 AND updated_at < datetime('now', '-30 days')").run();
+    const links = db.prepare("DELETE FROM memory_links WHERE NOT EXISTS (SELECT 1 FROM memories m WHERE m.id = memory_links.source_id AND m.is_forgotten = 0) OR NOT EXISTS (SELECT 1 FROM memories m WHERE m.id = memory_links.target_id AND m.is_forgotten = 0)").run();
+    const scratch = db.prepare("DELETE FROM scratchpad WHERE expires_at IS NOT NULL AND expires_at < datetime('now')").run();
+    const audit_old = db.prepare("DELETE FROM audit_log WHERE created_at < datetime('now', '-90 days')").run();
+    try { cleanupOldUsage.run(180); } catch {}
+    const total = ((forgotten as any).changes || 0) + ((links as any).changes || 0) +
+      ((scratch as any).changes || 0) + ((audit_old as any).changes || 0);
+    if (total > 0) {
+      refreshEmbeddingCache();
+      log.info({ msg: "gc_completed", deleted: total });
+    }
+  } catch (e: any) {
+    log.error({ msg: "gc_error", error: e.message });
+  }
+}), 60 * 60 * 1000);
 
 // Warn if GUI auth is shared across multiple users
 import { GUI_AUTH_CONFIGURED } from "./src/gui/index.ts";

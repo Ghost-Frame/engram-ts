@@ -76,7 +76,7 @@ db.exec(`
 // Schema version tracking
 db.exec("CREATE TABLE IF NOT EXISTS schema_versions (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime('now')), description TEXT)");
 
-function getSchemaVersion(): number {
+function _getSchemaVersion(): number {
   try {
     const row = db.prepare("SELECT MAX(version) as v FROM schema_versions").get() as { v: number | null };
     return row?.v || 0;
@@ -1676,3 +1676,216 @@ export const upsertPersonalityProfile = db.prepare(
 export const invalidatePersonalityProfile = db.prepare(
   `UPDATE personality_profiles SET is_stale = 1 WHERE user_id = ?`
 );
+
+// ============================================================================
+// RATE LIMITS TABLE (Phase 1.2)
+// ============================================================================
+
+migrate(`
+  CREATE TABLE IF NOT EXISTS rate_limits (
+    key TEXT PRIMARY KEY,
+    count INTEGER NOT NULL DEFAULT 0,
+    window_start TEXT NOT NULL DEFAULT (datetime('now')),
+    window_seconds INTEGER NOT NULL DEFAULT 60
+  );
+  CREATE INDEX IF NOT EXISTS idx_rate_limits_window ON rate_limits(window_start);
+`);
+
+export const upsertRateLimit = db.prepare(`
+  INSERT INTO rate_limits (key, count, window_start, window_seconds)
+  VALUES (?, 1, datetime('now'), ?)
+  ON CONFLICT(key) DO UPDATE SET
+    count = CASE
+      WHEN datetime(rate_limits.window_start, '+' || rate_limits.window_seconds || ' seconds') < datetime('now')
+      THEN 1
+      ELSE rate_limits.count + 1
+    END,
+    window_start = CASE
+      WHEN datetime(rate_limits.window_start, '+' || rate_limits.window_seconds || ' seconds') < datetime('now')
+      THEN datetime('now')
+      ELSE rate_limits.window_start
+    END
+  RETURNING count, window_start, window_seconds
+`);
+
+export const cleanupRateLimits = db.prepare(`
+  DELETE FROM rate_limits
+  WHERE datetime(window_start, '+' || (window_seconds * 2) || ' seconds') < datetime('now')
+`);
+
+// ============================================================================
+// API KEY EXPIRATION (Phase 1.4)
+// ============================================================================
+
+migrate(`ALTER TABLE api_keys ADD COLUMN expires_at TEXT`);
+migrate(`CREATE INDEX IF NOT EXISTS idx_api_keys_expires ON api_keys(expires_at) WHERE expires_at IS NOT NULL`);
+
+// ============================================================================
+// TENANT QUOTAS (Phase 4.2)
+// ============================================================================
+
+migrate(`
+  CREATE TABLE IF NOT EXISTS tenant_quotas (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    max_memories INTEGER DEFAULT 10000,
+    max_conversations INTEGER DEFAULT 1000,
+    max_api_keys INTEGER DEFAULT 10,
+    max_spaces INTEGER DEFAULT 5,
+    max_memory_size_bytes INTEGER DEFAULT 102400,
+    rate_limit_override INTEGER,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
+export const getQuota = db.prepare(
+  `SELECT * FROM tenant_quotas WHERE user_id = ?`
+);
+
+export const upsertQuota = db.prepare(`
+  INSERT INTO tenant_quotas (user_id, max_memories, max_conversations, max_api_keys, max_spaces, max_memory_size_bytes, rate_limit_override)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(user_id) DO UPDATE SET
+    max_memories = excluded.max_memories,
+    max_conversations = excluded.max_conversations,
+    max_api_keys = excluded.max_api_keys,
+    max_spaces = excluded.max_spaces,
+    max_memory_size_bytes = excluded.max_memory_size_bytes,
+    rate_limit_override = excluded.rate_limit_override,
+    updated_at = datetime('now')
+`);
+
+export const getUserMemoryCount = db.prepare(
+  `SELECT COUNT(*) as count FROM memories WHERE user_id = ? AND is_forgotten = 0`
+);
+
+// ============================================================================
+// USAGE EVENTS (Phase 11.1)
+// ============================================================================
+
+migrate(`
+  CREATE TABLE IF NOT EXISTS usage_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    metadata TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_usage_user_type ON usage_events(user_id, event_type, created_at);
+  CREATE INDEX IF NOT EXISTS idx_usage_created ON usage_events(created_at);
+`);
+
+export const recordUsage = db.prepare(
+  `INSERT INTO usage_events (user_id, event_type, quantity, metadata) VALUES (?, ?, ?, ?)`
+);
+
+export const getUsageSummary = db.prepare(`
+  SELECT event_type, SUM(quantity) as total, COUNT(*) as event_count
+  FROM usage_events
+  WHERE user_id = ? AND created_at > ?
+  GROUP BY event_type
+`);
+
+export const getUsageTimeline = db.prepare(`
+  SELECT date(created_at) as day, event_type, SUM(quantity) as total
+  FROM usage_events
+  WHERE user_id = ? AND created_at > ?
+  GROUP BY day, event_type
+  ORDER BY day DESC
+`);
+
+export const cleanupOldUsage = db.prepare(
+  `DELETE FROM usage_events WHERE created_at < datetime('now', '-' || ? || ' days')`
+);
+
+// ============================================================================
+// SCHEMA UTILITIES (Phase 6.1)
+// ============================================================================
+
+export function getSchemaSnapshot(): Record<string, string> {
+  const tables = db.prepare(
+    `SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`
+  ).all() as Array<{ name: string; sql: string }>;
+  const result: Record<string, string> = {};
+  for (const t of tables) {
+    result[t.name] = t.sql;
+  }
+  return result;
+}
+
+export function getSchemaVersion(): number {
+  try {
+    const row = db.prepare("SELECT MAX(version) as v FROM schema_versions").get() as any;
+    return row?.v || 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function getExpectedTables(): string[] {
+  return [
+    "memories", "memories_fts", "memory_links", "memory_entities",
+    "entities", "entity_relationships", "entity_cooccurrences",
+    "episodes", "episodes_fts", "consolidations",
+    "conversations", "messages", "messages_fts",
+    "projects", "memory_projects", "scratchpad",
+    "users", "api_keys", "spaces", "agents",
+    "structured_facts", "current_state", "user_preferences",
+    "webhooks", "digests", "audit_log",
+    "personality_signals", "personality_profiles",
+    "causal_chains", "causal_links", "reconsolidations", "temporal_patterns",
+    "jobs", "scheduler_leases", "schema_versions",
+    "rate_limits", "tenant_quotas",
+  ];
+}
+
+export function detectSchemaDrift(): { missing: string[]; extra: string[] } {
+  const actual = new Set(Object.keys(getSchemaSnapshot()));
+  const expected = new Set(getExpectedTables());
+  const missing = [...expected].filter(t => !actual.has(t));
+  const extra = [...actual].filter(t => !expected.has(t) && !t.endsWith("_fts") && !t.includes("_config") && !t.includes("_content") && !t.includes("_data") && !t.includes("_idx") && !t.includes("_docsize") && t !== "sqlite_sequence");
+  return { missing, extra };
+}
+
+// ============================================================================
+// WRITE LOCK HELPER (Phase 2.1)
+// ============================================================================
+
+let activeWrites = 0;
+
+export function withWriteLock<T>(label: string, fn: () => T): T {
+  activeWrites++;
+  opsCounters.db_write_queue_depth = Math.max(opsCounters.db_write_queue_depth, activeWrites);
+  if (activeWrites > 1) {
+    opsCounters.db_lock_waits++;
+    log.debug({ msg: "db_write_contention", label, depth: activeWrites });
+  }
+  try {
+    return fn();
+  } catch (e: any) {
+    if (String(e).includes("database is locked") || String(e).includes("SQLITE_BUSY")) {
+      opsCounters.db_lock_timeouts++;
+      log.error({ msg: "db_lock_timeout", label, depth: activeWrites });
+    }
+    throw e;
+  } finally {
+    activeWrites--;
+  }
+}
+
+// ============================================================================
+// CROSS-TENANT LINK TRIGGER (Phase 1.3)
+// ============================================================================
+
+migrate(`
+  CREATE TRIGGER IF NOT EXISTS prevent_cross_tenant_links
+  BEFORE INSERT ON memory_links
+  BEGIN
+    SELECT CASE
+      WHEN (SELECT user_id FROM memories WHERE id = NEW.source_id) !=
+           (SELECT user_id FROM memories WHERE id = NEW.target_id)
+      THEN RAISE(ABORT, 'Cross-tenant memory link rejected')
+    END;
+  END;
+`);

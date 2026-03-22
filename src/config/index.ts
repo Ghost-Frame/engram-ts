@@ -116,10 +116,37 @@ export const CORS_ORIGIN = process.env.ENGRAM_CORS_ORIGIN?.trim() || "";
 export const MAX_BODY_SIZE = Number(process.env.ENGRAM_MAX_BODY_SIZE || 1_048_576);
 export const MAX_CONTENT_SIZE = Number(process.env.ENGRAM_MAX_CONTENT_SIZE || 102_400);
 export const ALLOWED_IPS = (process.env.ENGRAM_ALLOWED_IPS || "").split(",").map(s => s.trim()).filter(Boolean);
+// Webhook SSRF allowlist: IPs/hostnames that bypass private IP checks for webhooks
+// Used for self-hosted services on the same network (e.g., n8n on Tailscale)
+export const WEBHOOK_ALLOWED_HOSTS = (process.env.ENGRAM_WEBHOOK_ALLOWED_HOSTS || "")
+  .split(",").map(s => s.trim()).filter(Boolean);
 export const GUI_AUTH_MAX_ATTEMPTS = 5;
 export const GUI_AUTH_WINDOW_MS = 60_000;
 export const GUI_AUTH_LOCKOUT_MS = 600_000;
 export const OPEN_ACCESS_RATE_LIMIT = Number(process.env.ENGRAM_OPEN_RATE_LIMIT || 120);
+export const OPEN_ACCESS_SCOPES = (process.env.ENGRAM_OPEN_ACCESS_SCOPES || "read").split(",").map(s => s.trim()).filter(Boolean);
+
+// Backup config
+export const BACKUP_DIR = process.env.ENGRAM_BACKUP_DIR || resolve(DATA_DIR, "backups");
+export const BACKUP_RETENTION_DAYS = Number(process.env.ENGRAM_BACKUP_RETENTION_DAYS || 7);
+export const BACKUP_SCHEDULE_HOURS = Number(process.env.ENGRAM_BACKUP_SCHEDULE_HOURS || 0); // 0 = disabled
+
+// ANN search config
+export const ANN_PREFILTER_THRESHOLD = Number(process.env.ENGRAM_ANN_THRESHOLD || 5000);
+export const ANN_CANDIDATE_MULTIPLIER = Number(process.env.ENGRAM_ANN_CANDIDATES || 5);
+
+// Cold storage config
+export const COLD_STORAGE_DAYS = Number(process.env.ENGRAM_COLD_STORAGE_DAYS || 0); // 0 = disabled
+export const COLD_STORAGE_MIN_MEMORIES = Number(process.env.ENGRAM_COLD_MIN || 5000);
+
+// Maintenance mode (runtime state)
+export let maintenanceMode = false;
+export let maintenanceReason = "";
+
+export function setMaintenanceMode(enabled: boolean, reason: string = "") {
+  maintenanceMode = enabled;
+  maintenanceReason = reason;
+}
 
 // Agent identity & signing config
 export const SIGNING_SECRET_FILE = resolve(DATA_DIR, ".signing_secret");
@@ -138,3 +165,4 @@ export const RECONSOLIDATION_INTERVAL = Number(process.env.ENGRAM_RECONSOLIDATIO
 
 // Ensure data directory exists
 mkdirSync(DATA_DIR, { recursive: true });
+mkdirSync(process.env.ENGRAM_BACKUP_DIR || resolve(DATA_DIR, "backups"), { recursive: true });
