@@ -416,6 +416,18 @@ Add to `claude_desktop_config.json`:
 | `memory_context` | Token-budget-aware context packing for LLM injection |
 | `memory_list` | List recent memories, optionally filtered by category |
 | `memory_delete` | Delete a memory by ID |
+| `structural_analyze` | Analyze a system in EN syntax -- topology (Pipeline/Tree/DAG/Cycle), node roles, bridges |
+| `structural_detail` | Deep analysis -- concurrency metrics, critical path, flow depth, resilience |
+| `structural_between` | Betweenness centrality for a node (0-1 score) |
+| `structural_distance` | Shortest path between two nodes with subsystem annotations |
+| `structural_trace` | Follow directed flow from A to B along yields->needs edges |
+| `structural_impact` | Blast radius -- what disconnects if a node is removed |
+| `structural_diff` | Structural diff between two systems -- topology changes, role changes, bridges |
+| `structural_evolve` | Dry-run architectural changes and preview the structural delta |
+| `structural_categorize` | Auto-discover subsystem boundaries via Louvain community detection |
+| `structural_extract` | Extract a named subsystem as standalone EN source |
+| `structural_compose` | Merge two EN graphs with entity linking |
+| `structural_memory_graph` | Analyze Engram's own memory link graph structurally |
 
 > **Note:** The MCP server connects to a running Engram instance via HTTP. All tools support signed tool manifests for integrity verification when `ENGRAM_SIGNING_SECRET` is set.
 
