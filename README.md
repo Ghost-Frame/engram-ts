@@ -416,6 +416,13 @@ Add to `claude_desktop_config.json`:
 | `memory_context` | Token-budget-aware context packing for LLM injection |
 | `memory_list` | List recent memories, optionally filtered by category |
 | `memory_delete` | Delete a memory by ID |
+| `memory_guard` | Check a proposed action against stored rules (allow/warn/block) |
+| `memory_inbox` | Review pending memories awaiting triage (approve/reject) |
+| `memory_search_preset` | Search with opinionated presets: fact, timeline, preference, decision, recent |
+| `memory_entities` | List or search tracked entities (people, servers, tools, services) |
+| `memory_projects` | List or search tracked projects |
+| `memory_episodes` | List conversation episodes (sessions of related work) |
+| `memory_scratch` | Read/write scratchpad (short-term working memory, 30min TTL) |
 | `structural_analyze` | Analyze a system in EN syntax -- topology (Pipeline/Tree/DAG/Cycle), node roles, bridges |
 | `structural_detail` | Deep analysis -- concurrency metrics, critical path, flow depth, resilience |
 | `structural_between` | Betweenness centrality for a node (0-1 score) |
