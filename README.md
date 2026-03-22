@@ -495,7 +495,9 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 | `POST` | `/timetravel` | Query memory state at a past time |
 | `GET` | `/facts` | Query structured facts with filtering |
 | `GET` | `/preferences` | Get stored user preferences |
+| `DELETE` | `/preferences` | Delete preference entries (surgical cleanup) |
 | `GET` | `/state` | Get current user state |
+| `DELETE` | `/state` | Delete state entries (surgical cleanup) |
 | `POST` | `/profile/synthesize` | Synthesize personality profile from signals |
 | `GET` | `/memory-health` | Diagnostic report: stale, duplicates, unlinked, contradiction hints |
 | `POST` | `/feedback` | Submit retrieval feedback (used/ignored/corrected/irrelevant/helpful) |
@@ -585,9 +587,36 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 |--------|------|-------------|
 | `GET` | `/health` | Health check (30+ feature flags) |
 | `GET` | `/stats` | Detailed statistics |
+| `GET` | `/metrics` | Prometheus-format metrics (admin) |
+| `GET` | `/openapi.json` | OpenAPI 3.1 spec |
 | `GET` | `/audit` | Query audit log (admin) |
 | `POST` | `/checkpoint` | Manual WAL checkpoint (admin) |
 | `GET` | `/backup` | Download SQLite database (admin) |
+| `POST` | `/backup/verify` | Verify backup integrity (admin) |
+
+### Admin
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/admin/tasks` | List all available admin operations |
+| `GET` | `/admin/quotas` | View per-tenant memory quotas |
+| `PUT` | `/admin/quotas` | Update tenant quota |
+| `GET` | `/admin/tenants` | List all tenants with usage statistics |
+| `POST` | `/tenants/provision` | Provision a new tenant |
+| `POST` | `/tenants/deprovision` | Deprovision a tenant |
+| `GET` | `/admin/providers` | View configured embedding and LLM providers |
+| `GET` | `/admin/schema` | Schema info, migration history, drift detection |
+| `GET` | `/admin/scale-report` | Scale tier assessment with recommendations |
+| `GET` | `/admin/cold-storage` | Memory access distribution and cold storage config |
+| `POST` | `/admin/maintenance` | Toggle maintenance mode (rejects non-admin writes) |
+| `GET` | `/admin/maintenance` | Check maintenance mode status |
+| `POST` | `/admin/reembed` | Re-embed all memories with current provider |
+| `POST` | `/admin/rebuild-fts` | Drop and rebuild full-text search index |
+| `POST` | `/admin/rebuild-cooccurrences` | Rebuild entity cooccurrence graph |
+| `POST` | `/admin/detect-communities` | Run Louvain community detection |
+| `POST` | `/admin/backfill-facts` | Extract facts from memories missing structured data |
+| `POST` | `/admin/refresh-cache` | Force reload embedding cache from DB |
+| `POST` | `/admin/compact` | VACUUM + ANALYZE database to reclaim space |
 
 ---
 
@@ -701,6 +730,7 @@ Engram includes a WebGL graph visualization at `/gui`. Login with your `ENGRAM_G
 | `ENGRAM_GUI_PASSWORD` | required | GUI login password unless `ENGRAM_OPEN_ACCESS=1` |
 | `ENGRAM_OPEN_ACCESS` | `0` | Set `1` for unauthenticated single-user mode |
 | `ENGRAM_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error`, `none` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | unset | Enable OpenTelemetry tracing (e.g. `http://localhost:4318`) |
 | `ENGRAM_CORS_ORIGIN` | unset | Optional allowed browser origin for cross-origin access |
 | `ENGRAM_MAX_BODY_SIZE` | `1048576` | Max request body (bytes) |
 | `ENGRAM_MAX_CONTENT_SIZE` | `102400` | Max memory content (bytes) |
