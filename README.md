@@ -567,6 +567,7 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 | `POST` | `/keys` | Create API key |
 | `GET` | `/keys` | List API keys |
 | `DELETE` | `/keys/:id` | Revoke key |
+| `POST` | `/keys/rotate` | Rotate an API key (atomically replace, preserving scopes) |
 | `POST` | `/spaces` | Create space |
 | `GET` | `/spaces` | List spaces |
 | `DELETE` | `/spaces/:id` | Delete space |
@@ -801,6 +802,20 @@ Staging process stopped.
 Done. Production Engram was not touched.
 
 Staging runs on-demand only. Production source is re-locked automatically after every promote.
+
+### Observability
+
+Engram ships Grafana dashboard provisioning JSON in `grafana/`:
+
+| Dashboard | Contents |
+|-----------|----------|
+| `engram-service-overview.json` | Request rate, p95 latency, error rate, search throughput, embedding/LLM latency, recent traces |
+| `chiasm-service-overview.json` | Chiasm task coordination metrics |
+| `service-map.json` | Inter-service dependency map |
+
+To enable tracing, set `OTEL_EXPORTER_OTLP_ENDPOINT` (e.g. `http://localhost:4318`). The server instruments `embed()`, `callLLM()`, and `hybridSearch()` with spans exported via OTLP HTTP. Metrics are available at `GET /metrics` in Prometheus format.
+
+Import the dashboards via Grafana's provisioning API or the UI (Dashboards > Import > Upload JSON).
 
 ### Reverse Proxy
 
