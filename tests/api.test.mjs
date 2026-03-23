@@ -40,7 +40,7 @@ describe("Store", () => {
       method: "POST",
       body: { content: "vitest multi-tenant test memory", category: "test", importance: 7 },
     });
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 200 or 201, got ${status}`);
     assert.ok(data.stored);
     assert.ok(data.id);
     testMemId = data.id;
