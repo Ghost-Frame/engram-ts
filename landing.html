@@ -160,7 +160,7 @@ nav .links a:hover{color:var(--text);text-decoration:none}
 
 <!-- Hero -->
 <section class="hero">
-  <div class="hero-badge"><span class="dot"></span> v5.8.2 - Open Source</div>
+  <div class="hero-badge"><span class="dot"></span> v5.9 - Open Source</div>
   <h1>Memory for<br><span>AI agents</span></h1>
   <p>Persistent, searchable, self-organizing memory with FSRS-6 spaced repetition. Store what agents learn. Recall it when it matters. No external APIs.</p>
   <div class="hero-actions">
@@ -332,7 +332,7 @@ nav .links a:hover{color:var(--text);text-decoration:none}
         <div class="feature">
           <div class="feature-icon" style="background:rgba(196,162,101,0.1);color:var(--accent)">🕸️</div>
           <h3>Knowledge Graph</h3>
-          <p>Auto-linking via cosine similarity with typed edges. Graphology-powered centrality, community detection, and shortest path traversal.</p>
+          <p>Auto-linking via cosine similarity with typed edges. PageRank centrality, community detection, and shortest path traversal. Search results are boosted by graph importance.</p>
         </div>
         <div class="feature highlight">
           <div class="feature-icon" style="background:rgba(34,211,238,0.15);color:var(--cyan)">📖</div>
@@ -349,10 +349,20 @@ nav .links a:hover{color:var(--text);text-decoration:none}
           <h3>Review Queue / Inbox</h3>
           <p>Auto-detected memories land in inbox for review. Approve, reject, or edit before they enter recall. Bulk operations supported.</p>
         </div>
-        <div class="feature">
-          <div class="feature-icon" style="background:rgba(90,158,126,0.1);color:var(--green)">🏘️</div>
+        <div class="feature highlight">
+          <div class="feature-icon" style="background:rgba(90,158,126,0.15);color:var(--green)">🏘️</div>
           <h3>Community Detection</h3>
-          <p>Label propagation on the memory graph surfaces clusters of related memories. Type-aware edge weighting. Browse and explore communities via API.</p>
+          <p>Label propagation on the memory graph surfaces clusters of related memories. Runs automatically every 25th store. Type-aware edge weighting.</p>
+        </div>
+        <div class="feature highlight">
+          <div class="feature-icon" style="background:rgba(196,162,101,0.15);color:var(--accent)">📈</div>
+          <h3>PageRank</h3>
+          <p>Iterative weighted PageRank scores memories by structural importance. A memory referenced by high-value hubs outranks one with lots of weak connections. Boosts search results by up to 15%.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon" style="background:rgba(34,211,238,0.1);color:var(--cyan)">📊</div>
+          <h3>Graph Timeline</h3>
+          <p>See how your knowledge graph grew over time. Weekly aggregates of new memories, total links, and cluster formation. Hit <code>/graph/timeline</code> and watch the evolution.</p>
         </div>
         <div class="feature">
           <div class="feature-icon" style="background:rgba(244,114,182,0.1);color:var(--pink)">⏪</div>

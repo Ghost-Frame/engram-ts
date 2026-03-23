@@ -44,7 +44,9 @@ curl -X POST http://localhost:4200/recall \
 - 🧹 **SimHash deduplication** - 64-bit locality-sensitive hashing detects near-duplicates before embedding, saving compute
 - 🕐 **Bi-temporal fact tracking** - structured facts carry temporal validity windows with automatic contradiction-based invalidation
 - 🧩 **Entity cooccurrence graph** - entities that appear together build weighted relationships automatically
-- 🏘️ **Community detection** - label propagation groups related memories into discoverable clusters
+- 🏘️ **Community detection** - label propagation groups related memories into discoverable clusters, auto-runs on store
+- 📈 **PageRank** - iterative weighted PageRank ranks memories by structural importance, not just connection count
+- 📊 **Graph timeline** - `GET /graph/timeline` shows how your knowledge graph grew week by week
 - 🔬 **Cross-encoder reranker** - BGE-reranker-base (quantized INT8) reranks search results for semantic precision
 - 🎭 **Personality engine** - extracts preferences, values, motivations, decisions, emotions, and identity signals from memories
 - 📊 **Graph visualization** - explore your memory space in a WebGL galaxy
@@ -82,19 +84,35 @@ curl -X POST http://localhost:4200/recall \
 
 ---
 
-## What's New in v5.8.3
+## What's New
 
-### Server-Side Source Filtering
-`/search`, `/context`, and `/recall` now accept a `source` parameter for server-side memory filtering. The filter propagates into the hybrid search pipeline, filtering at both the vector scan and FTS5 stages before scoring. This enables proper agent isolation (each agent searches only its own memories) and benchmark isolation against production data.
+### PageRank for Memory Graphs
+Full iterative PageRank algorithm with type-aware edge weighting. Memories linked to by important memories score higher, not just memories with lots of connections. Scores are normalized 0-1 and stored per memory. Runs automatically every 25th store alongside community detection.
 
-### Worker Thread Embeddings
-ONNX embedding inference moved from the main thread to a dedicated `Worker` thread. Embedding calls no longer block the HTTP event loop, improving request latency under concurrent load.
+### Search Ranking from Graph Structure
+Search results now get a 0-15% boost based on their PageRank score. Structurally important memories (the ones that hold clusters together, get referenced by other high-value memories) surface higher in `/search` and `/context` results. This works on top of the existing RRF scoring, decay, and temporal signals.
 
-### Batch Link Queries
-Relationship expansion in search replaced N+1 individual link queries with a single batch query via `getLinksForUserBatch()`. Reduces search latency for queries with relationship expansion enabled.
+### Auto Graph Analysis on Store
+Every 25th memory stored triggers background community detection and PageRank recomputation via the durable job queue. Communities and centrality scores stay current without manual admin calls. No impact on store latency since it runs in the post-store pipeline.
 
-### TypeScript Zero Errors
-Fixed all pre-existing compilation errors: SharedArrayBuffer transfer cast in embedding worker, null-vs-undefined on link source fields in graph expansion. The codebase now compiles cleanly with zero TypeScript errors.
+### Temporal Graph Evolution
+New `GET /graph/timeline` endpoint returns weekly aggregates of graph growth: new memories, running totals, link counts per week. Shows how the knowledge graph evolved over time.
+
+### Enriched Graph Endpoint
+`/graph` now returns `community_id` and `pagerank_score` per node. Node sizes are boosted by PageRank. The `group` field uses community ID when available, falling back to category.
+
+<details>
+<summary><strong>v5.8.3</strong></summary>
+
+**Server-Side Source Filtering** - `/search`, `/context`, and `/recall` accept a `source` parameter. Filter propagates into hybrid search at both vector and FTS5 stages.
+
+**Worker Thread Embeddings** - ONNX inference moved to a dedicated Worker thread. No more event loop blocking.
+
+**Batch Link Queries** - Relationship expansion uses single batch query instead of N+1.
+
+**TypeScript Zero Errors** - Clean compilation with zero TS errors.
+
+</details>
 
 <details>
 <summary><strong>Previous releases</strong></summary>
