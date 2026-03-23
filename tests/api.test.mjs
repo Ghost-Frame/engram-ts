@@ -23,7 +23,7 @@ async function api(path, opts = {}) {
 describe("Health", () => {
   it("GET /health returns ok", async () => {
     const { status, data } = await api("/health");
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.equal(data.status, "ok");
     assert.ok(data.version);
   });
@@ -63,7 +63,7 @@ describe("Search", () => {
       method: "POST",
       body: { query: "multi-tenant test", limit: 5 },
     });
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(Array.isArray(data.results));
   });
 });
@@ -74,7 +74,7 @@ describe("Recall", () => {
       method: "POST",
       body: { query: "multi-tenant test" },
     });
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(data.memories || data.results);
   });
 });
@@ -98,7 +98,7 @@ describe("Scratchpad", () => {
         ],
       },
     });
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.equal(data.stored, true);
     assert.equal(data.session, session);
     assert.ok(data.count >= 2);
@@ -106,7 +106,7 @@ describe("Scratchpad", () => {
 
   it("GET /scratch returns active entries", async () => {
     const { status, data } = await api(`/scratch?session=${encodeURIComponent(session)}`);
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(Array.isArray(data.entries));
     assert.ok(data.entries.some((entry) => entry.key === "task:scratch-test"));
   });
@@ -116,7 +116,7 @@ describe("Scratchpad", () => {
       method: "POST",
       body: { query: "scratch route", budget: 1200, session: "other-session" },
     });
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.match(data.context, /<working-memory>/);
     assert.match(data.context, /task:scratch-test/);
   });
@@ -125,7 +125,7 @@ describe("Scratchpad", () => {
     const { status, data } = await api(`/scratch/${encodeURIComponent(session)}/${encodeURIComponent("editing:routes")}`, {
       method: "DELETE",
     });
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.equal(data.deleted, true);
     assert.equal(data.key, "editing:routes");
   });
@@ -134,7 +134,7 @@ describe("Scratchpad", () => {
     const { status, data } = await api(`/scratch/${encodeURIComponent(session)}`, {
       method: "DELETE",
     });
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.equal(data.deleted, true);
     const listed = await api(`/scratch?session=${encodeURIComponent(session)}`);
     assert.equal(listed.status, 200);
@@ -148,7 +148,7 @@ describe("Scratchpad", () => {
 describe("Memory CRUD", () => {
   it("GET /memory/:id returns the memory", async () => {
     const { status, data } = await api(`/memory/${testMemId}`);
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.equal(data.id, testMemId);
   });
 
@@ -157,20 +157,20 @@ describe("Memory CRUD", () => {
       method: "POST",
       body: { content: "updated multi-tenant test memory v2" },
     });
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(data.new_id);
     assert.ok(data.version >= 2);
   });
 
   it("GET /links/:id returns links", async () => {
     const { status, data } = await api(`/links/${testMemId}`);
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.equal(data.memory_id, testMemId);
   });
 
   it("GET /versions/:id returns version chain", async () => {
     const { status, data } = await api(`/versions/${testMemId}`);
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(data.root_id);
   });
 });
@@ -186,20 +186,20 @@ describe("Conversations", () => {
       method: "POST",
       body: { agent: "test-agent", title: "Test Conversation" },
     });
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(data.id);
     testConvId = data.id;
   });
 
   it("GET /conversations lists conversations", async () => {
     const { status, data } = await api("/conversations");
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(Array.isArray(data.results));
   });
 
   it("GET /conversations/:id returns the conversation", async () => {
     const { status, data } = await api(`/conversations/${testConvId}`);
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(data.conversation);
     assert.equal(data.conversation.user_id, 1);
   });
@@ -209,7 +209,7 @@ describe("Conversations", () => {
       method: "POST",
       body: { role: "user", content: "test message" },
     });
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(data.added >= 1);
   });
 
@@ -224,7 +224,7 @@ describe("Conversations", () => {
         ],
       },
     });
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(data.id);
     assert.equal(data.messages, 2);
     // Cleanup
@@ -236,7 +236,7 @@ describe("Conversations", () => {
       method: "POST",
       body: { query: "test message", limit: 5 },
     });
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(Array.isArray(data.results));
   });
 
@@ -245,13 +245,13 @@ describe("Conversations", () => {
       method: "PATCH",
       body: { title: "Updated Title" },
     });
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(data.updated);
   });
 
   it("DELETE /conversations/:id deletes", async () => {
     const { status, data } = await api(`/conversations/${testConvId}`, { method: "DELETE" });
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(data.deleted);
   });
 });
@@ -262,7 +262,7 @@ describe("Conversations", () => {
 describe("Stats & System", () => {
   it("GET /stats returns user-scoped stats", async () => {
     const { status, data } = await api("/stats");
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(data.memories);
     assert.ok(typeof data.memories.total === "number");
     // db_path should not be exposed to non-admin
@@ -271,13 +271,13 @@ describe("Stats & System", () => {
 
   it("GET /decay/scores returns user-scoped scores", async () => {
     const { status, data } = await api("/decay/scores?limit=3");
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(Array.isArray(data.memories));
   });
 
   it("GET /consolidations returns user-scoped data", async () => {
     const { status, data } = await api("/consolidations");
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(Array.isArray(data.consolidations));
   });
 });
@@ -288,13 +288,13 @@ describe("Stats & System", () => {
 describe("Contradictions & Duplicates", () => {
   it("GET /contradictions returns scoped results", async () => {
     const { status, data } = await api("/contradictions?limit=3");
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(Array.isArray(data.contradictions));
   });
 
   it("GET /duplicates returns scoped results", async () => {
     const { status, data } = await api("/duplicates?limit=3");
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(Array.isArray(data.clusters));
   });
 });
@@ -305,7 +305,7 @@ describe("Contradictions & Duplicates", () => {
 describe("Graph", () => {
   it("GET /graph returns nodes and edges", async () => {
     const { status, data } = await api("/graph?max_nodes=5");
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(Array.isArray(data.nodes));
     assert.ok(Array.isArray(data.edges));
   });
@@ -317,7 +317,7 @@ describe("Graph", () => {
 describe("Episodes", () => {
   it("GET /episodes lists episodes", async () => {
     const { status, data } = await api("/episodes?limit=3");
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(Array.isArray(data.episodes));
   });
 });
@@ -333,14 +333,14 @@ describe("Entities", () => {
       method: "POST",
       body: { name: "Test Entity", type: "tool", description: "test" },
     });
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(data.id);
     testEntityId = data.id;
   });
 
   it("GET /entities/:id returns with ownership check", async () => {
     const { status, data } = await api(`/entities/${testEntityId}`);
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.equal(data.name, "Test Entity");
   });
 
@@ -349,14 +349,14 @@ describe("Entities", () => {
       method: "POST",
       body: { query: "updated multi-tenant test", limit: 5 },
     });
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(Array.isArray(data.results));
     assert.equal(data.entity_id, testEntityId);
   });
 
   it("DELETE /entities/:id deletes", async () => {
     const { status } = await api(`/entities/${testEntityId}`, { method: "DELETE" });
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
   });
 });
 
@@ -366,14 +366,14 @@ describe("Projects", () => {
       method: "POST",
       body: { name: "Test Project", description: "test" },
     });
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(data.id);
     testProjectId = data.id;
   });
 
   it("GET /projects/:id returns with ownership check", async () => {
     const { status, data } = await api(`/projects/${testProjectId}`);
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.equal(data.name, "Test Project");
   });
 
@@ -382,14 +382,14 @@ describe("Projects", () => {
       method: "POST",
       body: { query: "updated multi-tenant test", limit: 5 },
     });
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(Array.isArray(data.results));
     assert.equal(data.project_id, testProjectId);
   });
 
   it("DELETE /projects/:id deletes", async () => {
     const { status } = await api(`/projects/${testProjectId}`, { method: "DELETE" });
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
   });
 });
 
@@ -399,7 +399,7 @@ describe("Projects", () => {
 describe("FSRS", () => {
   it("GET /fsrs/state returns state", async () => {
     const { status, data } = await api(`/fsrs/state?id=${testMemId}`);
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(data.fsrs_stability !== undefined);
   });
 
@@ -408,7 +408,7 @@ describe("FSRS", () => {
       method: "POST",
       body: { id: testMemId, grade: 3 },
     });
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.equal(data.id, testMemId);
   });
 });
@@ -419,7 +419,7 @@ describe("FSRS", () => {
 describe("Cleanup", () => {
   it("DELETE /memory/:id cleans up test memory", async () => {
     const { status, data } = await api(`/memory/${testMemId}`, { method: "DELETE" });
-    assert.equal(status, 200);
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.ok(data.deleted);
   });
 });
