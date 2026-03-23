@@ -5,6 +5,16 @@ All notable changes to Engram will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.9.0] - 2026-03-22
+
+### Added
+- **PageRank algorithm** (`src/graph/pagerank.ts`): iterative weighted PageRank with type-aware edge weights (caused_by/causes 2.0x, updates/corrects 1.5x, extends 1.3x). Normalizes scores to 0-1 and stores in `pagerank_score` column. Converges in ~25 iterations for typical graphs.
+- **Search centrality boost**: search scoring now applies a 0-15% multiplicative boost from PageRank scores. Structurally important memories surface higher in `/search`, `/context`, and `/recall` results.
+- **Auto graph analysis on store**: every 25th memory stored triggers community detection and PageRank recomputation via the post-store durable job pipeline. No impact on store latency.
+- **`GET /graph/timeline` endpoint**: returns weekly aggregates of graph growth (new memories, running totals, link counts per week). Enables temporal evolution analysis.
+- **Enriched `/graph` response**: nodes now include `community_id` and `pagerank_score` fields. Node `group` field uses community ID when available. Node `size` boosted by PageRank.
+- **`pagerank_score` column**: auto-created on memories table via `ensurePageRankColumn()`.
+
 ## [5.8.3] - 2026-03-20
 
 ### Added
