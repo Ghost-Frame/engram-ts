@@ -366,7 +366,15 @@ export function getCachedEmbeddings(latestOnly: boolean, userId?: number): Cache
 
 export function addToEmbeddingCache(mem: CachedMem): void {
   embeddingCache.push(mem);
-  if (mem.is_latest && !mem.is_forgotten) embeddingCacheLatest.push(mem);
+  const byUser = embeddingCacheByUser.get(mem.user_id) || [];
+  byUser.push(mem);
+  embeddingCacheByUser.set(mem.user_id, byUser);
+  if (mem.is_latest && !mem.is_forgotten) {
+    embeddingCacheLatest.push(mem);
+    const byUserL = embeddingCacheLatestByUser.get(mem.user_id) || [];
+    byUserL.push(mem);
+    embeddingCacheLatestByUser.set(mem.user_id, byUserL);
+  }
 }
 
 export function invalidateEmbeddingCache(): void {
