@@ -803,25 +803,7 @@ Production source files are locked immutable (). Direct writes -- including SCP,
 To make changes:
 
 === Starting Engram staging instance ===
-FATAL: Staging failed to start
-node:internal/modules/esm/resolve:275
-    throw new ERR_MODULE_NOT_FOUND(
-          ^
 
-Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/opt/engram/staging/sign/index.ts' imported from /opt/engram/staging/src/routes/index.ts
-    at finalizeResolution (node:internal/modules/esm/resolve:275:11)
-    at moduleResolve (node:internal/modules/esm/resolve:861:10)
-    at defaultResolve (node:internal/modules/esm/resolve:985:11)
-    at #cachedDefaultResolve (node:internal/modules/esm/loader:731:20)
-    at ModuleLoader.resolve (node:internal/modules/esm/loader:708:38)
-    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:310:38)
-    at ModuleJob._link (node:internal/modules/esm/module_job:182:49) {
-  code: 'ERR_MODULE_NOT_FOUND',
-  url: 'file:///opt/engram/staging/sign/index.ts'
-}
-
-Node.js v22.22.1
-ERROR: No staging dir found. Run /opt/engram/start-staging.sh first.
 === Discarding staging (production unchanged) ===
 Staging process stopped.
 Done. Production Engram was not touched.
