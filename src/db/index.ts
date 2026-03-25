@@ -130,6 +130,11 @@ migrate("ALTER TABLE memories ADD COLUMN importance INTEGER NOT NULL DEFAULT 5")
 migrate("ALTER TABLE memories ADD COLUMN model TEXT");
 migrate("ALTER TABLE memories ADD COLUMN embedding BLOB");
 
+// Adaptive importance columns (must run before prepared statements that reference them)
+migrate("ALTER TABLE memories ADD COLUMN recall_hits INTEGER NOT NULL DEFAULT 0");
+migrate("ALTER TABLE memories ADD COLUMN recall_misses INTEGER NOT NULL DEFAULT 0");
+migrate("ALTER TABLE memories ADD COLUMN adaptive_score REAL");
+
 // v3.1 indexes
 migrate("CREATE INDEX IF NOT EXISTS idx_memories_archived ON memories(is_archived) WHERE is_archived = 1");
 
@@ -1602,10 +1607,7 @@ migrate(`
   CREATE INDEX IF NOT EXISTS idx_recon_memory ON reconsolidations(memory_id);
 `);
 
-// Adaptive importance
-migrate("ALTER TABLE memories ADD COLUMN recall_hits INTEGER NOT NULL DEFAULT 0");
-migrate("ALTER TABLE memories ADD COLUMN recall_misses INTEGER NOT NULL DEFAULT 0");
-migrate("ALTER TABLE memories ADD COLUMN adaptive_score REAL");
+// Adaptive importance (migrations moved earlier in file, before prepared statements)
 
 // Temporal patterns
 migrate(`
