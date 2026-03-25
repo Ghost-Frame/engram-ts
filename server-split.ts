@@ -157,6 +157,22 @@ registerJobHandler("post_store", async (payload) => {
   } else {
     log.info({ msg: "post_store_lightweight", memory_id: memoryId });
   }
+
+  // 5. Community detection + PageRank (throttled: every 25th memory)
+  try {
+    const memCount = db.prepare(
+      "SELECT COUNT(*) as cnt FROM memories WHERE user_id = ? AND is_forgotten = 0"
+    ).get(userId) as { cnt: number };
+    if (memCount.cnt > 0 && memCount.cnt % 25 === 0) {
+      const { detectCommunities } = await import("./src/graph/communities.ts");
+      detectCommunities(userId);
+      const { updatePageRankScores } = await import("./src/graph/pagerank.ts");
+      updatePageRankScores(userId);
+      log.info({ msg: "post_store_graph_analysis", memory_id: memoryId, total_memories: memCount.cnt });
+    }
+  } catch (e: any) {
+    log.warn({ msg: "post_store_graph_analysis_failed", error: e.message });
+  }
 });
 
 // Recover any jobs that were running when the process crashed
@@ -394,8 +410,12 @@ setInterval(withLease("scratchpad_ttl", async () => {
 
 // Decay score refresh (every 15 minutes, lease-protected)
 setInterval(withLease("decay_refresh", () => {
-  const updated = updateDecayScores();
-  if (updated > 0) log.info({ msg: "decay_refresh", updated });
+  try {
+    const updated = updateDecayScores();
+    if (updated > 0) log.info({ msg: "decay_refresh", updated });
+  } catch (e: any) {
+    log.error({ msg: "decay_refresh_error", error: e.message, code: e.code });
+  }
 }, 1200), 15 * 60 * 1000);
 
 // Probe LLM reachability (sets cached flag for isLLMAvailable)
@@ -416,7 +436,9 @@ if (isLLMAvailable()) {
 
 // Initial sweeps
 sweepExpiredMemories();
-updateDecayScores();
+try { updateDecayScores(); } catch (e: any) {
+  log.error({ msg: "startup_decay_refresh_error", error: e.message, code: e.code });
+}
 purgeExpiredScratchpad();
 
 // Startup embedding dimension check: warn if stored vectors don't match configured provider/dimension
