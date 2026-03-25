@@ -12,7 +12,7 @@ import {
 } from "../config/index.ts";
 import { log, opsCounters } from "../config/logger.ts";
 import { withSpan } from "../tracing.ts";
-import { db, writeVec, updateEpisodeVec } from "../db/index.ts";
+import { db, writeVec, updateEpisodeVec, rebuildVectorIndex } from "../db/index.ts";
 import { getVertexAccessToken, getProjectId } from "../auth/google-auth.ts";
 
 // ============================================================================
@@ -513,7 +513,12 @@ export function annSearch(queryEmbedding: Float32Array, userId: number, topK: nu
     `).all(vecJson, candidates, userId) as Array<{ id: number }>;
     return rows.map(r => r.id);
   } catch (e: any) {
-    log.warn({ msg: "ann_search_failed", error: e.message, fallback: "linear_scan" });
+    if (e.code?.includes("CORRUPT") || e.message?.includes("malformed")) {
+      log.error({ msg: "ann_search_corrupt", error: e.message, triggering_rebuild: true });
+      try { rebuildVectorIndex(); } catch {}
+    } else {
+      log.warn({ msg: "ann_search_failed", error: e.message, fallback: "linear_scan" });
+    }
     return [];
   }
 }

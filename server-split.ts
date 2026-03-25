@@ -8,7 +8,7 @@
 import "./src/tracing.ts";
 
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
-import { existsSync, copyFileSync, statSync, unlinkSync, readdirSync } from "fs";
+import { existsSync, copyFileSync, statSync, unlinkSync, readdirSync, writeFileSync, readFileSync } from "fs";
 import { resolve } from "path";
 
 // Config
@@ -33,8 +33,22 @@ import { log } from "./src/config/logger.ts";
   }
 }
 
+// Crash-loop protection: if we crashed within 60s, enter safe mode
+const CRASH_SENTINEL = resolve(DATA_DIR, ".engram-startup-ts");
+let SAFE_MODE = false;
+try {
+  if (existsSync(CRASH_SENTINEL)) {
+    const lastStart = parseInt(readFileSync(CRASH_SENTINEL, "utf-8").trim(), 10);
+    if (!isNaN(lastStart) && Date.now() - lastStart < 60000) {
+      SAFE_MODE = true;
+      log.warn({ msg: "safe_mode_activated", reason: "crash_loop_detected", last_start_ms_ago: Date.now() - lastStart });
+    }
+  }
+} catch {}
+try { writeFileSync(CRASH_SENTINEL, String(Date.now())); } catch {}
+
 // Database (importing triggers schema creation + migrations)
-import { db, updateMemoryEmbedding, writeVec, purgeExpiredScratchpad, getExpiredScratchSessions, insertMemory, updateMemoryVec, cleanupOldUsage } from "./src/db/index.ts";
+import { db, updateMemoryEmbedding, writeVec, purgeExpiredScratchpad, getExpiredScratchSessions, insertMemory, updateMemoryVec, cleanupOldUsage, probeVectorHealth, rebuildVectorIndex } from "./src/db/index.ts";
 
 // Embeddings
 import { initEmbedder, embed, refreshEmbeddingCache, embeddingCacheLatest, embeddingToBuffer, embeddingToVectorJSON, addToEmbeddingCache } from "./src/embeddings/index.ts";
@@ -95,6 +109,17 @@ await initReranker();
   } catch (e: any) {
     log.warn({ msg: "wal_checkpoint_failed", error: e.message });
   }
+}
+
+// Startup vector health check
+if (!SAFE_MODE) {
+  if (!probeVectorHealth()) {
+    log.warn({ msg: "startup_corruption_detected", action: "rebuilding_vector_index" });
+    const result = rebuildVectorIndex();
+    log.info({ msg: "startup_vector_rebuild", ...result });
+  }
+} else {
+  log.warn({ msg: "safe_mode_skip_vector_check" });
 }
 
 // Pre-warm: load embedding cache + JIT-compile ONNX model
@@ -255,6 +280,10 @@ server.requestTimeout = 120_000;    // 2min to receive full request
 
 server.listen(PORT, HOST, () => {
   log.info({ msg: "node_http_server_listening", host: HOST, port: PORT });
+  // Clear crash sentinel after successful startup (proves we survived)
+  setTimeout(() => {
+    try { unlinkSync(CRASH_SENTINEL); } catch {}
+  }, 120000);
 });
 
 // ============================================================================
@@ -274,6 +303,19 @@ function walCheckpoint() {
   }
 }
 setInterval(walCheckpoint, 5 * 60 * 1000);
+
+// Periodic vector health probe (every 6 hours)
+setInterval(() => {
+  try {
+    if (!probeVectorHealth()) {
+      log.warn({ msg: "periodic_corruption_detected", action: "rebuilding_vector_index" });
+      const result = rebuildVectorIndex();
+      log.info({ msg: "periodic_vector_rebuild", ...result });
+    }
+  } catch (e: any) {
+    log.error({ msg: "periodic_health_probe_error", error: e.message });
+  }
+}, 6 * 60 * 60 * 1000);
 
 // ============================================================================
 // GRACEFUL SHUTDOWN

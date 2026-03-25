@@ -248,9 +248,11 @@ for (const [col, def] of v50Columns) {
 }
 migrate("CREATE INDEX IF NOT EXISTS idx_memories_fsrs_stability ON memories(fsrs_stability) WHERE fsrs_stability IS NOT NULL");
 
-// v5.0 — Native vector column (libsql FLOAT32)
-migrate("ALTER TABLE memories ADD COLUMN embedding_vec FLOAT32(384)");
-migrate("CREATE INDEX IF NOT EXISTS memories_vec_idx ON memories(libsql_vector_idx(embedding_vec))");
+// v5.0 — Native vector column (libsql FLOAT32) — SKIP if already dropped by v60 migration
+if (_getSchemaVersion() < 60) {
+  migrate("ALTER TABLE memories ADD COLUMN embedding_vec FLOAT32(384)");
+  migrate("CREATE INDEX IF NOT EXISTS memories_vec_idx ON memories(libsql_vector_idx(embedding_vec))");
+}
 
 // v5.7 — BGE-large 1024-dim vector column
 migrate("ALTER TABLE memories ADD COLUMN embedding_vec_1024 FLOAT32(1024)");
@@ -265,6 +267,14 @@ if (EMBEDDING_DIM !== 384 && EMBEDDING_DIM !== 1024) {
   migrate(`CREATE INDEX IF NOT EXISTS memories_vec_${EMBEDDING_DIM}_idx ON memories(libsql_vector_idx(${VECTOR_COL}))`);
   migrate(`ALTER TABLE episodes ADD COLUMN ${VECTOR_COL} FLOAT32(${EMBEDDING_DIM})`);
   migrate(`CREATE INDEX IF NOT EXISTS episodes_vec_${EMBEDDING_DIM}_idx ON episodes(libsql_vector_idx(${VECTOR_COL}))`);
+}
+
+// v5.9.1 — Drop unused 384-dim ghost vector column (0 rows populated, contributes to vtab corruption)
+if (_getSchemaVersion() < 60) {
+  migrate("DROP INDEX IF EXISTS memories_vec_idx");
+  try { db.exec("ALTER TABLE memories DROP COLUMN embedding_vec"); } catch {}
+  setSchemaVersion(60, "Drop unused 384-dim ghost vector column");
+  log.info({ msg: "dropped_384_ghost_column" });
 }
 
 // Webhooks table
@@ -713,17 +723,149 @@ export const updateMemoryEmbedding = db.prepare(
   `UPDATE memories SET embedding = ? WHERE id = ?`
 );
 
-export const updateMemoryVec = db.prepare(
+export let updateMemoryVec = db.prepare(
   `UPDATE memories SET ${VECTOR_COL} = vector(?) WHERE id = ?`
 );
 
 /** Write vector column for a newly inserted memory (call after insertMemory) */
 export function writeVec(memoryId: number, embArray: Float32Array | null): void {
   if (!embArray) return;
-  try { updateMemoryVec.run(embeddingToVectorJSON(embArray), memoryId); } catch (e: any) {
+  try {
+    updateMemoryVec.run(embeddingToVectorJSON(embArray), memoryId);
+  } catch (e: any) {
     opsCounters.vec_write_failures++;
-    log.warn({ msg: "vec_write_failed", id: memoryId, error: e?.message });
+    if (!_rebuildInProgress && (e.code?.includes("CORRUPT") || e.message?.includes("malformed"))) {
+      log.error({ msg: "vec_write_corrupt_detected", id: memoryId, triggering_rebuild: true });
+      rebuildVectorIndex();
+      // Retry once after rebuild
+      try { updateMemoryVec.run(embeddingToVectorJSON(embArray), memoryId); } catch {}
+    } else {
+      log.warn({ msg: "vec_write_failed", id: memoryId, error: e?.message });
+    }
   }
+}
+
+/** Fast corruption probe — tries a no-op vector update in a transaction, rolls back. Returns true if healthy. */
+export function probeVectorHealth(): boolean {
+  try {
+    const testRow = db.prepare(`SELECT id FROM memories WHERE ${VECTOR_COL} IS NOT NULL LIMIT 1`).get() as { id: number } | undefined;
+    if (!testRow) return true; // no vector data = nothing to corrupt
+    db.exec("BEGIN");
+    db.prepare(`UPDATE memories SET decay_score = decay_score WHERE id = ?`).run(testRow.id);
+    db.exec("ROLLBACK");
+    return true;
+  } catch (e: any) {
+    try { db.exec("ROLLBACK"); } catch {}
+    if (e.code?.includes("CORRUPT") || e.message?.includes("malformed")) {
+      log.error({ msg: "vector_health_probe_failed", error: e.message, code: e.code });
+      return false;
+    }
+    // Non-corruption error, still healthy
+    return true;
+  }
+}
+
+let _rebuildInProgress = false;
+
+/** Nuclear repair: drop all FLOAT32 columns and indexes, recreate empty, repopulate from BLOB embeddings. */
+export function rebuildVectorIndex(): { dropped: number; recreated: number; repopulated: number } {
+  if (_rebuildInProgress) return { dropped: 0, recreated: 0, repopulated: 0 };
+  _rebuildInProgress = true;
+  log.warn({ msg: "vector_rebuild_start" });
+  const t0 = Date.now();
+  let dropped = 0, recreated = 0, repopulated = 0;
+
+  try {
+    // 1. Drop all vector indexes
+    for (const idx of [
+      "memories_vec_idx", "memories_vec_1024_idx",
+      `memories_vec_${EMBEDDING_DIM}_idx`,
+      "episodes_vec_1024_idx",
+      `episodes_vec_${EMBEDDING_DIM}_idx`,
+    ]) {
+      try { db.exec(`DROP INDEX IF EXISTS ${idx}`); dropped++; } catch {}
+    }
+
+    // 2. Drop FLOAT32 columns from memories
+    for (const col of ["embedding_vec", "embedding_vec_1024", VECTOR_COL]) {
+      try { db.exec(`ALTER TABLE memories DROP COLUMN ${col}`); dropped++; } catch {}
+    }
+    // Drop from episodes
+    for (const col of ["embedding_vec_1024", VECTOR_COL]) {
+      try { db.exec(`ALTER TABLE episodes DROP COLUMN ${col}`); dropped++; } catch {}
+    }
+
+    // 3. Recreate ONLY the current EMBEDDING_DIM column
+    try {
+      db.exec(`ALTER TABLE memories ADD COLUMN ${VECTOR_COL} FLOAT32(${EMBEDDING_DIM})`);
+      db.exec(`CREATE INDEX IF NOT EXISTS memories_vec_${EMBEDDING_DIM}_idx ON memories(libsql_vector_idx(${VECTOR_COL}))`);
+      recreated++;
+    } catch (e: any) {
+      log.error({ msg: "vector_rebuild_recreate_failed", table: "memories", error: e.message });
+    }
+    try {
+      db.exec(`ALTER TABLE episodes ADD COLUMN ${VECTOR_COL} FLOAT32(${EMBEDDING_DIM})`);
+      db.exec(`CREATE INDEX IF NOT EXISTS episodes_vec_${EMBEDDING_DIM}_idx ON episodes(libsql_vector_idx(${VECTOR_COL}))`);
+      recreated++;
+    } catch (e: any) {
+      log.error({ msg: "vector_rebuild_recreate_failed", table: "episodes", error: e.message });
+    }
+
+    // 4. Re-prepare the vector update statements (old ones reference dropped columns)
+    try {
+      updateMemoryVec = db.prepare(`UPDATE memories SET ${VECTOR_COL} = vector(?) WHERE id = ?`);
+      updateEpisodeVec = db.prepare(`UPDATE episodes SET ${VECTOR_COL} = vector(?) WHERE id = ?`);
+    } catch (e: any) {
+      log.error({ msg: "vector_rebuild_reprepare_failed", error: e.message });
+    }
+
+    // 5. Repopulate from BLOB embeddings (batched)
+    const BATCH = 100;
+    let offset = 0;
+    while (true) {
+      const rows = db.prepare(
+        `SELECT id, embedding FROM memories WHERE embedding IS NOT NULL ORDER BY id LIMIT ? OFFSET ?`
+      ).all(BATCH, offset) as Array<{ id: number; embedding: Buffer }>;
+      if (!rows || rows.length === 0) break;
+      for (const row of rows) {
+        try {
+          const buf = row.embedding instanceof Buffer ? row.embedding : Buffer.from(row.embedding as any);
+          const f32 = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+          if (f32.length === EMBEDDING_DIM) {
+            updateMemoryVec.run(embeddingToVectorJSON(f32), row.id);
+            repopulated++;
+          }
+        } catch {}
+      }
+      offset += BATCH;
+    }
+
+    // 6. Repopulate episodes
+    offset = 0;
+    while (true) {
+      const rows = db.prepare(
+        `SELECT id, embedding FROM episodes WHERE embedding IS NOT NULL ORDER BY id LIMIT ? OFFSET ?`
+      ).all(BATCH, offset) as Array<{ id: number; embedding: Buffer }>;
+      if (!rows || rows.length === 0) break;
+      for (const row of rows) {
+        try {
+          const buf = row.embedding instanceof Buffer ? row.embedding : Buffer.from(row.embedding as any);
+          const f32 = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+          if (f32.length === EMBEDDING_DIM) {
+            updateEpisodeVec.run(embeddingToVectorJSON(f32), row.id);
+            repopulated++;
+          }
+        } catch {}
+      }
+      offset += BATCH;
+    }
+
+    log.warn({ msg: "vector_rebuild_complete", dropped, recreated, repopulated, ms: Date.now() - t0 });
+  } finally {
+    _rebuildInProgress = false;
+  }
+
+  return { dropped, recreated, repopulated };
 }
 
 export const getAllEmbeddings = db.prepare(
@@ -1073,7 +1215,7 @@ export const assignToEpisodeForUser = db.prepare(
 export const updateEpisodeEmbedding = db.prepare(
   `UPDATE episodes SET embedding = ? WHERE id = ?`
 );
-export const updateEpisodeVec = db.prepare(
+export let updateEpisodeVec = db.prepare(
   `UPDATE episodes SET ${VECTOR_COL} = vector(?) WHERE id = ?`
 );
 export const searchEpisodesFTS = db.prepare(
