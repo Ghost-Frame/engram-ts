@@ -30,7 +30,8 @@
   ],
   "bin": {
     "engram": "./server-split.ts",
-    "engram-mcp": "./mcp-server.ts"
+    "engram-mcp": "./mcp-server.ts",
+    "engram-cli": "./src/cli/index.ts"
   },
   "scripts": {
     "start": "node --experimental-strip-types --env-file=.env server-split.ts",

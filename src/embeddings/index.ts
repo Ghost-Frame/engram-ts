@@ -377,6 +377,26 @@ export function addToEmbeddingCache(mem: CachedMem): void {
   }
 }
 
+export function removeFromEmbeddingCache(memoryId: number): void {
+  embeddingCache = embeddingCache.filter(m => m.id !== memoryId);
+  embeddingCacheLatest = embeddingCacheLatest.filter(m => m.id !== memoryId);
+  for (const [uid, arr] of embeddingCacheByUser) {
+    embeddingCacheByUser.set(uid, arr.filter(m => m.id !== memoryId));
+  }
+  for (const [uid, arr] of embeddingCacheLatestByUser) {
+    embeddingCacheLatestByUser.set(uid, arr.filter(m => m.id !== memoryId));
+  }
+  embeddingCacheVersion++;
+}
+
+export function demoteFromLatestCache(memoryId: number): void {
+  embeddingCacheLatest = embeddingCacheLatest.filter(m => m.id !== memoryId);
+  for (const [uid, arr] of embeddingCacheLatestByUser) {
+    embeddingCacheLatestByUser.set(uid, arr.filter(m => m.id !== memoryId));
+  }
+  embeddingCacheVersion++;
+}
+
 export function invalidateEmbeddingCache(): void {
   refreshEmbeddingCache();
 }

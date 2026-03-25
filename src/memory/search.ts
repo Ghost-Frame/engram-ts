@@ -14,6 +14,7 @@ import {
   SEARCH_GENERALIZATION_VECTOR_FLOOR,
   SEARCH_PERSONALITY_MIN_SCORE,
   DECAY_FLOOR,
+  PAGERANK_WEIGHT,
 } from "../config/index.ts";
 import { db, searchMemoriesFTS, getMemoryWithoutEmbedding, getVersionChainForUser, getLinksForUser, getLinksForUserBatch, getVersionChainBatch, insertLink } from "../db/index.ts";
 import { embed, cosineSimilarity, getCachedEmbeddings, embeddingToVectorJSON, shouldUseANN, annSearch } from "../embeddings/index.ts";
@@ -740,13 +741,14 @@ export async function hybridSearch(
       try {
         const placeholders = ids.map(() => "?").join(",");
         const rows = db.prepare(
-          `SELECT id, created_at, decay_score, importance, is_static, source_count, version, is_latest, source, model, access_count, fsrs_stability, last_accessed_at
+          `SELECT id, created_at, decay_score, importance, is_static, source_count, version, is_latest, source, model, access_count, fsrs_stability, last_accessed_at, pagerank_score
            FROM memories WHERE id IN (${placeholders})`
         ).all(...ids) as Array<{
           id: number; created_at: string; decay_score: number | null; importance: number;
           is_static: number; source_count: number; version: number; is_latest: number;
           source: string; model: string | null; access_count: number;
           fsrs_stability: number | null; last_accessed_at: string | null;
+          pagerank_score: number | null;
         }>;
         for (const row of rows) {
           const r = results.get(row.id);
@@ -761,6 +763,7 @@ export async function hybridSearch(
             r.is_static = !!row.is_static;
             r.source_count = Math.max(r.source_count || 1, row.source_count || 1);
             (r as any).access_count = row.access_count || 0;
+            (r as any)._pagerank_score = row.pagerank_score ?? 0;
           }
           if (row.decay_score != null && row.decay_score > 0) {
             decayScoreCache.set(row.id, row.is_static ? row.importance : row.decay_score);
@@ -818,7 +821,8 @@ export async function hybridSearch(
       } catch {}
     }
 
-    r.score = rrf * decayFactor * sourceBoost * staticBoost * temporalBoost;
+    const pagerankBoost = 1 + ((r as any)._pagerank_score || 0) * PAGERANK_WEIGHT;
+    r.score = rrf * decayFactor * sourceBoost * staticBoost * temporalBoost * pagerankBoost;
 
     // Contradiction penalty: memories with temporal-contradiction language that
     // are NOT the latest version get demoted to prefer the most current fact.

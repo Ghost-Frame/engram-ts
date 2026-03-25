@@ -67,7 +67,8 @@ import {
 // Embeddings
 import {
   embed, cosineSimilarity, getCachedEmbeddings, addToEmbeddingCache,
-  invalidateEmbeddingCache, embeddingToBuffer, bufferToEmbedding, embeddingToVectorJSON,
+  invalidateEmbeddingCache, removeFromEmbeddingCache, demoteFromLatestCache,
+  embeddingToBuffer, bufferToEmbedding, embeddingToVectorJSON,
   graphCache, setGraphCache, episodeCache, refreshEmbeddingCache, embeddingCacheLatest,
   getEmbeddingCacheStats,
 } from "../embeddings/index.ts";
@@ -329,6 +330,7 @@ function sweepExpiredMemories(userId?: number): number {
     markForgotten.run(mem.id);
     log.debug({ msg: "auto_forgot", id: mem.id, reason: mem.forget_reason || "expired" });
   }
+  for (const mem of expired) removeFromEmbeddingCache(mem.id);
   return expired.length;
 }
 
@@ -2637,7 +2639,7 @@ Only include pairs that are actual contradictions.`;
 
         // Cross-encoder rerank: reorder semantic results so best matches get budget priority
         // Use smaller batch (8) for /context since other phases provide diversity
-        if (isRerankerReady() && semanticResults.length > 3) {
+        if (RERANKER_ENABLED && isRerankerReady() && semanticResults.length > 3) {
           const tRerank = Date.now();
           semanticResults = await crossEncoderRerank(query, semanticResults, 8);
           timing.rerank_ms = Date.now() - tRerank;
@@ -3889,7 +3891,7 @@ Return JSON:
         // Cross-encoder: auto-on when loaded (disable per-request with rerank: false)
         // LLM reranker: opt-in fallback (rerank: true when cross-encoder unavailable)
         const explicitOff = body.rerank === false;
-        if (!explicitOff && isRerankerReady() && results.length > 3) {
+        if (!explicitOff && RERANKER_ENABLED && isRerankerReady() && results.length > 3) {
           results = await crossEncoderRerank(query, results) as typeof results;
           results = results.slice(0, Math.min(limit || 10, 50));
         } else if (body.rerank === true && results.length > 3) {
@@ -3955,6 +3957,7 @@ Return JSON:
           if (r.decay_score != null) explain.decay = Math.round(r.decay_score * 100) / 100;
           if (r.temporal_boost != null) explain.temporal_boost = r.temporal_boost;
           if (r.is_static) explain.static = true;
+          if (r._pagerank_score > 0) explain.pagerank = Math.round(r._pagerank_score * 1000) / 1000;
           if (r.source_count && r.source_count > 1) explain.corroborated = r.source_count;
           if (r.question_type) explain.question_type = r.question_type;
           if (r._channels && r._channels.length > 0) explain.channels = r._channels;
@@ -3968,11 +3971,12 @@ Return JSON:
           if (explain.temporal_boost != null) reasons.push("temporal proximity boost");
           if (explain.reranker && explain.reranker > 0.9) reasons.push("high reranker confidence");
           if (explain.static) reasons.push("permanent fact");
+          if (explain.pagerank && explain.pagerank > 0.5) reasons.push("structurally important (hub memory)");
           if (explain.corroborated) reasons.push(`corroborated ${explain.corroborated}x`);
           if (r.importance >= 8) reasons.push("high importance");
           explain.reasons = reasons;
           // Strip internal fields from result before returning
-          const { _channels, fts_score, graph_score, temporal_boost, ...rest } = r;
+          const { _channels, _pagerank_score, fts_score, graph_score, temporal_boost, ...rest } = r;
           return { ...rest, explain };
         }) : (abstained ? [] : results);
 
@@ -4035,7 +4039,7 @@ Return JSON:
         db.prepare("UPDATE memories SET forget_reason = ? WHERE id = ?").run(body.reason, id);
       }
       audit(auth.user_id, "memory.forget", "memory", id, body.reason || "manual", clientIp, requestId);
-      invalidateEmbeddingCache();
+      removeFromEmbeddingCache(id);
       return json({ forgotten: true, id });
     }
 
@@ -4051,7 +4055,7 @@ Return JSON:
       if (mem.user_id !== auth.user_id && !auth.is_admin) return errorResponse("Forbidden", 403);
       markArchived.run(id);
       audit(auth.user_id, "memory.archive", "memory", id, null, clientIp, requestId);
-      invalidateEmbeddingCache();
+      removeFromEmbeddingCache(id);
       return json({ archived: true, id });
     }
 
@@ -4142,6 +4146,7 @@ Return JSON:
         }
 
         log.info({ msg: "memory_version_created", old_id: id, new_id: result.id, version: newVersion, root: rootId });
+        demoteFromLatestCache(id);
 
         return json({
           updated: true,
@@ -4474,7 +4479,7 @@ Return JSON:
       if (mem.user_id !== auth.user_id && !auth.is_admin) return errorResponse("Forbidden", 403);
       deleteMemory(id);
       audit(auth.user_id, "memory.delete", "memory", id, null, clientIp, requestId);
-      invalidateEmbeddingCache();
+      removeFromEmbeddingCache(id);
       return json({ deleted: true, id });
     }
 
@@ -6172,7 +6177,7 @@ If no meaningful inferences, return {"derived": []}`;
           const rows = db.prepare(
             `SELECT id, content, category, source, importance, confidence, created_at,
                     is_static, is_forgotten, is_archived, parent_memory_id, source_count,
-                    version, forget_after
+                    version, forget_after, pagerank_score
              FROM memories WHERE id IN (${ph}) AND user_id = ? AND is_forgotten = 0`
           ).all(...chunk, auth.user_id) as any[];
           allMems.push(...rows);
@@ -6184,12 +6189,12 @@ If no meaningful inferences, return {"derived": []}`;
             label: mem.content.substring(0, 60) + (mem.content.length > 60 ? "\u2026" : ""),
             type: "memory", category: mem.category, importance: mem.importance,
             confidence: mem.confidence, group: mem.category,
-            size: Math.max(3, (mem.importance || 5) * 1.5),
+            size: Math.max(3, (mem.importance || 5) * 1.5 + (mem.pagerank_score || 0) * 5),
             source: mem.source, created_at: mem.created_at, is_static: mem.is_static,
             is_forgotten: mem.is_forgotten, is_archived: mem.is_archived,
             parent_memory_id: mem.parent_memory_id, source_count: mem.source_count,
             content: mem.content, version: mem.version,
-            forget_after: mem.forget_after,
+            forget_after: mem.forget_after, pagerank_score: mem.pagerank_score || 0,
           });
         }
 
