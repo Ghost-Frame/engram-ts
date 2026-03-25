@@ -74,7 +74,7 @@ curl -X POST http://localhost:4200/recall \
 - 🔄 **Sync & import** - cross-instance sync, import from Mem0 / Supermemory
 - 📥 **URL ingest** - extract facts from web pages or text blobs
 - 🛠️ **MCP server** - JSON-RPC 2.0 stdio transport for Claude Desktop, Cursor, Windsurf
-- ⌨️ **CLI** - full-featured command-line interface (`engram store`, `engram search`, etc.)
+- ⌨️ **CLI** - full-featured command-line interface (`engram-cli store`, `engram-cli search`, etc.)
 - 📥 **Review queue / inbox** - auto-detected memories land in review; explicit stores bypass
 - 🔒 **Security hardening** - auth required by default, body/content limits, IP allowlists, timing-safe auth
 - 📋 **Audit trail** - every mutation logged (who, what, when, from where)
@@ -99,7 +99,7 @@ Every 25th memory stored triggers background community detection and PageRank re
 New `GET /graph/timeline` endpoint returns weekly aggregates of graph growth: new memories, running totals, link counts per week. Shows how the knowledge graph evolved over time.
 
 ### Enriched Graph Endpoint
-`/graph` now returns `community_id` and `pagerank_score` per node. Node sizes are boosted by PageRank. The `group` field uses community ID when available, falling back to category.
+`/graph` now returns `pagerank_score` per node. Node sizes are boosted by PageRank, so structurally important hub memories appear larger in the graph visualization.
 
 <details>
 <summary><strong>v5.8.3</strong></summary>
@@ -193,43 +193,6 @@ In-memory storage, basic embedding search.
 
 </details>
 
-<details>
-<summary><strong>Previous releases</strong></summary>
-
-#### v5.7 - BGE-large, Episodic Memory, Multi-Tenant Isolation
-
-**BGE-large 1024-dim Embeddings** - Replaced MiniLM-L6-v2 (384-dim) with BGE-large-en-v1.5 (1024-dim) using raw `onnxruntime-node` and a hand-written BERT WordPiece tokenizer. 1024 dimensions, 512-token context, quantized INT8 (337MB, sub-200ms on CPU). Auto-migration re-embeds existing vectors on first startup.
-
-**Episodic Memory** - Conversation episodes as first-class embedded, searchable objects. BGE-large embeddings, FTS5 search, temporal date-range queries, semantic search, `POST /episodes/:id/finalize` for narrative summaries, FSRS decay, and automatic `/context` injection.
-
-**Multi-Tenant Data Isolation** - Complete security audit of all cross-tenant boundaries. User-scoped embedding cache, ownership checks on all endpoints, conversation isolation, write scope enforcement, user-scoped stats, and user-filtered graph BFS.
-
-**Guardrails** - `POST /guard` checks proposed actions against stored rules. Returns `allow`, `warn`, or `block` with matched rule context.
-
-**Benchmark Features** - Abstention (`ENGRAM_SEARCH_MIN_SCORE`), assistant recall (LLM + regex extraction of AI actions), temporal sort, 2-hop graph traversal, implicit connection inference in `/context`.
-
-#### v5.6 - Node.js 22, Graph Intelligence
-- Node.js 22+ as primary runtime (`--experimental-strip-types`), Bun maintained for compatibility
-- Optimized MCP server (529 to 168 lines), vitest framework (76+ tests)
-- Graphology knowledge graph: centrality, shortest paths, community detection, relationship inference
-
-#### v5.5 - Intelligence Layer
-- LLM fact extraction, auto-tagging, relationship classification
-- Conversation extraction, URL ingest, reflections, derived memories, auto-consolidation
-- MCP server improvements: error handling, streaming, tool introspection
-
-#### v5.3 - Security Hardening
-- Auth required by default, rate limit fix, body size limits
-- GUI auth rate limiting, timing-safe password comparison
-- Security headers, CORS origin pinning, IP allowlisting
-- Audit trail, structured JSON logging
-
-#### v5.0 - FSRS-6 Spaced Repetition
-- 21-parameter power-law forgetting curve (ported from open-spaced-repetition/fsrs4anki)
-- Dual-strength model (Bjork & Bjork 1992): storage strength + retrieval strength
-- Formula: `R = (1 + factor * t/S)^(-w20)`
-
-</details>
 
 ---
 
@@ -456,7 +419,37 @@ Add to `claude_desktop_config.json`:
 
 ## CLI
 
-> **Roadmap:** A dedicated CLI is planned. For now, use `curl` or any HTTP client directly against the API.
+Engram ships a full CLI that wraps the HTTP API. Zero external dependencies -- uses Node.js 22 built-in `util.parseArgs`.
+
+```bash
+# Install globally (or use npx)
+npm install -g @zanfiel/engram
+
+# Configure
+export ENGRAM_URL=http://localhost:4200
+export ENGRAM_API_KEY=eg_your_key
+
+# Store
+engram-cli store "Deployed auth migration to production" --category state --importance 9
+
+# Search
+engram-cli search "deployment history" --limit 5 --explain
+
+# Context (RAG)
+engram-cli context "current infrastructure state" --budget 4000
+
+# Recall
+engram-cli recall --context "what changed recently"
+
+# Other commands
+engram-cli list --limit 20
+engram-cli forget 42 --reason "outdated"
+engram-cli delete 42
+engram-cli health
+engram-cli stats
+```
+
+All commands support `--json` for raw API output and `--quiet` for minimal output (IDs and counts only). Config can also be set in `~/.engram/config.json`.
 
 ---
 
@@ -648,7 +641,7 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 
 1. **Store** - Memory content is checked for near-duplicates via SimHash (Hamming distance <= 3). If unique, it is embedded using BGE-large-en-v1.5 (1024-dim vectors, runs locally via ONNX) and stored in libsql with FTS5 full-text indexing.
 
-2. **Auto-link** - New memories are compared against existing ones via in-memory cosine similarity. Memories above 0.7 similarity are linked with typed relationships (similarity, updates, extends, contradicts, caused_by, prerequisite_for).
+2. **Auto-link** - New memories are compared against existing ones via in-memory cosine similarity. Memories above 0.55 cosine similarity are linked with typed relationships (similarity, updates, extends, contradicts, caused_by, prerequisite_for).
 
 3. **FSRS-6 initialization** - Each new memory gets initial FSRS state: stability, difficulty, storage strength, retrieval strength. The power-law forgetting curve starts tracking retrievability.
 
@@ -710,7 +703,7 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 
 ### Supported LLM Providers
 
-Engram works with any OpenAI-compatible provider via `LLM_URL`, `LLM_API_KEY`, and `LLM_MODEL`. Automatic failover across up to 3 providers.
+Engram works with any OpenAI-compatible provider via `LLM_URL`, `LLM_API_KEY`, and `LLM_MODEL`. Supports up to 10 providers with automatic failover or round-robin rotation.
 
 | Provider | Example URL | Example Model |
 |----------|-------------|---------------|
@@ -745,7 +738,7 @@ Engram works with any OpenAI-compatible provider via `LLM_URL`, `LLM_API_KEY`, a
 | `ENGRAM_EMBEDDING_PROVIDER` | `local` | Embedding provider: `local`, `google`, `vertex` |
 | `ENGRAM_EMBEDDING_DIM` | auto | Embedding dimension (1024 for local, 768 for google/vertex) |
 | `ENGRAM_CROSS_ENCODER` | `1` | Set `0` to disable the ONNX cross-encoder reranker |
-| `ENGRAM_RERANKER` | `1` | Set `0` to disable LLM-based reranking |
+| `ENGRAM_RERANKER` | `1` | Set `0` to disable all reranking in search results |
 | `ENGRAM_RERANKER_TOP_K` | `12` | Rerank top K candidates |
 | `ENGRAM_RERANKER_FP32` | `0` | Set `1` for full-precision reranker instead of quantized INT8 |
 | `GOOGLE_API_KEY` | - | Google AI Studio API key (for `google` embedding provider) |
@@ -760,6 +753,8 @@ Engram works with any OpenAI-compatible provider via `LLM_URL`, `LLM_API_KEY`, a
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `ENGRAM_DECAY_FLOOR` | `0.3` | Minimum decay multiplier (0-1). Lower values penalize stale memories harder |
+| `ENGRAM_PAGERANK_WEIGHT` | `0.15` | PageRank boost weight in search scoring (0-15% boost for hub memories) |
 | `ENGRAM_SEARCH_MIN_SCORE` | `0.58` | Min overall score for search results |
 | `ENGRAM_SEARCH_FACT_VECTOR_FLOOR` | `0.22` | Min vector score for fact_recall queries |
 | `ENGRAM_SEARCH_PREFERENCE_VECTOR_FLOOR` | `0.12` | Min vector score for preference queries |

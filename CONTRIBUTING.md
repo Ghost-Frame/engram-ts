@@ -107,29 +107,32 @@ We always need more coverage:
 4. Update CHANGELOG.md under `[Unreleased]`
 5. Submit a PR with a clear description of what changed and why
 
-## Recent Changes (v5.8.3)
+## Recent Changes (v5.9)
 
-**Source filtering** - `/search`, `/context`, and `/recall` now accept a `source` parameter for server-side memory filtering. The filter propagates into `hybridSearch()` at both vector scan and FTS5 stages. This enables agent-specific memory isolation and benchmark runs against production data.
+**PageRank in search scoring** - Iterative weighted PageRank scores are now factored into search results via a configurable boost (`ENGRAM_PAGERANK_WEIGHT`, default 0.15). The `/graph` endpoint returns `pagerank_score` per node with size boosted by centrality. See `src/memory/search.ts` and `src/graph/pagerank.ts`.
 
-**Worker thread embeddings** - ONNX inference moved to a dedicated `Worker` thread (see `src/embeddings/embedding-worker.ts` and `src/embeddings/index.ts`). The main thread sends text via `postMessage`, the worker returns Float32Array.
+**CLI tool** - Full command-line interface at `src/cli/index.ts`. Uses Node.js 22 `util.parseArgs` with zero external dependencies. Commands: store, search, context, recall, list, forget, delete, health, stats.
 
-**Batch link queries** - `getLinksForUserBatch()` in `src/db/index.ts` replaces N+1 individual link queries during search relationship expansion.
+**Incremental cache operations** - `removeFromEmbeddingCache()` and `demoteFromLatestCache()` replace expensive full-cache rebuilds for single-memory operations (forget, archive, delete, supersede). See `src/embeddings/index.ts`.
+
+**RERANKER_ENABLED enforcement** - The `ENGRAM_RERANKER=0` flag now properly disables cross-encoder reranking in both `/search` and `/context` endpoints.
+
+**Cache invalidation fixes** - `sweepExpiredMemories()` and `/memory/:id/update` now properly invalidate the embedding cache when memories are forgotten or superseded.
 
 These areas may benefit from additional test coverage:
 
 | Feature | Location |
 |---------|----------|
+| PageRank in search scoring | `src/memory/search.ts`, `src/graph/pagerank.ts` |
+| CLI commands | `src/cli/index.ts` |
+| Incremental cache ops | `src/embeddings/index.ts` `removeFromEmbeddingCache()`, `demoteFromLatestCache()` |
 | Source filtering in search | `src/memory/search.ts` `hybridSearch()`, `src/routes/index.ts` |
-| Worker thread embedding | `src/embeddings/index.ts`, `src/embeddings/embedding-worker.ts` |
-| Batch link queries | `src/db/index.ts` `getLinksForUserBatch()` |
 | Memory health diagnostics | `GET /memory-health` |
 | Retrieval feedback loop | `POST /feedback`, `GET /feedback/stats` |
 
 ## Roadmap (Not Yet Shipped)
 
 - **OpenAPI Spec**: Exists in `sdk/` but not yet served at `/docs` via Swagger UI
-- **CLI**: Standalone command-line client
-- **Metrics endpoint**: `/metrics` for request counts, latency, background job stats (partial coverage via `/memory-health` and per-phase timing in `/context`)
 
 ## Areas Where Help Is Needed (shipped features that need improvement)
 

@@ -169,7 +169,7 @@ nav .links a:hover{color:var(--text);text-decoration:none}
   </div>
   <div class="hero-code">
     <span class="tag">TypeScript</span>
-    <span class="kw">import</span> { <span class="fn">Engram</span> } <span class="kw">from</span> <span class="str">"@engram/sdk"</span>;<br><br>
+    <span class="kw">import</span> { <span class="fn">Engram</span> } <span class="kw">from</span> <span class="str">"@zanfiel/engram/sdk"</span>;<br><br>
     <span class="kw">const</span> mem = <span class="kw">new</span> <span class="fn">Engram</span>({ url: <span class="str">"http://localhost:4200"</span> });<br><br>
     <span class="cm">// Store - embeddings generated locally, no API key needed</span><br>
     <span class="kw">await</span> mem.<span class="fn">store</span>(<span class="str">"Deployed auth migration to production"</span>, {<br>
@@ -291,7 +291,7 @@ nav .links a:hover{color:var(--text);text-decoration:none}
         <div class="feature highlight">
           <div class="feature-icon" style="background:rgba(52,211,153,0.15);color:var(--green)">⌨️</div>
           <h3>CLI</h3>
-          <p><code>engram store</code>, <code>engram recall</code>, <code>engram search</code> and more. Full access to every feature from your terminal. Stdin piping supported.</p>
+          <p><code>engram-cli store</code>, <code>engram-cli search</code>, <code>engram-cli context</code> and more. Full access to every feature from your terminal. Supports <code>--json</code> and <code>--quiet</code> output modes.</p>
         </div>
         <div class="feature">
           <div class="feature-icon" style="background:rgba(196,162,101,0.1);color:var(--accent)">👥</div>
@@ -423,7 +423,7 @@ nav .links a:hover{color:var(--text);text-decoration:none}
         <div class="step-num">02</div>
         <div class="step-icon">🔗</div>
         <h3>Auto-Link</h3>
-        <p>Compared to existing memories. Above 0.7 cosine similarity, typed relationship edges are created automatically.</p>
+        <p>Compared to existing memories. Above 0.55 cosine similarity, typed relationship edges are created automatically.</p>
       </div>
       <div class="step">
         <div class="step-num">03</div>
@@ -438,7 +438,7 @@ nav .links a:hover{color:var(--text);text-decoration:none}
         <p>If LLM configured: static facts extracted, keywords tagged, importance scored, relationships to existing memories detected.</p>
       </div>
       <div class="step">
-        <div class="step-num">06</div>
+        <div class="step-num">05</div>
         <div class="step-icon">🎯</div>
         <h3>Recall</h3>
         <p>Multi-layer context assembly: static facts, semantic matches, episodic context, graph expansion, recent activity, working memory, personality signals, and implicit inference.</p>
@@ -482,11 +482,11 @@ nav .links a:hover{color:var(--text);text-decoration:none}
   <div class="container">
     <div class="section-label">SDKs</div>
     <h2 class="section-title">Three lines to persistent memory</h2>
-    <p class="section-desc">TypeScript, Python, or raw HTTP. Pick your weapon.</p>
+    <p class="section-desc">TypeScript SDK, CLI, or raw HTTP. Pick your weapon.</p>
 
     <div class="code-section">
       <div class="code-block">
-        <div class="code-header"><span class="lang">TypeScript</span> npm install @engram/sdk</div>
+        <div class="code-header"><span class="lang">TypeScript</span> npm install @zanfiel/engram</div>
         <div class="code-body">
           <span class="kw">const</span> mem = <span class="kw">new</span> <span class="fn">Engram</span>({<br>
           &nbsp;&nbsp;url: <span class="str">"http://localhost:4200"</span>,<br>
@@ -502,17 +502,17 @@ nav .links a:hover{color:var(--text);text-decoration:none}
         </div>
       </div>
       <div class="code-block">
-        <div class="code-header"><span class="lang">Python</span> pip install engram-sdk</div>
+        <div class="code-header"><span class="lang">CLI</span> npm install -g @zanfiel/engram</div>
         <div class="code-body">
-          client = <span class="fn">Engram</span>(<br>
-          &nbsp;&nbsp;<span class="str">"http://localhost:4200"</span>,<br>
-          &nbsp;&nbsp;api_key=<span class="str">"eg_..."</span>,<br>
-          )<br><br>
-          client.<span class="fn">store</span>(<span class="str">"Auth migrated to JWT"</span>,<br>
-          &nbsp;&nbsp;category=<span class="str">"decision"</span>, importance=<span class="num">9</span>)<br><br>
-          ctx = client.<span class="fn">recall</span>(<span class="str">"authentication setup"</span>)<br><br>
-          <span class="cm"># Works with LangChain, CrewAI,</span><br>
-          <span class="cm"># OpenAI Agents SDK out of the box</span>
+          <span class="cm"># Store a memory</span><br>
+          engram-cli <span class="fn">store</span> <span class="str">"Auth migrated to JWT"</span> \<br>
+          &nbsp;&nbsp;--category <span class="str">decision</span> --importance <span class="num">9</span><br><br>
+          <span class="cm"># Search with explanation</span><br>
+          engram-cli <span class="fn">search</span> <span class="str">"auth setup"</span> --explain<br><br>
+          <span class="cm"># Budget-aware context for RAG</span><br>
+          engram-cli <span class="fn">context</span> <span class="str">"auth setup"</span> \<br>
+          &nbsp;&nbsp;--budget <span class="num">2000</span><br><br>
+          <span class="cm"># All commands support --json output</span>
         </div>
       </div>
       <div class="code-block">
@@ -549,7 +549,7 @@ nav .links a:hover{color:var(--text);text-decoration:none}
           &nbsp;&nbsp;<span class="str">"mcpServers"</span>: {<br>
           &nbsp;&nbsp;&nbsp;&nbsp;<span class="str">"engram"</span>: {<br>
           &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="str">"command"</span>: <span class="str">"node"</span>,<br>
-          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="str">"args"</span>: [<span class="str">"path/to/engram/mcp-server.mjs"</span>],<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="str">"args"</span>: [<span class="str">"--experimental-strip-types"</span>, <span class="str">"path/to/engram/mcp-server.ts"</span>],<br>
           &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="str">"env"</span>: {<br>
           &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="str">"ENGRAM_URL"</span>: <span class="str">"http://localhost:4200"</span>,<br>
           &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="str">"ENGRAM_API_KEY"</span>: <span class="str">"eg_your_key"</span><br>
