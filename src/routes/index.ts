@@ -530,7 +530,8 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
     // ========================================================================
     // WEB GUI (SPA — serves same HTML for all client-side routes)
     // ========================================================================
-    if (GUI_SPA_ROUTES.has(url.pathname) && method === "GET") {
+    const acceptsHtml = (req.headers.get("accept") || "").includes("text/html");
+    if (GUI_SPA_ROUTES.has(url.pathname) && method === "GET" && acceptsHtml) {
       if (OPEN_ACCESS || guiAuthed(req)) {
         return new Response(await getGuiHtml(), {
           headers: securityHeaders({
