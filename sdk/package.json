@@ -1,0 +1,25 @@
+{
+  "name": "@zanfiel/engram",
+  "version": "5.9.1",
+  "description": "TypeScript SDK for the Engram persistent memory API",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": ["engram", "memory", "ai", "agents", "semantic-search", "knowledge-graph", "llm"],
+  "author": "Zan <zan@zanfiel.com>",
+  "license": "Elastic-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zanfiel/engram",
+    "directory": "sdk"
+  },
+  "homepage": "https://engram.lol",
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}

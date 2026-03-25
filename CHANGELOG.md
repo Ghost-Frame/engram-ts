@@ -5,6 +5,16 @@ All notable changes to Engram will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.9.1] - 2026-03-25
+
+### Fixed
+- Documentation accuracy: removed false `/graph` community_id claim, fixed auto-link threshold (0.7 to 0.55), fixed LLM provider count (3 to 10), fixed CLI command names
+- Replaced nonexistent Python SDK with CLI examples on landing page
+- Fixed MCP server config in landing page (mcp-server.mjs to mcp-server.ts)
+- Fixed SDK package name on landing page (@engram/sdk to @zanfiel/engram/sdk)
+- Updated CONTRIBUTING.md to reflect v5.9 changes, removed shipped items from roadmap
+- Fixed landing page step numbering
+
 ## [5.9.0] - 2026-03-22
 
 ### Added
@@ -12,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Search centrality boost**: search scoring now applies a 0-15% multiplicative boost from PageRank scores. Structurally important memories surface higher in `/search`, `/context`, and `/recall` results.
 - **Auto graph analysis on store**: every 25th memory stored triggers community detection and PageRank recomputation via the post-store durable job pipeline. No impact on store latency.
 - **`GET /graph/timeline` endpoint**: returns weekly aggregates of graph growth (new memories, running totals, link counts per week). Enables temporal evolution analysis.
-- **Enriched `/graph` response**: nodes now include `community_id` and `pagerank_score` fields. Node `group` field uses community ID when available. Node `size` boosted by PageRank.
+- **Enriched `/graph` response**: nodes now include `pagerank_score` field. Node `size` boosted by PageRank.
 - **`pagerank_score` column**: auto-created on memories table via `ensurePageRankColumn()`.
 
 ## [5.8.3] - 2026-03-20
