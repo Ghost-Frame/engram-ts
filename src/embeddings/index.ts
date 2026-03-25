@@ -298,7 +298,7 @@ export let episodeCache: CachedEpisode[] = [];
 export function refreshEmbeddingCache(): void {
   const t0 = Date.now();
 
-  let queryStr = `SELECT * FROM memories WHERE embedding IS NOT NULL AND is_forgotten = 0`;
+  let queryStr = `SELECT id, user_id, content, category, importance, embedding, is_static, source_count, is_latest, is_forgotten, source, last_accessed_at, created_at FROM memories WHERE embedding IS NOT NULL AND is_forgotten = 0`;
   if (COLD_STORAGE_DAYS > 0) {
     const totalCount = (db.prepare("SELECT COUNT(*) as c FROM memories WHERE is_forgotten = 0").get() as any).c;
     if (totalCount >= COLD_STORAGE_MIN_MEMORIES) {

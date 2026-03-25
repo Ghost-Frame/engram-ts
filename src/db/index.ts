@@ -769,7 +769,7 @@ export const deleteMemory = db.transaction((id: number) => {
   nullifyRootRefs.run(id);
   db.prepare(`DELETE FROM memories WHERE id = ?`).run(id);
 });
-export const getMemory = db.prepare(`SELECT * FROM memories WHERE id = ?`);
+export const getMemory = db.prepare(`SELECT id, content, category, source, session_id, importance, embedding, version, is_latest, parent_memory_id, root_memory_id, source_count, is_static, is_forgotten, forget_after, forget_reason, is_inference, is_archived, created_at, updated_at, model, last_accessed_at, access_count, tags, episode_id, decay_score, confidence, sync_id, status, fsrs_stability, fsrs_difficulty, fsrs_storage_strength, fsrs_retrieval_strength, fsrs_learning_state, fsrs_reps, fsrs_lapses, fsrs_last_review_at, user_id, space_id, recall_hits, recall_misses, adaptive_score FROM memories WHERE id = ?`);
 
 export const getMemoryWithoutEmbedding = db.prepare(
   `SELECT id, user_id, content, category, source, session_id, importance, created_at, updated_at,
