@@ -10,7 +10,7 @@ fact extraction, versioning, deduplication, and graph visualization.
 [![License: Elastic-2.0](https://img.shields.io/badge/License-Elastic--2.0-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-5.9.0-gold.svg)](CHANGELOG.md)
 
-[Quick Start](#quick-start) · [API Reference](#api-reference) · [SDKs](#sdks) · [MCP Server](#mcp-server) · [CLI](#cli) · [Self-Host](#self-hosting) · [GUI](#gui)
+[Quick Start](#quick-start) · [API Reference](#api-reference) · [SDKs](#sdks) · [MCP Server](#mcp-server) · [CLI](#cli) · [Self-Host](#self-hosting)
 
 </div>
 
@@ -300,10 +300,6 @@ curl -X POST http://localhost:4200/guard \
 # Returns: { "verdict": "warn", "reasons": ["Never deploy on Fridays..."] }
 ```
 
-### 6. Open the GUI
-
-Visit `http://localhost:4200` in your browser. Log in with the `ENGRAM_GUI_PASSWORD` you set. Explore the memory graph, search, and review the inbox.
-
 ---
 
 ## Decision Memory
@@ -339,7 +335,7 @@ curl -X POST http://localhost:4200/inbox/42/approve -H "Authorization: Bearer $K
 curl -X POST http://localhost:4200/inbox/42/reject -H "Authorization: Bearer $KEY"
 ```
 
-The GUI also shows an inbox badge with the pending count. Memories you store directly via `/store` bypass the inbox and are approved immediately.
+Memories you store directly via `/store` bypass the inbox and are approved immediately.
 
 ---
 
@@ -729,21 +725,6 @@ Engram works with any OpenAI-compatible provider via `LLM_URL`, `LLM_API_KEY`, a
 
 ---
 
-## GUI
-
-Engram includes a WebGL graph visualization at `/gui`. Login with your `ENGRAM_GUI_PASSWORD`.
-
-**Features:**
-- Interactive galaxy-style memory graph
-- Click memories to view details
-- Create, edit, archive, and delete memories
-- Semantic search with hybrid client/API matching
-- Category filters and sorting
-- Keyboard shortcuts (L=list, N=new, Z=fit, C=center, arrows=navigate)
-- Export data
-
----
-
 ## Self-Hosting
 
 ### Configuration
@@ -798,15 +779,29 @@ All data lives in a single libsql database (`data/memory.db`). Embedding BLOBs a
 
 ### Safe Deployment
 
-Production source files are locked immutable (). Direct writes -- including SCP, git checkout, and editor saves -- are blocked at the kernel level.
+Production source files are locked immutable (`chattr +i`). Direct writes -- including SCP, git checkout, and editor saves -- are blocked at the kernel level.
 
 To make changes:
 
-=== Starting Engram staging instance ===
+1. **Start staging** -- copies production into an unlocked staging directory and launches on port 4201:
+   ```bash
+   /opt/engram/start-staging.sh
+   ```
 
-=== Discarding staging (production unchanged) ===
-Staging process stopped.
-Done. Production Engram was not touched.
+2. **Edit and test** -- modify files in `/opt/engram/staging/`, then verify:
+   ```bash
+   curl http://localhost:4201/health
+   ```
+
+3. **Promote or discard:**
+   - **Promote** -- unlocks production, copies staged files over, re-locks, and restarts:
+     ```bash
+     /opt/engram/promote.sh
+     ```
+   - **Discard** -- throws away staging, production untouched:
+     ```bash
+     /opt/engram/stop-staging.sh
+     ```
 
 Staging runs on-demand only. Production source is re-locked automatically after every promote.
 
