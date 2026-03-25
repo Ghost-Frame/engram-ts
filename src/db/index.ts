@@ -130,10 +130,11 @@ migrate("ALTER TABLE memories ADD COLUMN importance INTEGER NOT NULL DEFAULT 5")
 migrate("ALTER TABLE memories ADD COLUMN model TEXT");
 migrate("ALTER TABLE memories ADD COLUMN embedding BLOB");
 
-// Adaptive importance columns (must run before prepared statements that reference them)
+// Columns referenced by prepared statements -- must run before they're compiled
 migrate("ALTER TABLE memories ADD COLUMN recall_hits INTEGER NOT NULL DEFAULT 0");
 migrate("ALTER TABLE memories ADD COLUMN recall_misses INTEGER NOT NULL DEFAULT 0");
 migrate("ALTER TABLE memories ADD COLUMN adaptive_score REAL");
+migrate("ALTER TABLE memories ADD COLUMN pagerank_score REAL DEFAULT 0");
 
 // v3.1 indexes
 migrate("CREATE INDEX IF NOT EXISTS idx_memories_archived ON memories(is_archived) WHERE is_archived = 1");
