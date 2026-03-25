@@ -41,6 +41,11 @@ export const GOOGLE_APPLICATION_CREDENTIALS = process.env.GOOGLE_APPLICATION_CRE
 
 export const AUTO_LINK_THRESHOLD = 0.55;
 export const SEARCH_MIN_SCORE = Number(process.env.ENGRAM_SEARCH_MIN_SCORE || 0.58);
+export const DECAY_FLOOR = parseFloat(process.env.ENGRAM_DECAY_FLOOR || "0.3");
+export const AUTO_ARCHIVE_ENABLED = process.env.ENGRAM_AUTO_ARCHIVE !== "0";
+export const AUTO_ARCHIVE_RETRIEVABILITY = parseFloat(process.env.ENGRAM_AUTO_ARCHIVE_R || "0.05");
+export const AUTO_ARCHIVE_MIN_AGE_DAYS = parseInt(process.env.ENGRAM_AUTO_ARCHIVE_AGE || "90", 10);
+export const AUTO_ARCHIVE_MAX_ACCESS = parseInt(process.env.ENGRAM_AUTO_ARCHIVE_ACCESS || "2", 10);
 export const AUTO_LINK_MAX = Number(process.env.AUTO_LINK_MAX ?? 6);
 export const DEFAULT_IMPORTANCE = 5;
 

@@ -109,7 +109,7 @@ let boostSourceCount: ReturnType<typeof db.prepare<any[]>> | null = null;
 function getStatements() {
   if (!findBySimHash) {
     findBySimHash = db.prepare(
-      "SELECT id, content, simhash, source_count FROM memories WHERE user_id = ? AND simhash IS NOT NULL AND is_forgotten = 0 AND is_archived = 0 AND is_latest = 1 LIMIT 500"
+      "SELECT id, content, simhash, source_count FROM memories WHERE user_id = ? AND simhash IS NOT NULL AND is_forgotten = 0 AND is_archived = 0 AND is_latest = 1 LIMIT 2000"
     );
   }
   if (!updateSimHash) {

@@ -13,10 +13,11 @@ import {
   SEARCH_REASONING_VECTOR_FLOOR,
   SEARCH_GENERALIZATION_VECTOR_FLOOR,
   SEARCH_PERSONALITY_MIN_SCORE,
+  DECAY_FLOOR,
 } from "../config/index.ts";
 import { db, searchMemoriesFTS, getMemoryWithoutEmbedding, getVersionChainForUser, getLinksForUser, getLinksForUserBatch, getVersionChainBatch, insertLink } from "../db/index.ts";
 import { embed, cosineSimilarity, getCachedEmbeddings, embeddingToVectorJSON, shouldUseANN, annSearch } from "../embeddings/index.ts";
-import { calculateDecayScore } from "../fsrs/index.ts";
+import { calculateDecayScore, fsrsRetrievability, fsrsInitialStability, FSRSRating } from "../fsrs/index.ts";
 import { sanitizeFTS } from "../helpers/index.ts";
 
 export type QuestionType = "fact_recall" | "preference" | "reasoning" | "generalization" | "temporal";
@@ -731,18 +732,21 @@ export async function hybridSearch(
   // Hydrate missing fields (created_at, importance, etc.) for vector-only hits before scoring
   // Vector index results may lack created_at, which breaks decay and temporal scoring
   const decayScoreCache = new Map<number, number>();
+  const stabilityCache = new Map<number, number>();
+  const lastAccessedCache = new Map<number, string>();
   {
     const ids = Array.from(results.keys());
     if (ids.length > 0) {
       try {
         const placeholders = ids.map(() => "?").join(",");
         const rows = db.prepare(
-          `SELECT id, created_at, decay_score, importance, is_static, source_count, version, is_latest, source, model, access_count
+          `SELECT id, created_at, decay_score, importance, is_static, source_count, version, is_latest, source, model, access_count, fsrs_stability, last_accessed_at
            FROM memories WHERE id IN (${placeholders})`
         ).all(...ids) as Array<{
           id: number; created_at: string; decay_score: number | null; importance: number;
           is_static: number; source_count: number; version: number; is_latest: number;
           source: string; model: string | null; access_count: number;
+          fsrs_stability: number | null; last_accessed_at: string | null;
         }>;
         for (const row of rows) {
           const r = results.get(row.id);
@@ -761,6 +765,12 @@ export async function hybridSearch(
           if (row.decay_score != null && row.decay_score > 0) {
             decayScoreCache.set(row.id, row.is_static ? row.importance : row.decay_score);
           }
+          if (row.fsrs_stability != null && row.fsrs_stability > 0) {
+            stabilityCache.set(row.id, row.fsrs_stability);
+          }
+          if (row.last_accessed_at) {
+            lastAccessedCache.set(row.id, row.last_accessed_at);
+          }
         }
       } catch {}
     }
@@ -770,18 +780,27 @@ export async function hybridSearch(
   for (const r of results.values()) {
     const rrf = rrfScores.get(r.id) || 0;
 
-    const decayScore = decayScoreCache.get(r.id) ?? calculateDecayScore(
-      r.importance,
-      r.created_at,
-      (r as any).access_count || 0,
-      null,
-      !!r.is_static,
-      r.source_count || 1,
-    );
-    r.decay_score = Math.round(decayScore * 1000) / 1000;
+    // Live FSRS retrievability — NOT the stale cached decay_score
+    let retrievability: number;
+    if (r.is_static) {
+      retrievability = 1.0;
+    } else {
+      const stability = stabilityCache.get(r.id)
+        ?? fsrsInitialStability(FSRSRating.Good);
+      const refStr = lastAccessedCache.get(r.id) || r.created_at;
+      let elapsed = 0;
+      if (refStr) {
+        const refTime = new Date(refStr + (refStr.includes("Z") ? "" : "Z")).getTime();
+        if (!isNaN(refTime)) elapsed = Math.max(0, (Date.now() - refTime) / 86400000);
+      }
+      retrievability = fsrsRetrievability(stability, elapsed);
+    }
 
-    // RRF base score + small multiplicative boosts for decay, source_count, static
-    const decayBoost = 1 + (decayScore / 10) * 0.1;
+    // Compute decay_score for diagnostics/display
+    r.decay_score = Math.round(r.importance * retrievability * 1000) / 1000;
+
+    // Significant decay factor: DECAY_FLOOR to 1.0 (default: 0.3 to 1.0)
+    const decayFactor = r.is_static ? 1.0 : (DECAY_FLOOR + (1 - DECAY_FLOOR) * retrievability);
     const sourceBoost = 1 + Math.min((r.source_count || 1) / 10, 1) * 0.05;
     const staticBoost = r.is_static ? 1.03 : 1;
 
@@ -799,7 +818,7 @@ export async function hybridSearch(
       } catch {}
     }
 
-    r.score = rrf * decayBoost * sourceBoost * staticBoost * temporalBoost;
+    r.score = rrf * decayFactor * sourceBoost * staticBoost * temporalBoost;
 
     // Contradiction penalty: memories with temporal-contradiction language that
     // are NOT the latest version get demoted to prefer the most current fact.

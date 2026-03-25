@@ -22,6 +22,7 @@ import {
   ANN_PREFILTER_THRESHOLD, ANN_CANDIDATE_MULTIPLIER,
   LLM_STRATEGY,
   maintenanceMode, maintenanceReason, setMaintenanceMode,
+  AUTO_ARCHIVE_ENABLED, AUTO_ARCHIVE_RETRIEVABILITY, AUTO_ARCHIVE_MIN_AGE_DAYS, AUTO_ARCHIVE_MAX_ACCESS,
 } from "../config/index.ts";
 import { log, opsCounters } from "../config/logger.ts";
 
@@ -121,6 +122,7 @@ import {
 import {
   GUI_PASSWORD, GUI_AUTH_CONFIGURED, guiCookieAttributes, GUI_COOKIE_MAX_AGE,
   guiSignCookie, guiAuthed, getGuiHtml, getLoginHtml, reloadGuiHtml,
+  serveGuiAsset, GUI_SPA_ROUTES,
 } from "../gui/index.ts";
 
 // Bind guiAuthed into getAuthOrDefault so routes can call it with just (req)
@@ -516,9 +518,17 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
     }
 
     // ========================================================================
-    // WEB GUI
+    // GUI STATIC ASSETS (SvelteKit build output — /_app/*)
     // ========================================================================
-    if ((url.pathname === "/" || url.pathname === "/gui") && method === "GET") {
+    if (url.pathname.startsWith("/_app/") && method === "GET") {
+      const asset = serveGuiAsset(url.pathname);
+      if (asset) return asset;
+    }
+
+    // ========================================================================
+    // WEB GUI (SPA — serves same HTML for all client-side routes)
+    // ========================================================================
+    if (GUI_SPA_ROUTES.has(url.pathname) && method === "GET") {
       if (OPEN_ACCESS || guiAuthed(req)) {
         return new Response(await getGuiHtml(), {
           headers: securityHeaders({
@@ -8032,3 +8042,110 @@ If no meaningful inferences, return {"derived": []}`;
 }
 
 export { fetchHandler };
+
+// ============================================================================
+// BACKGROUND JOBS — Periodic maintenance
+// ============================================================================
+
+// --- Decay score refresh (every 6 hours) ---
+function refreshDecayScores(): void {
+  try {
+    const users = db.prepare("SELECT DISTINCT id FROM users").all() as Array<{ id: number }>;
+    let totalRefreshed = 0;
+
+    for (const user of users) {
+      const memories = db.prepare(`
+        SELECT id, importance, created_at, access_count, last_accessed_at,
+               is_static, source_count, fsrs_stability
+        FROM memories
+        WHERE is_forgotten = 0 AND is_archived = 0 AND is_latest = 1 AND user_id = ?
+      `).all(user.id) as Array<{
+        id: number; importance: number; created_at: string; access_count: number;
+        last_accessed_at: string | null; is_static: number; source_count: number;
+        fsrs_stability: number | null;
+      }>;
+
+      const updateStmt = db.prepare("UPDATE memories SET decay_score = ? WHERE id = ?");
+      const batch = db.transaction(() => {
+        for (const m of memories) {
+          const score = fsrsCalculateDecayScore(
+            m.importance, m.created_at, m.access_count || 0,
+            m.last_accessed_at, !!m.is_static, m.source_count || 1,
+            m.fsrs_stability ?? undefined
+          );
+          updateStmt.run(Math.round(score * 1000) / 1000, m.id);
+        }
+      });
+      batch();
+      totalRefreshed += memories.length;
+    }
+
+    log.info({ msg: "decay_scores_refreshed", count: totalRefreshed });
+  } catch (e: any) {
+    log.warn({ msg: "decay_refresh_failed", error: e.message });
+  }
+}
+
+// --- Auto-archive dead memories (daily) ---
+function autoArchiveDeadMemories(): void {
+  if (!AUTO_ARCHIVE_ENABLED) return;
+
+  try {
+    const users = db.prepare("SELECT DISTINCT id FROM users").all() as Array<{ id: number }>;
+    let totalArchived = 0;
+
+    for (const user of users) {
+      const candidates = db.prepare(`
+        SELECT id, importance, created_at, access_count, last_accessed_at,
+               fsrs_stability, source_count
+        FROM memories
+        WHERE user_id = ? AND is_static = 0 AND is_forgotten = 0 AND is_archived = 0
+          AND is_latest = 1
+          AND created_at < datetime('now', '-' || ? || ' days')
+          AND (access_count IS NULL OR access_count < ?)
+      `).all(user.id, AUTO_ARCHIVE_MIN_AGE_DAYS, AUTO_ARCHIVE_MAX_ACCESS) as Array<{
+        id: number; importance: number; created_at: string; access_count: number;
+        last_accessed_at: string | null; fsrs_stability: number | null; source_count: number;
+      }>;
+
+      const archiveStmt = db.prepare("UPDATE memories SET is_archived = 1 WHERE id = ?");
+      const batch = db.transaction(() => {
+        for (const m of candidates) {
+          // Calculate live retrievability
+          const stability = (m.fsrs_stability && m.fsrs_stability > 0)
+            ? m.fsrs_stability
+            : 2.3065; // fsrsInitialStability(Good)
+          const refStr = m.last_accessed_at || m.created_at;
+          let elapsed = 0;
+          if (refStr) {
+            const refTime = new Date(refStr + (refStr.includes("Z") ? "" : "Z")).getTime();
+            if (!isNaN(refTime)) elapsed = Math.max(0, (Date.now() - refTime) / 86400000);
+          }
+          const R = fsrsRetrievability(stability, elapsed);
+
+          if (R < AUTO_ARCHIVE_RETRIEVABILITY) {
+            archiveStmt.run(m.id);
+            totalArchived++;
+          }
+        }
+      });
+      batch();
+    }
+
+    if (totalArchived > 0) {
+      log.info({ msg: "auto_archive_complete", archived: totalArchived });
+    }
+  } catch (e: any) {
+    log.warn({ msg: "auto_archive_failed", error: e.message });
+  }
+}
+
+// Schedule background jobs
+// Decay refresh: every 6 hours
+setInterval(() => { refreshDecayScores(); }, 6 * 60 * 60 * 1000);
+
+// Auto-archive: every 24 hours
+setInterval(() => { autoArchiveDeadMemories(); }, 24 * 60 * 60 * 1000);
+
+// Run decay refresh once on startup (after a short delay to let DB init)
+setTimeout(() => { refreshDecayScores(); }, 5000);
