@@ -39,7 +39,7 @@ export const GOOGLE_CLOUD_PROJECT = process.env.GOOGLE_CLOUD_PROJECT || "";
 export const GOOGLE_CLOUD_LOCATION = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
 export const GOOGLE_APPLICATION_CREDENTIALS = process.env.GOOGLE_APPLICATION_CREDENTIALS || ""; // path to service account JSON
 
-export const AUTO_LINK_THRESHOLD = 0.55;
+export const AUTO_LINK_THRESHOLD = Number(process.env.ENGRAM_AUTO_LINK_THRESHOLD ?? 0.55);
 export const SEARCH_MIN_SCORE = Number(process.env.ENGRAM_SEARCH_MIN_SCORE || 0.58);
 export const AUTO_LINK_MAX = Number(process.env.AUTO_LINK_MAX ?? 6);
 export const DEFAULT_IMPORTANCE = 5;
@@ -93,8 +93,8 @@ export const FORGET_SWEEP_INTERVAL = 5 * 60 * 1000;
 
 // FSRS-6 configuration
 export const FSRS_DEFAULT_RETENTION = 0.9;
-export const CONSOLIDATION_THRESHOLD = 8;
-export const CONSOLIDATION_INTERVAL = 30 * 60 * 1000;
+export const CONSOLIDATION_THRESHOLD = Number(process.env.ENGRAM_CONSOLIDATION_THRESHOLD ?? 8);
+export const CONSOLIDATION_INTERVAL = Number(process.env.ENGRAM_CONSOLIDATION_INTERVAL ?? 30) * 60 * 1000;
 
 // Reranker config (LLM-based reranker; separate from ONNX cross-encoder)
 export const RERANKER_ENABLED = (process.env.ENGRAM_RERANKER ?? process.env.RERANKER) !== "0";
