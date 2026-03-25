@@ -111,6 +111,26 @@ export async function getHealth(): Promise<any> {
   return api('/health');
 }
 
+export async function getGraph(depth = 3, max = 1500): Promise<any> {
+  return api(`/graph?depth=${depth}&max=${max}`);
+}
+
+export async function getCommunities(): Promise<any> {
+  return api('/communities');
+}
+
+export async function getStats(): Promise<any> {
+  return api('/stats');
+}
+
+export async function getMemoryDetail(id: number): Promise<any> {
+  return api(`/memory/${id}`);
+}
+
+export async function searchGraph(query: string, limit = 20): Promise<{ results: Memory[] }> {
+  return api('/search', 'POST', { query, limit, expand_relationships: true });
+}
+
 export async function guard(action: string): Promise<{ verdict: string; reasons: string[] }> {
   return api('/guard', 'POST', { action });
 }

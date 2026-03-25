@@ -11,6 +11,7 @@
 
   const nav = [
     { path: '/', label: 'Dashboard', icon: '⊞' },
+    { path: '/graph', label: 'Graph', icon: '◉' },
     { path: '/search', label: 'Search', icon: '⌕' },
     { path: '/inbox', label: 'Inbox', icon: '☐' },
     { path: '/timeline', label: 'Timeline', icon: '☰' },
