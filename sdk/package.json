@@ -1,6 +1,6 @@
 {
   "name": "@zanfiel/engram",
-  "version": "5.9.4",
+  "version": "5.9.5",
   "description": "TypeScript SDK for the Engram persistent memory API",
   "type": "module",
   "main": "./dist/index.js",

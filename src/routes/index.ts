@@ -70,7 +70,7 @@ import {
   invalidateEmbeddingCache, removeFromEmbeddingCache, demoteFromLatestCache,
   embeddingToBuffer, bufferToEmbedding, embeddingToVectorJSON,
   graphCache, setGraphCache, episodeCache, refreshEmbeddingCache, embeddingCacheLatest,
-  getEmbeddingCacheStats,
+  getEmbeddingCacheStats, isEmbedderReady,
 } from "../embeddings/index.ts";
 
 // Search + linking
@@ -1066,7 +1066,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
     if (url.pathname === "/ready" && method === "GET") {
       const checks: Record<string, boolean> = {};
       try { db.prepare("SELECT 1").get(); checks.db = true; } catch { checks.db = false; }
-      try { checks.embeddings = embeddingCacheLatest.length > 0; } catch { checks.embeddings = false; }
+      try { checks.embeddings = isEmbedderReady(); } catch { checks.embeddings = false; }
       checks.llm = isLLMAvailable();
       const ready = checks.db && checks.embeddings;
       return json({ status: ready ? "ready" : "degraded", checks }, ready ? 200 : 503);

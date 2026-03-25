@@ -244,6 +244,16 @@ export async function initEmbedder(): Promise<void> {
   } else {
     throw new Error(`Unknown embedding provider: ${EMBEDDING_PROVIDER}`);
   }
+  embedderInitialized = true;
+}
+
+let embedderInitialized = false;
+
+/** True when the embedding model/provider is loaded and ready to serve requests. */
+export function isEmbedderReady(): boolean {
+  if (!embedderInitialized) return false;
+  if (EMBEDDING_PROVIDER === "local") return workerReady;
+  return true; // google/vertex: if initEmbedder() completed, they're ready
 }
 
 export async function embed(text: string): Promise<Float32Array> {
