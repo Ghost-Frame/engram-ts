@@ -5,10 +5,11 @@ All notable changes to Engram will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [5.9.2] - 2026-03-25
+## [5.9.3] - 2026-03-25
 
 ### Fixed
 - Fresh-database crash: `recall_hits` migration ran after prepared statements that referenced it, causing "no such column" on first startup
+- `/graph` GET returned GUI HTML to API clients instead of JSON (now checks Accept header)
 - Documentation accuracy: removed false `/graph` community_id claim, fixed auto-link threshold (0.7 to 0.55), fixed LLM provider count (3 to 10), fixed CLI command names
 - Replaced nonexistent Python SDK with CLI examples on landing page
 - Fixed MCP server config in landing page (mcp-server.mjs to mcp-server.ts)

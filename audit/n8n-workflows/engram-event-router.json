@@ -1,0 +1,143 @@
+{
+  "name": "Engram Event Router",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "engram-events",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "1",
+              "leftValue": "={{ $json.body.event }}",
+              "rightValue": "memory.created",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is Memory Created?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:4200/search",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: $json.body.data.content.substring(0, 200), limit: 3 }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "name": "Find Related Memories",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Engram API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const event = $('Webhook').first().json.body;\nconst related = $('Find Related Memories').first().json.results || [];\n\nconst relatedCount = related.filter(r => r.id !== event.data.id).length;\nconst hasContradiction = related.some(r => r.score > 0.8 && r.content !== event.data.content);\n\nreturn [{\n  json: {\n    event_type: event.event,\n    memory_id: event.data.id,\n    content_preview: event.data.content?.substring(0, 100),\n    category: event.data.category,\n    importance: event.data.importance,\n    related_count: relatedCount,\n    possible_contradiction: hasContradiction,\n    timestamp: event.timestamp\n  }\n}];"
+      },
+      "name": "Summarize Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "name": "event",
+              "value": "={{ $json.body.event }}",
+              "type": "string"
+            },
+            {
+              "name": "data",
+              "value": "={{ JSON.stringify($json.body.data) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Log Other Event",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [720, 420]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Is Memory Created?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Memory Created?": {
+      "main": [
+        [
+          {
+            "node": "Find Related Memories",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Other Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Related Memories": {
+      "main": [
+        [
+          {
+            "node": "Summarize Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

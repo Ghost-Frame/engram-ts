@@ -1,0 +1,3402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Engram</title>
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pixi.js@7.3.2/dist/pixi.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@pixi/unsafe-eval@7.3.2/dist/unsafe-eval.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0c0c10; color: #c8ccd4; font-family: 'Inter', sans-serif; overflow: hidden; height: 100vh; }
+  canvas { position: fixed; top: 0; left: 0; display: block; }
+
+  .glass {
+    background: rgba(15, 20, 25, 0.55);
+    backdrop-filter: blur(24px) saturate(1.4);
+    -webkit-backdrop-filter: blur(24px) saturate(1.4);
+    border: 1px solid rgba(255,255,255,0.06);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+
+  #topbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+    display: flex; align-items: center; gap: 16px; padding: 10px 20px;
+    background: rgba(15,20,25,0.75);
+    backdrop-filter: blur(30px) saturate(1.5);
+    -webkit-backdrop-filter: blur(30px) saturate(1.5);
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    box-shadow: 0 4px 30px rgba(0,0,0,0.3);
+  }
+  #topbar h1 {
+    font-size: 15px; font-weight: 700; color: #e2e4e9;
+    letter-spacing: 1.5px; white-space: nowrap; text-transform: uppercase;
+  }
+  #topbar h1 span {
+    background: linear-gradient(135deg, #c4a265 0%, #d4b87a 50%, #e0c88a 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .logo-glow { display: inline-block; filter: drop-shadow(0 0 8px rgba(196,162,101,0.3)); }
+  #search-box { flex: 1; max-width: 380px; position: relative; }
+  #search-box input {
+    width: 100%; padding: 8px 14px 8px 34px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px; color: #e2e4e9; font-size: 12px;
+    font-family: 'Inter', sans-serif; outline: none;
+    transition: all 0.4s cubic-bezier(0.16,1,0.3,1);
+  }
+  #search-box input:focus {
+    border-color: rgba(196,162,101,0.5);
+    background: rgba(255,255,255,0.07);
+    box-shadow: 0 0 24px rgba(196,162,101,0.12), 0 0 60px rgba(196,162,101,0.04);
+  }
+  #search-box input::placeholder { color: #3a3a50; }
+  #search-box svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); opacity: 0.3; }
+  .stats {
+    display: flex; gap: 14px; margin-left: auto;
+    font-size: 11px; color: #3a3a50;
+    font-family: 'JetBrains Mono', monospace; letter-spacing: 0.5px;
+  }
+  .stats .val {
+    background: linear-gradient(135deg, #c4a265, #d4b87a);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    font-weight: 500;
+  }
+
+  #sidebar {
+    position: fixed; top: 0; right: -460px; width: 460px; height: 100vh; z-index: 20;
+    background: rgba(15,20,25,0.92);
+    backdrop-filter: blur(32px) saturate(1.6);
+    -webkit-backdrop-filter: blur(32px) saturate(1.6);
+    border-left: 1px solid rgba(255,255,255,0.05);
+    box-shadow: -12px 0 60px rgba(0,0,0,0.5), inset 1px 0 0 rgba(255,255,255,0.03);
+    transition: right 0.5s cubic-bezier(0.16,1,0.3,1);
+    overflow-y: auto; padding: 28px;
+  }
+  #sidebar.open { right: 0; }
+  #sidebar::-webkit-scrollbar { width: 4px; }
+  #sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 2px; }
+  .close-btn {
+    position: absolute; top: 16px; right: 16px; width: 30px; height: 30px;
+    border-radius: 10px; border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.03); color: #555; cursor: pointer;
+    font-size: 14px; display: flex; align-items: center; justify-content: center;
+    transition: all 0.3s cubic-bezier(0.16,1,0.3,1);
+  }
+  .close-btn:hover { background: rgba(255,255,255,0.08); color: #aaa; transform: rotate(90deg); }
+  .mem-header { margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  .mem-id {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    background: linear-gradient(135deg, #c4a265, #d4b87a);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    margin-bottom: 8px; letter-spacing: 0.5px;
+  }
+  .mem-category {
+    display: inline-block; padding: 3px 10px; border-radius: 6px;
+    font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px;
+  }
+  .mem-content {
+    font-size: 12.5px; line-height: 1.8; color: #a0a4b0;
+    margin: 16px 0; white-space: pre-wrap; word-break: break-word;
+  }
+  .mem-meta {
+    display: grid; grid-template-columns: auto 1fr;
+    gap: 6px 16px; font-size: 11px; margin-top: 16px;
+    padding: 14px; border-radius: 10px;
+    background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.03);
+  }
+  .mem-meta .label { color: #3a3a50; font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+  .mem-meta .value { color: #777; }
+  .badge {
+    display: inline-block; padding: 2px 7px; border-radius: 4px;
+    font-size: 9px; font-weight: 600; margin-left: 6px; letter-spacing: 0.5px;
+  }
+  .badge-static { background: rgba(34,197,94,0.1); color: #4ade80; border: 1px solid rgba(34,197,94,0.1); }
+  .badge-forgotten { background: rgba(239,68,68,0.1); color: #f87171; border: 1px solid rgba(239,68,68,0.1); }
+  .badge-inference { background: rgba(168,85,247,0.1); color: #c084fc; border: 1px solid rgba(168,85,247,0.1); }
+  .linked-section { margin-top: 20px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.04); }
+  .linked-section h3 {
+    font-size: 10px; color: #3a3a50; margin-bottom: 12px;
+    font-weight: 500; text-transform: uppercase; letter-spacing: 1px;
+  }
+  .linked-item {
+    padding: 10px 12px; margin-bottom: 4px; border-radius: 10px;
+    background: rgba(255,255,255,0.02); cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.16,1,0.3,1); border: 1px solid transparent;
+  }
+  .linked-item:hover {
+    background: rgba(196,162,101,0.05); border-color: rgba(196,162,101,0.1);
+    transform: translateX(2px);
+  }
+  .linked-item .link-type {
+    font-size: 9px; font-family: 'JetBrains Mono', monospace;
+    background: linear-gradient(135deg, #c4a265, #d4b87a);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .linked-item .link-preview { font-size: 11px; color: #555; margin-top: 4px; line-height: 1.5; }
+
+  #tooltip {
+    position: fixed; z-index: 30; pointer-events: none;
+    background: rgba(15,20,25,0.92); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px; padding: 12px 16px; max-width: 320px;
+    opacity: 0; transition: opacity 0.25s;
+    backdrop-filter: blur(16px) saturate(1.4);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5), 0 0 20px rgba(196,162,101,0.04);
+  }
+  #tooltip .tt-id { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #c4a265; }
+  #tooltip .tt-cat { font-size: 9px; text-transform: uppercase; margin-left: 6px; font-weight: 600; letter-spacing: 0.5px; }
+  #tooltip .tt-text { font-size: 11px; color: #777; margin-top: 6px; line-height: 1.55; }
+
+  #loading {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 50;
+    text-align: center;
+  }
+  .spinner {
+    width: 32px; height: 32px; border: 2px solid rgba(196,162,101,0.1);
+    border-top-color: #c4a265; border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin: 0 auto 12px;
+    box-shadow: 0 0 20px rgba(196,162,101,0.15);
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading .text { font-size: 12px; color: #3a3a50; letter-spacing: 0.5px; }
+
+  /* ===== List Panel (Left) ===== */
+  #list-toggle {
+    width: 34px; height: 34px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.04); color: #666; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.3s cubic-bezier(0.16,1,0.3,1); flex-shrink: 0;
+  }
+  #list-toggle:hover { background: rgba(196,162,101,0.12); color: #c4a265; border-color: rgba(196,162,101,0.2); }
+  #list-toggle.active { background: rgba(196,162,101,0.15); color: #c4a265; border-color: rgba(196,162,101,0.3); box-shadow: 0 0 16px rgba(196,162,101,0.1); }
+
+  /* Inbox Panel */
+  #inbox-panel {
+    position: fixed; top: 56px; left: -460px; width: 440px; height: calc(100vh - 56px); z-index: 15;
+    background: rgba(15,20,25,0.92);
+    backdrop-filter: blur(32px) saturate(1.6);
+    -webkit-backdrop-filter: blur(32px) saturate(1.6);
+    border-right: 1px solid rgba(255,255,255,0.05);
+    box-shadow: 12px 0 60px rgba(0,0,0,0.4);
+    transition: left 0.5s cubic-bezier(0.16,1,0.3,1);
+    overflow-y: auto; display: flex; flex-direction: column;
+  }
+  #inbox-panel.open { left: 0; }
+  #inbox-panel::-webkit-scrollbar { width: 4px; }
+  #inbox-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 2px; }
+  .inbox-header {
+    padding: 16px 18px 12px; border-bottom: 1px solid rgba(255,255,255,0.04);
+    display: flex; flex-direction: column; gap: 10px; flex-shrink: 0;
+  }
+  .inbox-title {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .inbox-title h2 {
+    font-size: 13px; font-weight: 600; color: #e2e4e9;
+    letter-spacing: 0.5px; text-transform: uppercase;
+  }
+  .inbox-count {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #f97316;
+    background: rgba(249,115,22,0.1); padding: 2px 8px; border-radius: 6px;
+    border: 1px solid rgba(249,115,22,0.15);
+  }
+  .inbox-actions {
+    display: flex; gap: 6px;
+  }
+  .inbox-action-btn {
+    padding: 5px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.03); color: #94a3b8; font-size: 10px;
+    font-family: 'Inter', sans-serif; cursor: pointer; font-weight: 500;
+    transition: all 0.2s;
+  }
+  .inbox-action-btn:hover { background: rgba(255,255,255,0.06); color: #e2e4e9; }
+  .inbox-action-btn.approve-all { border-color: rgba(52,211,153,0.2); color: #34d399; }
+  .inbox-action-btn.approve-all:hover { background: rgba(52,211,153,0.1); }
+  .inbox-action-btn.reject-all { border-color: rgba(248,113,113,0.2); color: #f87171; }
+  .inbox-action-btn.reject-all:hover { background: rgba(248,113,113,0.1); }
+  .inbox-list { flex: 1; overflow-y: auto; padding: 8px; }
+  .inbox-card {
+    padding: 14px 16px; margin-bottom: 6px; border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.04);
+    background: rgba(255,255,255,0.015);
+    transition: all 0.25s cubic-bezier(0.16,1,0.3,1);
+    position: relative;
+  }
+  .inbox-card:hover {
+    background: rgba(255,255,255,0.035);
+    border-color: rgba(255,255,255,0.08);
+  }
+  .inbox-card.selected {
+    border-color: rgba(196,162,101,0.3);
+    background: rgba(196,162,101,0.06);
+  }
+  .inbox-card-header {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  }
+  .inbox-card-header input[type="checkbox"] {
+    accent-color: #c4a265; width: 14px; height: 14px; cursor: pointer;
+  }
+  .inbox-card-meta {
+    font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #3a3a50; letter-spacing: 0.3px;
+  }
+  .inbox-card-cat {
+    display: inline-block; padding: 1px 6px; border-radius: 4px;
+    font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+    margin-left: 6px;
+  }
+  .inbox-card-content {
+    font-size: 12px; line-height: 1.6; color: #c8ccd4;
+    max-height: 120px; overflow: hidden; margin-bottom: 10px;
+    word-wrap: break-word;
+  }
+  .inbox-card-content.expanded { max-height: none; }
+  .inbox-card-actions {
+    display: flex; gap: 6px; align-items: center;
+  }
+  .inbox-btn {
+    padding: 4px 10px; border-radius: 6px; font-size: 10px; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; font-family: 'Inter', sans-serif;
+    border: 1px solid transparent;
+  }
+  .inbox-btn.approve {
+    background: rgba(52,211,153,0.1); color: #34d399; border-color: rgba(52,211,153,0.2);
+  }
+  .inbox-btn.approve:hover { background: rgba(52,211,153,0.2); }
+  .inbox-btn.edit {
+    background: rgba(196,162,101,0.1); color: #c4a265; border-color: rgba(196,162,101,0.2);
+  }
+  .inbox-btn.edit:hover { background: rgba(196,162,101,0.2); }
+  .inbox-btn.reject {
+    background: rgba(248,113,113,0.08); color: #f87171; border-color: rgba(248,113,113,0.15);
+  }
+  .inbox-btn.reject:hover { background: rgba(248,113,113,0.15); }
+  .inbox-empty {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 300px; color: #3a3a50; text-align: center;
+  }
+  .inbox-empty svg { margin-bottom: 12px; opacity: 0.3; }
+  .inbox-empty p { font-size: 13px; }
+  .inbox-empty small { font-size: 11px; color: #2a2a3a; margin-top: 4px; }
+  #inbox-toggle.active {
+    background: rgba(249,115,22,0.15); color: #f97316; border-color: rgba(249,115,22,0.3);
+    box-shadow: 0 0 16px rgba(249,115,22,0.1);
+  }
+
+  #list-panel {
+    position: fixed; top: 0; left: -420px; width: 420px; height: 100vh; z-index: 15;
+    background: rgba(8,11,18,0.96);
+    backdrop-filter: blur(40px) saturate(1.6);
+    -webkit-backdrop-filter: blur(40px) saturate(1.6);
+    border-right: 1px solid rgba(196,162,101,0.08);
+    box-shadow: 12px 0 60px rgba(0,0,0,0.6), inset -1px 0 0 rgba(255,255,255,0.02);
+    transition: left 0.5s cubic-bezier(0.16,1,0.3,1);
+    display: flex; flex-direction: column;
+  }
+  #list-panel.open { left: 0; }
+
+  .lp-header { padding: 16px 16px 0; flex-shrink: 0; }
+  .lp-title {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px; padding-top: 50px;
+  }
+  .lp-title h2 {
+    font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px;
+    background: linear-gradient(135deg, #c4a265, #d4b87a);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .lp-count { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #3a3a50; }
+
+  .lp-search { position: relative; margin-bottom: 12px; }
+  .lp-search input {
+    width: 100%; padding: 10px 38px 10px 36px;
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px; color: #e2e4e9; font-size: 12px;
+    font-family: 'Inter', sans-serif; outline: none;
+    transition: all 0.3s cubic-bezier(0.16,1,0.3,1);
+  }
+  .lp-search input:focus {
+    border-color: rgba(196,162,101,0.5); background: rgba(255,255,255,0.06);
+    box-shadow: 0 0 24px rgba(196,162,101,0.12);
+  }
+  .lp-search input::placeholder { color: #2a2a3a; }
+  .lp-search .lp-search-icon {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%); opacity: 0.3; pointer-events: none;
+  }
+  .lp-search-clear {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    width: 20px; height: 20px; border-radius: 5px; border: none;
+    background: rgba(255,255,255,0.06); color: #555; cursor: pointer;
+    font-size: 12px; display: none; align-items: center; justify-content: center;
+    transition: all 0.2s;
+  }
+  .lp-search-clear.visible { display: flex; }
+  .lp-search-clear:hover { background: rgba(255,255,255,0.12); color: #aaa; }
+
+  .lp-filters { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+  .lp-chip {
+    padding: 4px 10px; border-radius: 20px; font-size: 9px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.6px; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); color: #444;
+    transition: all 0.25s cubic-bezier(0.16,1,0.3,1); user-select: none;
+  }
+  .lp-chip:hover { background: rgba(255,255,255,0.05); color: #777; }
+  .lp-chip.active {
+    border-color: var(--chip-color, rgba(196,162,101,0.4));
+    background: var(--chip-bg, rgba(196,162,101,0.12));
+    color: var(--chip-color, #c4a265);
+    box-shadow: 0 0 14px var(--chip-glow, rgba(196,162,101,0.1));
+  }
+  .lp-chip .lp-chip-dot {
+    display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+    margin-right: 5px; vertical-align: middle;
+  }
+  .lp-chip .lp-chip-count {
+    font-size: 8px; opacity: 0.5; margin-left: 4px;
+  }
+
+  .lp-sort-row {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 10px;
+    padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+  .lp-sort-label { font-size: 9px; color: #2a2a3a; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+  .lp-sort-btn {
+    padding: 3px 8px; border-radius: 5px; font-size: 9px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.04); background: rgba(255,255,255,0.02);
+    color: #3a3a50; transition: all 0.2s; font-family: 'JetBrains Mono', monospace;
+  }
+  .lp-sort-btn:hover { color: #777; background: rgba(255,255,255,0.04); }
+  .lp-sort-btn.active { color: #c4a265; border-color: rgba(196,162,101,0.3); background: rgba(196,162,101,0.06); }
+
+  .lp-list { flex: 1; overflow-y: auto; padding: 0 16px 16px; }
+  .lp-list::-webkit-scrollbar { width: 3px; }
+  .lp-list::-webkit-scrollbar-track { background: transparent; }
+  .lp-list::-webkit-scrollbar-thumb { background: rgba(196,162,101,0.15); border-radius: 3px; }
+  .lp-list::-webkit-scrollbar-thumb:hover { background: rgba(196,162,101,0.3); }
+
+  .lp-card {
+    padding: 14px 16px; margin-bottom: 8px; border-radius: 12px;
+    background: linear-gradient(135deg, rgba(15,20,30,0.8) 0%, rgba(20,25,40,0.6) 100%);
+    border: 1px solid rgba(255,255,255,0.04);
+    cursor: pointer; transition: all 0.35s cubic-bezier(0.16,1,0.3,1);
+    position: relative; overflow: hidden;
+  }
+  .lp-card::before {
+    content: ''; position: absolute; inset: 0; border-radius: 12px;
+    background: radial-gradient(ellipse at 50% 0%, var(--card-glow, rgba(196,162,101,0.06)) 0%, transparent 70%);
+    opacity: 0; transition: opacity 0.35s;
+  }
+  .lp-card::after {
+    content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px;
+    background: var(--card-accent, #c4a265); border-radius: 2px;
+    opacity: 0; transition: opacity 0.3s;
+  }
+  .lp-card:hover {
+    border-color: var(--card-border-hover, rgba(196,162,101,0.15));
+    transform: translateY(-1px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3), 0 0 20px var(--card-glow, rgba(196,162,101,0.04));
+  }
+  .lp-card:hover::before { opacity: 1; }
+  .lp-card:hover::after { opacity: 0.8; }
+  .lp-card.active-card {
+    border-color: var(--card-accent, rgba(196,162,101,0.25));
+    background: linear-gradient(135deg, rgba(20,25,40,0.9) 0%, rgba(25,30,50,0.7) 100%);
+    box-shadow: 0 4px 24px var(--card-glow, rgba(196,162,101,0.08));
+  }
+  .lp-card.active-card::after { opacity: 1; }
+
+  .lp-card-type {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 8px;
+  }
+  .lp-card-type svg { opacity: 0.5; flex-shrink: 0; }
+  .lp-card-type-label {
+    font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.7px;
+    color: var(--card-accent, #c4a265);
+  }
+  .lp-card-id {
+    font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #333;
+    margin-left: auto;
+  }
+
+  .lp-card-title {
+    font-size: 12px; font-weight: 600; color: #d0d4dc; line-height: 1.4;
+    margin-bottom: 6px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .lp-card-preview {
+    font-size: 11px; color: #4a4e5c; line-height: 1.5;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    margin-bottom: 10px;
+  }
+  .lp-card-footer {
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .lp-card-imp {
+    display: inline-flex; align-items: center; gap: 2px;
+  }
+  .lp-card-imp .star {
+    width: 10px; height: 10px; fill: var(--card-accent, #c4a265); opacity: 0.7;
+  }
+  .lp-card-imp .star.dim { opacity: 0.15; }
+  .lp-card-imp-num {
+    font-family: 'JetBrains Mono', monospace; font-size: 9px;
+    color: var(--card-accent, #c4a265); margin-left: 4px; font-weight: 600;
+  }
+  .lp-card-date {
+    font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #333;
+  }
+  .lp-card-badges {
+    display: flex; gap: 4px; position: absolute; top: 10px; right: 12px;
+  }
+  .lp-card-badges .badge { margin-left: 0; font-size: 8px; padding: 1px 5px; }
+
+  .lp-empty {
+    text-align: center; padding: 50px 20px; color: #2a2a3a;
+  }
+  .lp-empty svg { opacity: 0.12; margin-bottom: 14px; }
+  .lp-empty-text { font-size: 12px; letter-spacing: 0.5px; }
+  .lp-empty-sub { font-size: 10px; color: #1a1a2a; margin-top: 6px; }
+
+  .lp-search-status {
+    font-size: 9px; color: #c4a265; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.8px; padding: 6px 0 10px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .lp-search-status .lp-search-clear-results {
+    font-size: 9px; color: #555; cursor: pointer; text-decoration: none;
+    transition: color 0.2s; text-transform: none; letter-spacing: 0; font-weight: 500;
+  }
+  .lp-search-status .lp-search-clear-results:hover { color: #c4a265; }
+
+  @keyframes lpCardIn {
+    from { opacity: 0; transform: translateY(8px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .lp-card { animation: lpCardIn 0.35s cubic-bezier(0.16,1,0.3,1) backwards; }
+
+  /* ===== Viewport Controls (Bottom-Left) ===== */
+  #viewport-controls {
+    position: fixed; bottom: 20px; left: 20px; z-index: 12;
+    display: flex; flex-direction: column; gap: 6px;
+    transition: left 0.5s cubic-bezier(0.16,1,0.3,1);
+  }
+  #viewport-controls.shifted { left: 440px; }
+  .vc-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 7px 12px; border-radius: 8px;
+    background: rgba(15,20,25,0.8); border: 1px solid rgba(255,255,255,0.06);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    color: #666; font-size: 11px; font-family: 'Inter', sans-serif; font-weight: 500;
+    cursor: pointer; transition: all 0.25s cubic-bezier(0.16,1,0.3,1);
+    white-space: nowrap; user-select: none;
+  }
+  .vc-btn:hover { background: rgba(196,162,101,0.1); color: #c4a265; border-color: rgba(196,162,101,0.2); }
+  .vc-btn svg { opacity: 0.5; flex-shrink: 0; }
+  .vc-btn:hover svg { opacity: 0.9; }
+  .vc-kbd {
+    font-family: 'JetBrains Mono', monospace; font-size: 9px;
+    background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 3px;
+    color: #444; margin-left: auto;
+  }
+  .vc-zoom-row {
+    display: flex; align-items: center; gap: 0;
+    border-radius: 8px; overflow: hidden;
+    background: rgba(15,20,25,0.8); border: 1px solid rgba(255,255,255,0.06);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  }
+  .vc-zoom-btn {
+    width: 30px; height: 30px; border: none; background: transparent;
+    color: #555; font-size: 14px; cursor: pointer; display: flex;
+    align-items: center; justify-content: center; transition: all 0.2s;
+  }
+  .vc-zoom-btn:hover { background: rgba(196,162,101,0.12); color: #c4a265; }
+  .vc-zoom-level {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500;
+    color: #555; padding: 0 4px; min-width: 38px; text-align: center;
+  }
+
+  /* ===== Legend (Bottom-Left, collapsible) ===== */
+  #legend-panel {
+    position: fixed; bottom: 130px; left: 20px; z-index: 12;
+    transition: left 0.5s cubic-bezier(0.16,1,0.3,1);
+  }
+  #legend-panel.shifted { left: 440px; }
+  .legend-toggle {
+    display: flex; align-items: center; gap: 6px; padding: 7px 12px;
+    border-radius: 8px; background: rgba(15,20,25,0.8);
+    border: 1px solid rgba(255,255,255,0.06);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    color: #666; font-size: 11px; font-weight: 500; cursor: pointer;
+    transition: all 0.25s; user-select: none; width: 100%;
+  }
+  .legend-toggle:hover { background: rgba(196,162,101,0.1); color: #c4a265; }
+  .legend-toggle svg { transition: transform 0.3s; }
+  .legend-toggle.open svg { transform: rotate(180deg); }
+  .legend-body {
+    margin-top: 4px; padding: 10px 14px; border-radius: 8px;
+    background: rgba(15,20,25,0.85); border: 1px solid rgba(255,255,255,0.06);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    display: none;
+  }
+  .legend-body.open { display: block; }
+  .legend-row {
+    display: flex; align-items: center; gap: 8px; padding: 3px 0;
+  }
+  .legend-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    box-shadow: 0 0 6px var(--dot-glow);
+  }
+  .legend-label { font-size: 10px; color: #555; text-transform: capitalize; }
+  .legend-count {
+    font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #333; margin-left: auto;
+  }
+
+  /* ===== Sidebar Next/Prev Nav ===== */
+  .sb-nav {
+    display: flex; gap: 6px; margin-top: 16px; padding-top: 14px;
+    border-top: 1px solid rgba(255,255,255,0.04);
+  }
+  .sb-nav-btn {
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);
+    background: rgba(255,255,255,0.02); color: #555; font-size: 10px; font-weight: 500;
+    cursor: pointer; transition: all 0.25s cubic-bezier(0.16,1,0.3,1);
+    font-family: 'Inter', sans-serif;
+  }
+  .sb-nav-btn:hover { background: rgba(196,162,101,0.08); color: #c4a265; border-color: rgba(196,162,101,0.2); }
+  .sb-nav-btn:disabled { opacity: 0.2; cursor: default; pointer-events: none; }
+  .sb-nav-btn svg { opacity: 0.6; }
+
+  /* View tabs */
+  .view-tab { background: transparent; color: #555; }
+  .view-tab:hover { background: rgba(255,255,255,0.04); color: #999; }
+  .view-tab.active { background: rgba(196,162,101,0.12); color: #c4a265; }
+
+  /* Full-screen grid view */
+  #grid-view {
+    display: none; position: fixed; top: 54px; left: 0; right: 0; bottom: 0;
+    z-index: 5; background: #0c0c10; overflow-y: auto;
+    padding: 24px 32px;
+  }
+  #grid-view.open { display: block; }
+  #grid-view::-webkit-scrollbar { width: 6px; }
+  #grid-view::-webkit-scrollbar-track { background: transparent; }
+  #grid-view::-webkit-scrollbar-thumb { background: rgba(196,162,101,0.15); border-radius: 3px; }
+
+  .grid-toolbar {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .grid-toolbar .grid-search {
+    flex: 1; min-width: 200px; max-width: 400px; padding: 9px 14px 9px 36px;
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px; color: #e2e4e9; font-size: 12px;
+    font-family: 'Inter', sans-serif; outline: none;
+    transition: all 0.3s;
+  }
+  .grid-toolbar .grid-search:focus {
+    border-color: rgba(196,162,101,0.4); background: rgba(255,255,255,0.05);
+    box-shadow: 0 0 20px rgba(196,162,101,0.08);
+  }
+  .grid-toolbar .grid-search::placeholder { color: #333; }
+  .grid-chip {
+    padding: 4px 10px; border-radius: 20px; font-size: 9px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.6px; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); color: #444;
+    transition: all 0.25s; user-select: none;
+  }
+  .grid-chip:hover { background: rgba(255,255,255,0.05); color: #777; }
+  .grid-chip.active { border-color: rgba(196,162,101,0.3); background: rgba(196,162,101,0.1); color: #c4a265; }
+  .grid-count { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #333; margin-left: auto; }
+
+  .grid-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 12px;
+  }
+  .grid-card {
+    padding: 16px 18px; border-radius: 12px;
+    background: rgba(15,18,25,0.8);
+    border: 1px solid rgba(255,255,255,0.04);
+    cursor: pointer; transition: all 0.3s cubic-bezier(0.16,1,0.3,1);
+    position: relative; overflow: hidden;
+  }
+  .grid-card::after {
+    content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px;
+    border-radius: 2px; opacity: 0.6;
+  }
+  .grid-card:hover {
+    border-color: rgba(255,255,255,0.08);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.3);
+  }
+  .grid-card-header {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  }
+  .grid-card-cat {
+    font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;
+    padding: 2px 7px; border-radius: 4px;
+  }
+  .grid-card-id {
+    font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #3a3a50;
+  }
+  .grid-card-source {
+    font-size: 9px; color: #3a3a50; margin-left: auto;
+  }
+  .grid-card-content {
+    font-size: 12px; color: #a0a4b0; line-height: 1.5;
+    max-height: 80px; overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
+  }
+  .grid-card-footer {
+    display: flex; align-items: center; gap: 8px; margin-top: 10px;
+    font-size: 9px; color: #2a2a3a;
+  }
+  .grid-card-imp {
+    font-family: 'JetBrains Mono', monospace;
+    padding: 1px 5px; border-radius: 3px;
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.04);
+  }
+</style>
+</head>
+<body>
+
+<div id="loading"><div class="spinner"></div><div class="text">Loading graph...</div></div>
+
+<div id="topbar">
+  <button id="list-toggle" onclick="toggleListPanel()" title="Memory List (L)">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+  </button>
+  <button id="inbox-toggle" onclick="toggleInboxPanel()" title="Review Queue (I)" style="
+    width: 34px; height: 34px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.03); color: #94a3b8; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; position: relative;
+    transition: all 0.3s cubic-bezier(0.16,1,0.3,1);
+  ">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+    <span id="inbox-badge" style="
+      display: none; position: absolute; top: -4px; right: -4px;
+      min-width: 16px; height: 16px; border-radius: 8px; padding: 0 4px;
+      background: linear-gradient(135deg, #f97316, #ef4444);
+      color: white; font-size: 9px; font-weight: 700; font-family: 'JetBrains Mono', monospace;
+      line-height: 16px; text-align: center;
+    "></span>
+  </button>
+  <h1><span class="logo-glow">Eng<span>ram</span></span></h1>
+  <div id="view-tabs" style="display:flex;gap:2px;background:rgba(255,255,255,0.03);border-radius:8px;padding:2px;border:1px solid rgba(255,255,255,0.05);">
+    <button class="view-tab active" data-view="graph" onclick="switchView('graph')" style="padding:5px 14px;border-radius:6px;border:none;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:all 0.25s;display:flex;align-items:center;gap:5px;">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><line x1="8.5" y1="7.5" x2="15.5" y2="16.5"/><line x1="15.5" y1="7.5" x2="8.5" y2="7.5"/></svg>
+      Graph
+    </button>
+    <button class="view-tab" data-view="grid" onclick="switchView('grid')" style="padding:5px 14px;border-radius:6px;border:none;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:all 0.25s;display:flex;align-items:center;gap:5px;">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      Grid
+    </button>
+  </div>
+  <div id="search-box">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    <input id="search" type="text" placeholder="Search memories..." autocomplete="off">
+  </div>
+  <div class="stats">
+    <span><span class="val" id="stat-nodes">0</span> memories</span>
+    <span><span class="val" id="stat-clusters">0</span> clusters</span>
+    <span><span class="val" id="stat-links">0</span> links</span>
+  </div>
+  <button id="create-btn" onclick="openCreateDialog()" title="Create Memory (N)" style="
+    padding: 6px 14px; border-radius: 8px; border: 1px solid rgba(196,162,101,0.2);
+    background: rgba(196,162,101,0.1); color: #c4a265; font-size: 11px; font-weight: 600;
+    cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap;
+    transition: all 0.25s; font-family: 'Inter', sans-serif;
+  ">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    New
+  </button>
+</div>
+
+<!-- Create/Edit Modal -->
+<div id="mem-modal" style="
+  position: fixed; inset: 0; z-index: 100; display: none;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
+  align-items: center; justify-content: center;
+">
+  <div style="
+    width: 480px; max-height: 80vh; overflow-y: auto;
+    background: rgba(15,20,30,0.98); border: 1px solid rgba(196,162,101,0.15);
+    border-radius: 16px; padding: 28px; box-shadow: 0 20px 80px rgba(0,0,0,0.6);
+  ">
+    <h3 id="modal-title" style="font-size: 13px; font-weight: 700; color: #e2e4e9; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px;">Create Memory</h3>
+    <input type="hidden" id="modal-edit-id">
+    <div style="margin-bottom: 14px;">
+      <label style="font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 5px;">Category</label>
+      <select id="modal-cat" style="
+        width: 100%; padding: 8px 12px; background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;
+        color: #e2e4e9; font-size: 12px; font-family: 'Inter', sans-serif; outline: none;
+      ">
+        <option value="task">Task</option>
+        <option value="discovery">Discovery</option>
+        <option value="decision">Decision</option>
+        <option value="state">State</option>
+        <option value="issue">Issue</option>
+      </select>
+    </div>
+    <div style="margin-bottom: 14px;">
+      <label style="font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 5px;">Content</label>
+      <textarea id="modal-content" rows="8" placeholder="Memory content..." style="
+        width: 100%; padding: 10px 12px; background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;
+        color: #e2e4e9; font-size: 12px; font-family: 'Inter', sans-serif;
+        outline: none; resize: vertical; line-height: 1.6;
+      "></textarea>
+    </div>
+    <div style="display: flex; gap: 12px; margin-bottom: 14px;">
+      <div style="flex: 1;">
+        <label style="font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 5px;">Importance (1-10)</label>
+        <input type="number" id="modal-imp" min="1" max="10" value="5" style="
+          width: 100%; padding: 8px 12px; background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;
+          color: #e2e4e9; font-size: 12px; font-family: 'Inter', sans-serif; outline: none;
+        ">
+      </div>
+      <div style="flex: 1; display: flex; align-items: end; padding-bottom: 4px;">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 11px; color: #666;">
+          <input type="checkbox" id="modal-static" style="accent-color: #c4a265;">
+          Static (permanent)
+        </label>
+      </div>
+    </div>
+    <div style="display: flex; gap: 8px; justify-content: flex-end;">
+      <button onclick="closeModal()" style="
+        padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);
+        background: rgba(255,255,255,0.03); color: #666; font-size: 11px; cursor: pointer;
+        font-family: 'Inter', sans-serif;
+      ">Cancel</button>
+      <button onclick="saveModal()" style="
+        padding: 8px 20px; border-radius: 8px; border: 1px solid rgba(196,162,101,0.3);
+        background: rgba(196,162,101,0.15); color: #c4a265; font-size: 11px; font-weight: 600;
+        cursor: pointer; font-family: 'Inter', sans-serif;
+      ">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Inbox / Review Queue Panel -->
+<div id="inbox-panel">
+  <div class="inbox-header">
+    <div class="inbox-title">
+      <h2>Review Queue</h2>
+      <span class="inbox-count" id="inbox-count">0 pending</span>
+      <button onclick="toggleInboxPanel()" style="background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;margin-left:auto;padding:2px 6px;line-height:1;opacity:0.7" onmouseover="this.style.opacity='1';this.style.color='#f87171'" onmouseout="this.style.opacity='0.7';this.style.color='#94a3b8'">&times;</button>
+    </div>
+    <div class="inbox-actions">
+      <button class="inbox-action-btn" onclick="inboxSelectAll()">Select All</button>
+      <button class="inbox-action-btn approve-all" onclick="inboxBulkApprove()">&#10003; Approve Selected</button>
+      <button class="inbox-action-btn reject-all" onclick="inboxBulkReject()">&#10005; Reject Selected</button>
+    </div>
+  </div>
+  <div class="inbox-list" id="inbox-list"></div>
+</div>
+
+<!-- List Panel (Left) -->
+<div id="list-panel">
+  <div class="lp-header">
+    <div class="lp-title">
+      <h2>All Memories</h2>
+      <span class="lp-count" id="lp-count">0 items</span>
+      <button onclick="toggleListPanel()" style="background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;margin-left:auto;padding:2px 6px;line-height:1;opacity:0.7" onmouseover="this.style.opacity='1';this.style.color='#f87171'" onmouseout="this.style.opacity='0.7';this.style.color='#94a3b8'">&times;</button>
+    </div>
+    <div class="lp-search">
+      <svg class="lp-search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input id="lp-search-input" type="text" placeholder="Filter memories..." autocomplete="off">
+      <button class="lp-search-clear" id="lp-search-clear" onclick="clearListSearch()">&times;</button>
+    </div>
+    <div class="lp-filters" id="lp-filters"></div>
+    <div class="lp-sort-row">
+      <span class="lp-sort-label">Sort</span>
+      <button class="lp-sort-btn active" data-sort="newest" onclick="setListSort('newest')">Newest</button>
+      <button class="lp-sort-btn" data-sort="oldest" onclick="setListSort('oldest')">Oldest</button>
+      <button class="lp-sort-btn" data-sort="importance" onclick="setListSort('importance')">&#9733; Imp</button>
+      <button class="lp-sort-btn" data-sort="id" onclick="setListSort('id')">ID &#8595;</button>
+    </div>
+  </div>
+  <div class="lp-list" id="lp-list"></div>
+</div>
+
+<!-- Legend (Bottom-Left) -->
+<div id="legend-panel">
+  <button class="legend-toggle" onclick="toggleLegend()">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    Legend
+  </button>
+  <div class="legend-body" id="legend-body"></div>
+</div>
+
+<!-- Viewport Controls (Bottom-Left) -->
+<div id="viewport-controls">
+  <button class="vc-btn" onclick="fitView()" title="Fit all nodes in view">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+    Fit<span class="vc-kbd">Z</span>
+  </button>
+  <button class="vc-btn" onclick="centerView()" title="Center on hub">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="10"/></svg>
+    Center<span class="vc-kbd">C</span>
+  </button>
+  <div class="vc-zoom-row">
+    <button class="vc-zoom-btn" onclick="zoomStep(-1)">&minus;</button>
+    <span class="vc-zoom-level" id="zoom-level">100%</span>
+    <button class="vc-zoom-btn" onclick="zoomStep(1)">+</button>
+  </div>
+</div>
+
+<div id="grid-view">
+  <div class="grid-toolbar">
+    <div style="position:relative;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);opacity:0.3;pointer-events:none"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input class="grid-search" id="grid-search" type="text" placeholder="Search memories..." oninput="renderGridView()">
+    </div>
+    <div id="grid-filters" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+    <span class="grid-count" id="grid-count"></span>
+  </div>
+  <div class="grid-cards" id="grid-cards"></div>
+</div>
+
+<div id="sidebar">
+  <button class="close-btn" onclick="closeSidebar()">&times;</button>
+  <div id="sidebar-inner"></div>
+</div>
+
+<div id="tooltip">
+  <div><span class="tt-id"></span><span class="tt-cat"></span></div>
+  <div class="tt-text"></div>
+</div>
+
+<script>
+/* ===== Engram v10.0 -- Starburst/Dandelion Graph ===== */
+
+// DEBUG: Global error handler
+window.onerror = function(msg, url, line, col, error) {
+  var el = document.getElementById('loading');
+  if (el) el.innerHTML = '<div class="text" style="color:#f87171;max-width:600px;word-break:break-all;">' +
+    'JS ERROR at line ' + line + ':' + col + '<br>' + msg + '<br>' + (error && error.stack ? error.stack.substring(0,500) : '') + '</div>';
+  console.error('ENGRAM_DEBUG:', msg, 'at line', line, col, error);
+  return false;
+};
+window.addEventListener('unhandledrejection', function(e) {
+  var el = document.getElementById('loading');
+  if (el) el.innerHTML = '<div class="text" style="color:#f87171;max-width:600px;word-break:break-all;">' +
+    'Promise rejection: ' + (e.reason ? e.reason.message || e.reason : 'unknown') + '</div>';
+  console.error('ENGRAM_DEBUG promise:', e.reason);
+});
+
+// ===== Constants & Colors =====
+var BASE = location.origin;
+var COLORS = {
+  task:      { core: '#c4a265', glow: '#a68845', r: 196, g: 162, b: 101, hex: 0xc4a265 },
+  discovery: { core: '#5eaebd', glow: '#4a8e9a', r: 94,  g: 174, b: 189, hex: 0x5eaebd },
+  decision:  { core: '#d4b87a', glow: '#b89e60', r: 212, g: 184, b: 122, hex: 0xd4b87a },
+  state:     { core: '#b07888', glow: '#8e5e6e', r: 176, g: 120, b: 136, hex: 0xb07888 },
+  issue:     { core: '#c06060', glow: '#a04848', r: 192, g: 96,  b: 96,  hex: 0xc06060 },
+  general:   { core: '#5a9e7e', glow: '#488266', r: 90,  g: 158, b: 126, hex: 0x5a9e7e }
+};
+
+var GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+var CENTER_HUB_R = 12;
+var BG_HEX = 0x0c0c10;
+var MAX_BRANCH_PARTICLES = 200;
+
+// World effects
+var MAX_PULSE_RINGS = 5;
+var NODE_SPARK_CHANCE = 0.001;
+var MAX_NODE_SPARKS = 15;
+
+// Hub wobble
+var HUB_WOBBLE = 3;
+
+// Energy pulses
+var MAX_ENERGY_PULSES = 35;
+
+// ===== State =====
+var memories = [], links = [], nodeMap = {};
+var transform = d3.zoomIdentity;
+var screenW = window.innerWidth, screenH = window.innerHeight;
+var hoveredNode = null, selectedNode = null;
+var currentFilter = 'all', searchHighlight = new Set();
+var time = 0, loadTime = 0, entryProgress = 0;
+var dimTarget = 0, dimProgress = 0;
+
+// Layout
+var centerPos = { x: 0, y: 0 };
+var nodePositions = {};
+var hlSet = {}, hlIndexSet = {};
+
+// Cluster state
+var clusters = {};
+var clusterPositions = {};
+var clusterSprites = {};
+var clusterAnimPos = {};
+var clusterProcessOrder = [];
+var memToCluster = {};
+var expandedClusters = {};
+var CLUSTER_THRESHOLD = 3;
+var CLUSTER_SIM_THRESHOLD = 0.5;
+var sourceFilter = 'all';
+
+// Branch particles
+var branchParticles = [];
+
+// World effects state
+var pulseRings = [];
+var nextPulseTime = {};
+var nodeSparks = [];
+
+// Force simulation state
+var _forceSim = null, _forceNodes = [], _fnMap = {};
+var _simSettling = false;
+var nodeAnimPos = {};
+var centerAnimPos = { x: 0, y: 0 };
+
+// Energy pulses state
+var energyPulses = [];
+var energyPulsePool = [];
+
+// Focus-mode neighbor labels
+var MAX_FOCUS_LABELS = 24;
+var focusLabelPool = [];
+var focusLabelStyle = { fontFamily: 'Inter, sans-serif', fontSize: 11, fill: 0xffffff, align: 'center', wordWrap: true, wordWrapWidth: 160 };
+
+// Refresh
+var REFRESH_INTERVAL = 30000;
+var lastMemoryCount = 0, lastMaxId = 0, refreshTimer = null;
+
+// ===== Helpers =====
+function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
+function easeOutExpo(x) { return x === 1 ? 1 : 1 - Math.pow(2, -10 * x); }
+function easeOutCubic(x) { return 1 - Math.pow(1 - x, 3); }
+function nodeRadius(m) { return 2.5 + Math.sqrt(m.importance || 1) * 1.6 + (m.source_count > 1 ? Math.log2(m.source_count) * 0.8 : 0); }
+function nodeCol(m) { return COLORS[m.category] || COLORS.general; }
+function nodeVisible(m) {
+  if (currentFilter !== 'all' && m.category !== currentFilter) return false;
+  if (sourceFilter !== 'all' && (m.source || '') !== sourceFilter) return false;
+  var mCluster = memToCluster[m.id];
+  if (mCluster && clusters[mCluster] && !clusters[mCluster].expanded) return false;
+  return true;
+}
+function rng(a, b) { return a + Math.random() * (b - a); }
+
+// ===== PixiJS Application =====
+var app = new PIXI.Application({
+  width: screenW, height: screenH,
+  backgroundColor: BG_HEX,
+  resolution: window.devicePixelRatio || 1,
+  autoDensity: true,
+  antialias: true
+});
+app.view.style.position = 'fixed';
+app.view.style.top = '0';
+app.view.style.left = '0';
+document.body.insertBefore(app.view, document.getElementById('topbar'));
+
+// ===== Scene Graph =====
+var bgSprite = new PIXI.Sprite(PIXI.Texture.EMPTY);
+
+// World-space
+var world = new PIXI.Container();
+var curvesGfx = new PIXI.Graphics();
+var particleLayer = new PIXI.Container();
+var pulseGfx = new PIXI.Graphics();
+var sparkLayer = new PIXI.Container();
+var glowLayer = new PIXI.Container();
+var orbLayer = new PIXI.Container();
+var overlayGfx = new PIXI.Graphics();
+var labelLayer = new PIXI.Container();
+
+// Stage order
+app.stage.addChild(bgSprite);
+app.stage.addChild(world);
+
+// World order
+world.addChild(curvesGfx);
+world.addChild(particleLayer);
+world.addChild(pulseGfx);
+world.addChild(sparkLayer);
+world.addChild(glowLayer);
+world.addChild(orbLayer);
+world.addChild(overlayGfx);
+world.addChild(labelLayer);
+
+// Sprite maps
+var nodeSprites = {};
+var hubGlow = null, hubOrb = null, hubLabel = null;
+
+// ===== Textures =====
+function mkTex(sz, fn) {
+  var c = document.createElement('canvas');
+  c.width = sz; c.height = sz;
+  fn(c.getContext('2d'), sz);
+  return PIXI.Texture.from(c);
+}
+
+// Soft circular glow
+var glowTex = mkTex(128, function(g, sz) {
+  var cx = sz / 2, cy = sz / 2;
+  var grad = g.createRadialGradient(cx, cy, 0, cx, cy, cx);
+  grad.addColorStop(0, 'rgba(255,255,255,0.45)');
+  grad.addColorStop(0.15, 'rgba(255,255,255,0.2)');
+  grad.addColorStop(0.4, 'rgba(255,255,255,0.05)');
+  grad.addColorStop(0.7, 'rgba(255,255,255,0.01)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.beginPath(); g.arc(cx, cy, cx, 0, Math.PI * 2); g.fill();
+});
+
+// Orb texture
+var orbTex = mkTex(128, function(g, sz) {
+  var cx = sz / 2, cy = sz / 2, r = sz * 0.44;
+  var grad = g.createRadialGradient(cx, cy, 0, cx, cy, r);
+  grad.addColorStop(0, 'rgba(255,255,255,0.95)');
+  grad.addColorStop(0.3, 'rgba(255,255,255,0.6)');
+  grad.addColorStop(0.6, 'rgba(255,255,255,0.2)');
+  grad.addColorStop(0.85, 'rgba(255,255,255,0.05)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();
+});
+
+// Particle
+var particleTex = mkTex(32, function(g, sz) {
+  var cx = sz / 2, cy = sz / 2;
+  var grad = g.createRadialGradient(cx, cy, 0, cx, cy, cx);
+  grad.addColorStop(0, 'rgba(255,255,255,0.9)');
+  grad.addColorStop(0.3, 'rgba(255,255,255,0.35)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, sz, sz);
+});
+
+// Spark
+var sparkTex = mkTex(16, function(g, sz) {
+  var cx = sz / 2, cy = sz / 2;
+  var grad = g.createRadialGradient(cx, cy, 0, cx, cy, cx);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.2, 'rgba(255,255,255,0.6)');
+  grad.addColorStop(0.5, 'rgba(255,255,255,0.15)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, sz, sz);
+});
+
+// ===== Background =====
+function buildBackground() {
+  var bw = Math.round(screenW * 0.5), bh = Math.round(screenH * 0.5);
+  if (bw < 1 || bh < 1) return;
+  var c = document.createElement('canvas');
+  c.width = bw; c.height = bh;
+  var g = c.getContext('2d');
+
+  // Dark base
+  g.fillStyle = '#0c0c10';
+  g.fillRect(0, 0, bw, bh);
+
+  // Subtle amber radial glow at center
+  var ag = g.createRadialGradient(bw / 2, bh / 2, 0, bw / 2, bh / 2, bw * 0.6);
+  ag.addColorStop(0, 'rgba(196,162,101,0.025)');
+  ag.addColorStop(0.5, 'rgba(196,162,101,0.012)');
+  ag.addColorStop(1, 'transparent');
+  g.fillStyle = ag;
+  g.fillRect(0, 0, bw, bh);
+
+  // Subtle vignette
+  var vg = g.createRadialGradient(bw / 2, bh / 2, bw * 0.25, bw / 2, bh / 2, bw * 0.7);
+  vg.addColorStop(0, 'rgba(12,12,16,0)');
+  vg.addColorStop(1, 'rgba(0,0,0,0.4)');
+  g.fillStyle = vg;
+  g.fillRect(0, 0, bw, bh);
+
+  if (bgSprite.texture !== PIXI.Texture.EMPTY) bgSprite.texture.destroy(true);
+  bgSprite.texture = PIXI.Texture.from(c);
+  bgSprite.width = screenW;
+  bgSprite.height = screenH;
+}
+
+// ===== Layout Engine =====
+
+// Union-Find for connected components
+function detectClusters(catMemIds, catLinks) {
+  var parent = {}, rank = {};
+  catMemIds.forEach(function(id) { parent[id] = id; rank[id] = 0; });
+  function find(x) { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+  function union(a, b) {
+    var ra = find(a), rb = find(b);
+    if (ra === rb) return;
+    if (rank[ra] < rank[rb]) { var t = ra; ra = rb; rb = t; }
+    parent[rb] = ra;
+    if (rank[ra] === rank[rb]) rank[ra]++;
+  }
+  catLinks.forEach(function(l) { union(l.source, l.target); });
+  var groups = {};
+  catMemIds.forEach(function(id) {
+    var root = find(id);
+    if (!groups[root]) groups[root] = [];
+    groups[root].push(id);
+  });
+  return Object.values(groups);
+}
+
+function autoLabel(memIds) {
+  var best = null, bestImp = -1;
+  for (var i = 0; i < memIds.length; i++) {
+    var m = nodeMap[memIds[i]];
+    if (m && (m.importance || 0) > bestImp) { bestImp = m.importance || 0; best = m; }
+  }
+  if (!best) return 'cluster';
+  var text = (best.content || '').replace(/\[.*?\]/g, '').replace(/[#*_`]/g, '').trim();
+  text = text.replace(/^(Updated|Added|Fixed|Created|Deployed|Completed|Configured|Installed|Set up|Built)\s*/i, '');
+  var words = text.split(/\s+/).slice(0, 5).join(' ');
+  if (words.length > 35) words = words.slice(0, 32) + '...';
+  return words || 'cluster';
+}
+
+function computeLayout() {
+  var cx = screenW / 2, cy = screenH / 2;
+  centerPos = { x: cx, y: cy };
+
+  var catGroups = {};
+  var catList = Object.keys(COLORS);
+  catList.forEach(function(c) { catGroups[c] = []; });
+  memories.forEach(function(m) {
+    var cat = m.category || 'general';
+    if (!catGroups[cat]) catGroups[cat] = [];
+    catGroups[cat].push(m);
+  });
+
+  var activeCats = catList.filter(function(c) { return catGroups[c] && catGroups[c].length > 0; });
+
+  clusters = {};
+  clusterPositions = {};
+  clusterProcessOrder = [];
+  memToCluster = {};
+  nodePositions = {};
+
+  // Pre-filter: identify memories that have at least one link (orphan filtering)
+  var connectedIds = {};
+  for (var li = 0; li < links.length; li++) {
+    connectedIds[links[li].source] = true;
+    connectedIds[links[li].target] = true;
+  }
+
+  // Build force simulation nodes -- only connected memories
+  var forceNodes = [];
+  var fnMap = {};
+  for (var i = 0; i < memories.length; i++) {
+    var m = memories[i];
+    if (!connectedIds[m.id]) continue;
+    var cat = m.category || 'general';
+    var catIdx = activeCats.indexOf(cat);
+    var sectorAngle = catIdx >= 0
+      ? (catIdx / activeCats.length) * Math.PI * 2 - Math.PI / 2
+      : Math.random() * Math.PI * 2;
+    var spreadR = 120 + Math.random() * 200;
+    var fn = {
+      id: m.id,
+      category: cat,
+      importance: m.importance || 5,
+      radius: nodeRadius(m),
+      x: cx + Math.cos(sectorAngle + (Math.random() - 0.5) * 0.8) * spreadR,
+      y: cy + Math.sin(sectorAngle + (Math.random() - 0.5) * 0.8) * spreadR
+    };
+    forceNodes.push(fn);
+    fnMap[m.id] = fn;
+  }
+
+  // Build force links
+  var nodeIdSet = {};
+  for (var i = 0; i < forceNodes.length; i++) nodeIdSet[forceNodes[i].id] = true;
+  var forceLinks = [];
+  for (var i = 0; i < links.length; i++) {
+    var l = links[i];
+    if (nodeIdSet[l.source] && nodeIdSet[l.target]) {
+      forceLinks.push({ source: l.source, target: l.target, similarity: l.similarity || 0.5 });
+    }
+  }
+
+  // d3-force simulation with stronger charge repulsion for clusters, tighter links for high-sim
+  var sim = d3.forceSimulation(forceNodes)
+    .force('charge', d3.forceManyBody()
+      .strength(function(d) { return -50 - d.radius * 8; })
+      .distanceMax(600))
+    .force('link', d3.forceLink(forceLinks)
+      .id(function(d) { return d.id; })
+      .distance(function(d) { return 20 + (1 - d.similarity) * 50; })
+      .strength(function(d) { return 0.25 + d.similarity * 0.6; }))
+    .force('collision', d3.forceCollide()
+      .radius(function(d) { return d.radius * 2.5 + 3; })
+      .strength(0.7))
+    .force('center', d3.forceCenter(cx, cy).strength(0.04))
+    .alphaDecay(0.015)
+    .velocityDecay(0.4);
+
+  // Quick warmup
+  sim.alpha(1);
+  for (var t = 0; t < 30; t++) sim.tick();
+  sim.stop();
+
+  if (typeof _forceSim !== 'undefined' && _forceSim) _forceSim.stop();
+  _forceSim = sim;
+  _forceNodes = forceNodes;
+  _fnMap = fnMap;
+
+  // ===== Cluster Detection =====
+  var clusterIdCounter = 1;
+
+  activeCats.forEach(function(cat) {
+    var mems = catGroups[cat];
+    if (!mems || mems.length === 0) return;
+
+    var catIdSet = {};
+    mems.forEach(function(m) { catIdSet[m.id] = true; });
+    var catLinks = links.filter(function(l) {
+      return catIdSet[l.source] && catIdSet[l.target] && (l.similarity || 0) >= CLUSTER_SIM_THRESHOLD;
+    });
+
+    var memIds = mems.map(function(m) { return m.id; });
+    var groups = detectClusters(memIds, catLinks);
+
+    var clusterGroups = [];
+    var individualMems = [];
+    groups.forEach(function(group) {
+      if (group.length >= CLUSTER_THRESHOLD) {
+        clusterGroups.push(group);
+      } else {
+        group.forEach(function(id) { individualMems.push(nodeMap[id]); });
+      }
+    });
+
+    clusterGroups.sort(function(a, b) { return b.length - a.length; });
+    clusterGroups.forEach(function(group) {
+      var cid = 'c' + (clusterIdCounter++);
+      var avgImp = 0, sumX = 0, sumY = 0;
+      group.forEach(function(id) {
+        avgImp += (nodeMap[id].importance || 5);
+        var fn = fnMap[id];
+        if (fn) { sumX += fn.x; sumY += fn.y; }
+      });
+      avgImp /= group.length;
+      var clx = sumX / group.length;
+      var cly = sumY / group.length;
+
+      var label = autoLabel(group);
+      clusters[cid] = {
+        id: cid, cat: cat, label: label,
+        memIds: group, importance: avgImp,
+        expanded: !!expandedClusters[cid]
+      };
+      group.forEach(function(mid) { memToCluster[mid] = cid; });
+      clusterPositions[cid] = { x: clx, y: cly };
+      clusterProcessOrder.push(cid);
+
+      if (clusters[cid].expanded) {
+        group.forEach(function(mid) {
+          var fn = fnMap[mid];
+          if (fn) {
+            nodePositions[mid] = { x: fn.x, y: fn.y, depth: 1 };
+          }
+        });
+      }
+    });
+
+    individualMems.forEach(function(m) {
+      var fn = fnMap[m.id];
+      if (!fn) return;
+      nodePositions[m.id] = { x: fn.x, y: fn.y, depth: 0 };
+    });
+  });
+
+  initParticles();
+}
+
+function initParticles() {
+  branchParticles = [];
+  if (links.length === 0) return;
+  var maxP = Math.min(links.length * 1.5, MAX_BRANCH_PARTICLES) | 0;
+  for (var i = 0; i < maxP; i++) {
+    branchParticles.push({
+      linkIdx: Math.random() * links.length | 0,
+      t: Math.random(),
+      speed: 0.002 + Math.random() * 0.004,
+      size: 0.6 + Math.random() * 0.8,
+      alpha: 0.15 + Math.random() * 0.25
+    });
+  }
+}
+
+// ===== Animated Position Computation =====
+function computeAnimatedPositions() {
+  centerAnimPos.x = centerPos.x + Math.sin(time * 0.15) * HUB_WOBBLE + Math.sin(time * 0.31) * HUB_WOBBLE * 0.5;
+  centerAnimPos.y = centerPos.y + Math.cos(time * 0.19) * HUB_WOBBLE + Math.cos(time * 0.37) * HUB_WOBBLE * 0.5;
+
+  if (_fnMap) {
+    var ids = Object.keys(_fnMap);
+    for (var i = 0; i < ids.length; i++) {
+      var fn = _fnMap[ids[i]];
+      if (fn) nodeAnimPos[fn.id] = { x: fn.x, y: fn.y };
+    }
+  }
+
+  var cids = Object.keys(clusters);
+  for (var i = 0; i < cids.length; i++) {
+    var cid = cids[i];
+    var cluster = clusters[cid];
+    if (!cluster) continue;
+    var sx = 0, sy = 0, cnt = 0;
+    for (var j = 0; j < cluster.memIds.length; j++) {
+      var nap = nodeAnimPos[cluster.memIds[j]];
+      if (nap) { sx += nap.x; sy += nap.y; cnt++; }
+    }
+    if (cnt > 0) {
+      clusterAnimPos[cid] = { x: sx / cnt, y: sy / cnt };
+    } else {
+      var bp = clusterPositions[cid];
+      clusterAnimPos[cid] = bp ? { x: bp.x, y: bp.y } : { x: centerAnimPos.x, y: centerAnimPos.y };
+    }
+  }
+}
+
+function getHighlightPath(memId) {
+  var path = [];
+  for (var i = 0; i < links.length; i++) {
+    if (links[i].source === memId || links[i].target === memId) {
+      path.push(i);
+    }
+  }
+  return path;
+}
+
+// ===== Scene Building =====
+function clearScene() {
+  var layers = [glowLayer, orbLayer, particleLayer, sparkLayer];
+  for (var l = 0; l < layers.length; l++) {
+    var ch = layers[l].removeChildren();
+    for (var i = 0; i < ch.length; i++) ch[i].destroy();
+  }
+  var texts = labelLayer.removeChildren();
+  for (var i = 0; i < texts.length; i++) texts[i].destroy(true);
+  curvesGfx.clear();
+  overlayGfx.clear();
+  pulseGfx.clear();
+  nodeSprites = {};
+  clusterSprites = {};
+  hubGlow = null; hubOrb = null; hubLabel = null;
+  pulseRings = [];
+  nodeSparks = [];
+  energyPulses = [];
+  energyPulsePool = [];
+  focusLabelPool = [];
+  nextPulseTime = {};
+}
+
+function buildScene() {
+  clearScene();
+
+  // Recompute highlight path
+  hlSet = {}; hlIndexSet = {};
+  if (selectedNode) {
+    var hlIndices = getHighlightPath(selectedNode.id);
+    hlSet[selectedNode.id] = true;
+    for (var i = 0; i < hlIndices.length; i++) {
+      hlIndexSet[hlIndices[i]] = true;
+      var l = links[hlIndices[i]];
+      hlSet[l.source] = true;
+      hlSet[l.target] = true;
+    }
+  }
+
+  // ===== Center Hub =====
+  hubGlow = new PIXI.Sprite(glowTex);
+  hubGlow.anchor.set(0.5);
+  hubGlow.tint = 0xc4a265;
+  hubGlow.blendMode = PIXI.BLEND_MODES.ADD;
+  hubGlow.position.set(centerAnimPos.x, centerAnimPos.y);
+  glowLayer.addChild(hubGlow);
+
+  hubOrb = new PIXI.Sprite(orbTex);
+  hubOrb.anchor.set(0.5);
+  hubOrb.tint = 0xc4a265;
+  hubOrb.position.set(centerAnimPos.x, centerAnimPos.y);
+  orbLayer.addChild(hubOrb);
+
+  hubLabel = new PIXI.Text('ENGRAM', {
+    fontFamily: 'Inter, sans-serif', fontSize: 20, fontWeight: '500', fill: 0xc4a265
+  });
+  hubLabel.anchor.set(0.5, 0);
+  hubLabel.position.set(centerAnimPos.x, centerAnimPos.y + CENTER_HUB_R + 4);
+  labelLayer.addChild(hubLabel);
+
+  nextPulseTime['__hub'] = time + rng(1, 4);
+
+  // ===== Cluster Starburst/Dandelion Rendering =====
+  clusterSprites = {};
+  var cids = Object.keys(clusters);
+  for (var ci = 0; ci < cids.length; ci++) {
+    var cid = cids[ci];
+    var cluster = clusters[cid];
+    var ap = clusterAnimPos[cid] || clusterPositions[cid];
+    if (!ap) continue;
+    var col = COLORS[cluster.cat] || COLORS.general;
+
+    // Soft glow behind starburst
+    var cg = new PIXI.Sprite(glowTex);
+    cg.anchor.set(0.5);
+    cg.tint = col.hex;
+    cg.blendMode = PIXI.BLEND_MODES.ADD;
+    cg.position.set(ap.x, ap.y);
+    glowLayer.addChild(cg);
+
+    // Starburst graphics: radiating spines from center
+    var starGfx = new PIXI.Graphics();
+    starGfx.position.set(ap.x, ap.y);
+    var members = cluster.memIds;
+    var count = members.length;
+    var angleStep = (Math.PI * 2) / count;
+    var baseSpineLen = 25 + Math.min(Math.sqrt(count) * 14, 35);
+    var spineData = [];
+    for (var si = 0; si < count; si++) {
+      var mem = nodeMap[members[si]];
+      var imp = mem ? (mem.importance || 5) : 5;
+      var spineLen = baseSpineLen + imp * 2.0 + (Math.random() - 0.5) * 12;
+      // Clamp spine length to 25-60
+      if (spineLen < 25) spineLen = 25;
+      if (spineLen > 60) spineLen = 60;
+      // Angular jitter so they don't look perfectly uniform
+      var angle = angleStep * si + (Math.random() - 0.5) * 0.18;
+      var ex = Math.cos(angle) * spineLen;
+      var ey = Math.sin(angle) * spineLen;
+
+      // Spine line -- tapered: thicker at base, thinner at tip
+      starGfx.lineStyle(1.4, col.hex, 0.4);
+      starGfx.moveTo(0, 0);
+      var mx = Math.cos(angle) * spineLen * 0.5;
+      var my = Math.sin(angle) * spineLen * 0.5;
+      starGfx.lineTo(mx, my);
+      starGfx.lineStyle(0.7, col.hex, 0.28);
+      starGfx.lineTo(ex, ey);
+
+      // Bright dot at end of each spine (individual memory)
+      starGfx.lineStyle(0);
+      starGfx.beginFill(col.hex, 0.9);
+      starGfx.drawCircle(ex, ey, 2.5 + imp * 0.18);
+      starGfx.endFill();
+      // Tiny bright white core
+      starGfx.beginFill(0xffffff, 0.6);
+      starGfx.drawCircle(ex, ey, 1.0);
+      starGfx.endFill();
+
+      spineData.push({ angle: angle, len: spineLen, ex: ex, ey: ey, memId: members[si] });
+    }
+
+    // Bright white center dot
+    starGfx.lineStyle(0);
+    starGfx.beginFill(0xffffff, 0.95);
+    starGfx.drawCircle(0, 0, 3.5 + Math.sqrt(count) * 0.5);
+    starGfx.endFill();
+    // Colored halo around center
+    starGfx.beginFill(col.hex, 0.35);
+    starGfx.drawCircle(0, 0, 5 + Math.sqrt(count) * 0.8);
+    starGfx.endFill();
+
+    orbLayer.addChild(starGfx);
+
+    // Count badge label
+    var badgeText = cluster.memIds.length + '';
+    var badge = new PIXI.Text(badgeText, {
+      fontFamily: 'JetBrains Mono, monospace', fontSize: 14, fontWeight: '700',
+      fill: 0xffffff, stroke: col.hex, strokeThickness: 2
+    });
+    badge.anchor.set(0.5);
+    badge.position.set(ap.x, ap.y);
+    labelLayer.addChild(badge);
+
+    // Cluster label below
+    var clLabel = new PIXI.Text(cluster.label, {
+      fontFamily: 'Inter, sans-serif', fontSize: 11, fontWeight: '500',
+      fill: col.hex, wordWrap: true, wordWrapWidth: 120
+    });
+    clLabel.anchor.set(0.5, 0);
+    clLabel.position.set(ap.x, ap.y + 20);
+    labelLayer.addChild(clLabel);
+
+    clusterSprites[cid] = { glow: cg, star: starGfx, badge: badge, label: clLabel, spineData: spineData };
+  }
+
+  // ===== Individual Memory Nodes (unclustered or expanded) =====
+  for (var mi = 0; mi < memories.length; mi++) {
+    var m = memories[mi];
+
+    // Skip memories in collapsed clusters
+    var mCluster = memToCluster[m.id];
+    if (mCluster && !clusters[mCluster].expanded) continue;
+
+    var ap = nodeAnimPos[m.id] || nodePositions[m.id];
+    if (!ap) continue;
+    var col = COLORS[m.category] || COLORS.general;
+
+    // Glow
+    var mg = new PIXI.Sprite(glowTex);
+    mg.anchor.set(0.5);
+    mg.tint = col.hex;
+    mg.blendMode = PIXI.BLEND_MODES.ADD;
+    mg.position.set(ap.x, ap.y);
+    glowLayer.addChild(mg);
+
+    // Mini starburst: 3-7 spines based on importance
+    var miniStar = new PIXI.Graphics();
+    miniStar.position.set(ap.x, ap.y);
+    var nImp = m.importance || 5;
+    var nSpines = 3 + Math.min(Math.floor(nImp / 2), 4); // 3-7
+    var nAngleStep = (Math.PI * 2) / nSpines;
+    for (var nsi = 0; nsi < nSpines; nsi++) {
+      var nAngle = nAngleStep * nsi + (Math.random() - 0.5) * 0.35;
+      var nLen = 8 + nImp * 1.3 + Math.random() * 4;
+      var nex = Math.cos(nAngle) * nLen;
+      var ney = Math.sin(nAngle) * nLen;
+
+      miniStar.lineStyle(0.8, col.hex, 0.35);
+      miniStar.moveTo(0, 0);
+      miniStar.lineTo(nex, ney);
+      miniStar.lineStyle(0);
+      miniStar.beginFill(col.hex, 0.7);
+      miniStar.drawCircle(nex, ney, 1.4);
+      miniStar.endFill();
+      // White core dot at tip
+      miniStar.beginFill(0xffffff, 0.4);
+      miniStar.drawCircle(nex, ney, 0.6);
+      miniStar.endFill();
+    }
+
+    // White center dot
+    miniStar.lineStyle(0);
+    miniStar.beginFill(0xffffff, 0.85);
+    miniStar.drawCircle(0, 0, 2.0 + nImp * 0.1);
+    miniStar.endFill();
+    miniStar.beginFill(col.hex, 0.3);
+    miniStar.drawCircle(0, 0, 3.0 + nImp * 0.15);
+    miniStar.endFill();
+
+    orbLayer.addChild(miniStar);
+
+    nodeSprites[m.id] = { glow: mg, miniStar: miniStar };
+  }
+
+  // ===== Branch Particle Sprites =====
+  for (var pi = 0; pi < branchParticles.length; pi++) {
+    var ps = new PIXI.Sprite(particleTex);
+    ps.anchor.set(0.5);
+    ps.blendMode = PIXI.BLEND_MODES.ADD;
+    ps.visible = false;
+    particleLayer.addChild(ps);
+    branchParticles[pi].sprite = ps;
+  }
+
+  // ===== Energy Pulse Sprite Pool =====
+  energyPulsePool = [];
+  for (var i = 0; i < MAX_ENERGY_PULSES; i++) {
+    var eps = new PIXI.Sprite(glowTex);
+    eps.anchor.set(0.5);
+    eps.blendMode = PIXI.BLEND_MODES.ADD;
+    eps.visible = false;
+    particleLayer.addChild(eps);
+    energyPulsePool.push(eps);
+  }
+
+  // ===== Focus Label Pool =====
+  focusLabelPool = [];
+  for (var i = 0; i < MAX_FOCUS_LABELS; i++) {
+    var fl = new PIXI.Text('', focusLabelStyle);
+    fl.anchor.set(0.5, 0);
+    fl.visible = false;
+    fl.alpha = 0;
+    labelLayer.addChild(fl);
+    focusLabelPool.push(fl);
+  }
+}
+
+// ===== Update Functions =====
+
+// Edges: glow line + core line, clearly visible
+function updateCurves(phaseTrunk, phaseBranch, dimEased) {
+  curvesGfx.clear();
+  var alpha = easeOutExpo(phaseBranch);
+  if (alpha < 0.005) return;
+
+  for (var i = 0; i < links.length; i++) {
+    var l = links[i];
+    var sp = nodeAnimPos[l.source] || clusterAnimPos[l.source];
+    var tp = nodeAnimPos[l.target] || clusterAnimPos[l.target];
+    if (!sp || !tp) continue;
+
+    var srcMem = nodeMap[l.source], tgtMem = nodeMap[l.target];
+    if (currentFilter !== 'all') {
+      var srcCat = srcMem ? srcMem.category : null;
+      var tgtCat = tgtMem ? tgtMem.category : null;
+      if (srcCat !== currentFilter && tgtCat !== currentFilter) continue;
+    }
+
+    // Redirect links to collapsed cluster centroids
+    var srcCluster = memToCluster[l.source], tgtCluster = memToCluster[l.target];
+    var srcCollapsed = srcCluster && clusters[srcCluster] && !clusters[srcCluster].expanded;
+    var tgtCollapsed = tgtCluster && clusters[tgtCluster] && !clusters[tgtCluster].expanded;
+    if (srcCollapsed && tgtCollapsed && srcCluster === tgtCluster) continue;
+    if (srcCollapsed) sp = clusterAnimPos[srcCluster] || sp;
+    if (tgtCollapsed) tp = clusterAnimPos[tgtCluster] || tp;
+
+    var sim = l.similarity || 0.5;
+    var lA = alpha * (0.18 + sim * 0.42);
+
+    var isHL = hlSet[l.source] && hlSet[l.target];
+    if (selectedNode) {
+      if (isHL) lA = 0.7;
+      else if (hlSet[l.source] || hlSet[l.target]) lA *= 0.5;
+      else lA *= (1 - dimEased * 0.88);
+    }
+    if (lA < 0.005) continue;
+
+    var col = srcMem ? (COLORS[srcMem.category] || COLORS.general) : COLORS.general;
+
+    // Glow line (wider, dimmer) underneath
+    curvesGfx.lineStyle(4.0 / transform.k, col.hex, lA * 0.15);
+    curvesGfx.moveTo(sp.x, sp.y);
+    curvesGfx.lineTo(tp.x, tp.y);
+
+    // Core line (thinner, brighter) on top
+    var lineW = Math.max(0.6, 0.8 + sim * 1.0) / transform.k;
+    curvesGfx.lineStyle(lineW, col.hex, Math.min(lA * 1.4, 0.5));
+    curvesGfx.moveTo(sp.x, sp.y);
+    curvesGfx.lineTo(tp.x, tp.y);
+
+    // Endpoint dots
+    if (lA > 0.05) {
+      curvesGfx.lineStyle(0);
+      curvesGfx.beginFill(col.hex, lA * 0.4);
+      curvesGfx.drawCircle(tp.x, tp.y, 0.8 / transform.k);
+      curvesGfx.endFill();
+    }
+  }
+}
+
+// Data packets traveling along links
+function updateParticles(entryEased, dimEased) {
+  for (var pi = 0; pi < branchParticles.length; pi++) {
+    var bp = branchParticles[pi];
+    var spr = bp.sprite;
+    if (!spr) continue;
+
+    bp.t += bp.speed;
+    if (bp.t > 1) {
+      bp.t -= 1;
+      bp.linkIdx = Math.random() * links.length | 0;
+    }
+
+    var l = links[bp.linkIdx];
+    if (!l) { spr.visible = false; continue; }
+
+    var sp = nodeAnimPos[l.source] || clusterAnimPos[l.source];
+    var tp = nodeAnimPos[l.target] || clusterAnimPos[l.target];
+    if (!sp || !tp) { spr.visible = false; continue; }
+
+    var pSrcCluster = memToCluster[l.source], pTgtCluster = memToCluster[l.target];
+    if (pSrcCluster && clusters[pSrcCluster] && !clusters[pSrcCluster].expanded) sp = clusterAnimPos[pSrcCluster] || sp;
+    if (pTgtCluster && clusters[pTgtCluster] && !clusters[pTgtCluster].expanded) tp = clusterAnimPos[pTgtCluster] || tp;
+
+    var srcMem = nodeMap[l.source];
+    if (currentFilter !== 'all' && srcMem && srcMem.category !== currentFilter) { spr.visible = false; continue; }
+
+    var x = sp.x + (tp.x - sp.x) * bp.t;
+    var y = sp.y + (tp.y - sp.y) * bp.t;
+    var fadeT = Math.min(bp.t, 1 - bp.t) * 4;
+    var pAlpha = bp.alpha * Math.min(1, fadeT) * entryEased;
+    if (selectedNode && srcMem && srcMem.category !== selectedNode.category) pAlpha *= 0.08;
+    if (pAlpha < 0.02) { spr.visible = false; continue; }
+
+    spr.visible = true;
+    spr.position.set(x, y);
+    spr.tint = srcMem ? (COLORS[srcMem.category] || COLORS.general).hex : COLORS.general.hex;
+    var pScale = bp.size * 2 / 32;
+    spr.scale.set(pScale / transform.k);
+    spr.alpha = pAlpha;
+  }
+}
+
+// Energy pulses
+function updateEnergyPulses(dt, entryEased, dimEased) {
+  if (entryEased > 0.8 && links.length > 0 && energyPulses.length < MAX_ENERGY_PULSES) {
+    for (var attempt = 0; attempt < 2; attempt++) {
+      if (Math.random() < 0.12 * dt * 60) {
+        var idx = Math.random() * links.length | 0;
+        var l = links[idx];
+        if (!l) continue;
+        var srcMem = nodeMap[l.source];
+        if (currentFilter !== 'all' && srcMem && srcMem.category !== currentFilter) continue;
+        var freeSpr = null;
+        for (var j = 0; j < energyPulsePool.length; j++) {
+          if (!energyPulsePool[j].visible) { freeSpr = energyPulsePool[j]; break; }
+        }
+        if (!freeSpr) break;
+        energyPulses.push({
+          linkIdx: idx,
+          t: 0, speed: 0.4 + Math.random() * 0.5,
+          sprite: freeSpr, cat: srcMem ? srcMem.category : 'general'
+        });
+      }
+    }
+  }
+
+  for (var i = energyPulses.length - 1; i >= 0; i--) {
+    var ep = energyPulses[i];
+    ep.t += ep.speed * dt;
+    if (ep.t >= 1) { ep.sprite.visible = false; energyPulses.splice(i, 1); continue; }
+
+    var l = links[ep.linkIdx];
+    if (!l) { ep.sprite.visible = false; energyPulses.splice(i, 1); continue; }
+
+    var sp = nodeAnimPos[l.source] || clusterAnimPos[l.source];
+    var tp = nodeAnimPos[l.target] || clusterAnimPos[l.target];
+    if (!sp || !tp) { ep.sprite.visible = false; energyPulses.splice(i, 1); continue; }
+
+    var eSrcC = memToCluster[l.source], eTgtC = memToCluster[l.target];
+    if (eSrcC && clusters[eSrcC] && !clusters[eSrcC].expanded) sp = clusterAnimPos[eSrcC] || sp;
+    if (eTgtC && clusters[eTgtC] && !clusters[eTgtC].expanded) tp = clusterAnimPos[eTgtC] || tp;
+
+    var x = sp.x + (tp.x - sp.x) * ep.t;
+    var y = sp.y + (tp.y - sp.y) * ep.t;
+
+    var fadeT = Math.min(ep.t * 5, (1 - ep.t) * 5, 1);
+    var alpha = fadeT * 0.55 * entryEased;
+    if (selectedNode && ep.cat !== selectedNode.category) alpha *= 0.1;
+
+    ep.sprite.visible = alpha > 0.02;
+    ep.sprite.position.set(x, y);
+    ep.sprite.tint = (COLORS[ep.cat] || COLORS.general).hex;
+    ep.sprite.scale.set((0.06 + alpha * 0.03) / transform.k);
+    ep.sprite.alpha = alpha;
+  }
+}
+
+// Pulse rings from hub
+function updatePulseRings(entryEased, dimEased) {
+  if (nextPulseTime['__hub'] && time > nextPulseTime['__hub'] && pulseRings.length < MAX_PULSE_RINGS) {
+    pulseRings.push({
+      x: centerAnimPos.x, y: centerAnimPos.y,
+      startR: CENTER_HUB_R,
+      maxR: CENTER_HUB_R + 70 + Math.random() * 50,
+      duration: 2.2 + Math.random() * 1.0,
+      born: time, color: 0xc4a265, cat: '__hub'
+    });
+    nextPulseTime['__hub'] = time + rng(3.5, 6);
+  }
+
+  pulseGfx.clear();
+  for (var i = pulseRings.length - 1; i >= 0; i--) {
+    var ring = pulseRings[i];
+    var age = time - ring.born;
+    var progress = age / ring.duration;
+    if (progress >= 1) { pulseRings.splice(i, 1); continue; }
+    var r = ring.startR + (ring.maxR - ring.startR) * easeOutCubic(progress);
+    var alpha = (1 - progress * progress) * 0.3 * entryEased;
+    if (selectedNode && ring.cat !== selectedNode.category && ring.cat !== '__hub') {
+      alpha *= (1 - dimEased * 0.85);
+    }
+    if (alpha < 0.004) continue;
+    pulseGfx.lineStyle(1.5 / transform.k, ring.color, alpha * 0.2);
+    pulseGfx.drawCircle(ring.x, ring.y, r);
+    pulseGfx.lineStyle(0.6 / transform.k, ring.color, alpha * 0.8);
+    pulseGfx.drawCircle(ring.x, ring.y, r);
+  }
+}
+
+// Node sparks
+function updateNodeSparks(dt, entryEased, dimEased) {
+  if (entryEased > 0.8 && nodeSparks.length < MAX_NODE_SPARKS) {
+    for (var mi = 0; mi < memories.length; mi++) {
+      var m = memories[mi];
+      if (!nodeVisible(m)) continue;
+      var ap = nodeAnimPos[m.id];
+      if (!ap) continue;
+      var chance = NODE_SPARK_CHANCE * ((m.importance || 1) / 5);
+      if (Math.random() > chance) continue;
+      if (nodeSparks.length >= MAX_NODE_SPARKS) break;
+
+      var col = COLORS[m.category] || COLORS.general;
+      var angle = Math.random() * Math.PI * 2;
+      var speed = 8 + Math.random() * 20;
+      var spr = new PIXI.Sprite(sparkTex);
+      spr.anchor.set(0.5);
+      spr.blendMode = PIXI.BLEND_MODES.ADD;
+      spr.tint = col.hex;
+      sparkLayer.addChild(spr);
+
+      nodeSparks.push({
+        x: ap.x, y: ap.y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 0.6 + Math.random() * 1.0,
+        maxLife: 0.6 + Math.random() * 1.0,
+        size: 0.5 + Math.random() * 1.0,
+        sprite: spr, cat: m.category
+      });
+    }
+  }
+
+  for (var i = nodeSparks.length - 1; i >= 0; i--) {
+    var sp = nodeSparks[i];
+    sp.life -= dt;
+    if (sp.life <= 0) {
+      sp.sprite.destroy();
+      nodeSparks.splice(i, 1);
+      continue;
+    }
+    sp.x += sp.vx * dt;
+    sp.y += sp.vy * dt;
+    sp.vx *= 0.97;
+    sp.vy *= 0.97;
+    var lifeRatio = sp.life / sp.maxLife;
+    var alpha = lifeRatio * lifeRatio * 0.7 * entryEased;
+    if (selectedNode && sp.cat !== selectedNode.category) alpha *= (1 - dimEased * 0.85);
+    sp.sprite.position.set(sp.x, sp.y);
+    sp.sprite.scale.set(sp.size * lifeRatio * 2 / 16);
+    sp.sprite.alpha = alpha;
+    sp.sprite.visible = alpha > 0.01;
+  }
+}
+
+// Center hub
+function updateHub(phaseCenter) {
+  if (!hubGlow || !hubOrb) return;
+  var alpha = easeOutExpo(phaseCenter);
+  var pulse = 1
+    + Math.sin(time * 0.8) * 0.08
+    + Math.sin(time * 1.7) * 0.04
+    + Math.sin(time * 3.1) * 0.02;
+  var r = CENTER_HUB_R * pulse;
+
+  var glowBreath = 1 + Math.sin(time * 0.5) * 0.22 + Math.sin(time * 1.3) * 0.08;
+  var glowDiam = r * 2.5;
+  hubGlow.position.set(centerAnimPos.x, centerAnimPos.y);
+  hubGlow.scale.set(glowDiam / 128);
+  hubGlow.alpha = alpha * 0.12 * glowBreath;
+
+  var orbDiam = r * 2.8;
+  hubOrb.position.set(centerAnimPos.x, centerAnimPos.y);
+  hubOrb.scale.set(orbDiam / 128);
+  hubOrb.alpha = alpha;
+  hubOrb.rotation = 0;
+
+  if (hubLabel) {
+    hubLabel.visible = transform.k > 0.4;
+    hubLabel.scale.set(0.5 / transform.k);
+    hubLabel.alpha = 0.5 * alpha;
+    hubLabel.position.set(centerAnimPos.x, centerAnimPos.y + r + 18 / transform.k);
+  }
+}
+
+// Cluster starburst update -- animated positions + slow rotation + count badges
+function updateClusters(phaseNodes, dimEased) {
+  var cids = Object.keys(clusterSprites);
+  for (var ci = 0; ci < cids.length; ci++) {
+    var cid = cids[ci];
+    var cluster = clusters[cid];
+    var cs = clusterSprites[cid];
+    if (!cs || !cluster) continue;
+
+    var vis = currentFilter === 'all' || cluster.cat === currentFilter;
+    if (cluster.expanded) vis = false;
+
+    cs.glow.visible = vis;
+    cs.star.visible = vis;
+    cs.badge.visible = vis && transform.k > 0.15;
+    cs.label.visible = vis && transform.k > 0.3;
+    if (!vis) continue;
+
+    var ap = clusterAnimPos[cid];
+    if (!ap) { cs.glow.visible = false; cs.star.visible = false; cs.badge.visible = false; cs.label.visible = false; continue; }
+
+    var count = cluster.memIds.length;
+
+    var alpha = phaseNodes;
+    if (dimProgress > 0) alpha *= (1 - dimEased * 0.6);
+
+    // Breathing
+    var glowBreath = 1 + Math.sin(time * 0.5 + ci * 1.3) * 0.2;
+    var starburstR = 25 + Math.min(Math.sqrt(count) * 14, 35);
+    var glowDiam = starburstR * 2.8;
+
+    // Glow
+    cs.glow.position.set(ap.x, ap.y);
+    cs.glow.scale.set(glowDiam / 128);
+    cs.glow.alpha = alpha * 0.2 * glowBreath;
+
+    // Starburst: position, very slow rotation, alpha
+    cs.star.position.set(ap.x, ap.y);
+    cs.star.rotation += 0.0008; // Very slow rotation animation
+    cs.star.alpha = Math.min(1, alpha * 1.1);
+
+    // Badge (count number)
+    cs.badge.position.set(ap.x, ap.y);
+    cs.badge.scale.set(0.7 / transform.k);
+    cs.badge.alpha = alpha * 0.9;
+
+    // Label below starburst
+    var maxSpineLen = 20;
+    if (cs.spineData && cs.spineData.length > 0) {
+      maxSpineLen = 0;
+      for (var sdi = 0; sdi < cs.spineData.length; sdi++) {
+        if (cs.spineData[sdi].len > maxSpineLen) maxSpineLen = cs.spineData[sdi].len;
+      }
+    }
+    var labelY = ap.y + maxSpineLen + 8 / transform.k;
+    cs.label.position.set(ap.x, labelY);
+    cs.label.scale.set(0.45 / transform.k);
+    cs.label.alpha = alpha * 0.55;
+  }
+}
+
+// Memory nodes -- animated glow + mini starburst
+function updateNodes(phaseNodes, dimEased) {
+  for (var mi = 0; mi < memories.length; mi++) {
+    var m = memories[mi];
+    var ns = nodeSprites[m.id];
+    if (!ns) continue;
+
+    var vis = nodeVisible(m);
+    ns.glow.visible = vis;
+    if (ns.miniStar) ns.miniStar.visible = vis;
+    if (!vis) continue;
+
+    var ap = nodeAnimPos[m.id];
+    if (!ap) { ns.glow.visible = false; if (ns.miniStar) ns.miniStar.visible = false; continue; }
+
+    var r = nodeRadius(m);
+    var isSelected = selectedNode && selectedNode.id === m.id;
+    var isHovered = hoveredNode && hoveredNode.id === m.id;
+    var isSearchHit = searchHighlight.has(m.id);
+    var isOnPath = hlSet[m.id] || false;
+
+    var nodeDelay = (mi / memories.length) * 0.3;
+    var nodeEntry = Math.min(1, easeOutExpo(Math.max(0, phaseNodes * 1.5 - nodeDelay)));
+
+    var alpha = nodeEntry;
+    if (selectedNode && !isSelected && !isOnPath) alpha *= (1 - dimEased * 0.88);
+    if (m.is_forgotten) alpha *= 0.25;
+    if (alpha < 0.01) { ns.glow.visible = false; if (ns.miniStar) ns.miniStar.visible = false; continue; }
+
+    // Breathing
+    var pulse = 1
+      + Math.sin(time * 1.1 + m.id * 0.7) * 0.06
+      + Math.sin(time * 2.7 + m.id * 1.3) * 0.03;
+
+    // Glow
+    var glowBreath = 1 + Math.sin(time * 0.7 + m.id * 1.1) * 0.18;
+    var bloomMult = (isSelected || isHovered || isSearchHit) ? 2.5 : 1.5;
+    var glowDiam = r * bloomMult * 2 * pulse;
+    ns.glow.position.set(ap.x, ap.y);
+    ns.glow.scale.set(glowDiam / 128);
+    ns.glow.alpha = alpha * (isSelected || isHovered ? 0.3 : 0.12) * glowBreath;
+    ns.glow.visible = true;
+
+    // Mini starburst
+    if (ns.miniStar) {
+      ns.miniStar.position.set(ap.x, ap.y);
+      ns.miniStar.alpha = alpha * 0.85;
+      ns.miniStar.rotation += 0.0005; // Very slow rotation for individual nodes too
+      ns.miniStar.visible = true;
+    }
+  }
+}
+
+// Focus Labels
+function updateFocusLabels(dimEased) {
+  if (!selectedNode || dimEased < 0.05) {
+    for (var i = 0; i < focusLabelPool.length; i++) {
+      var fl = focusLabelPool[i];
+      if (fl.visible) { fl.alpha = Math.max(0, fl.alpha - 0.08); if (fl.alpha <= 0.01) fl.visible = false; }
+    }
+    return;
+  }
+
+  var labelIds = [];
+  labelIds.push(selectedNode.id);
+  var neighborLinks = [];
+  for (var i = 0; i < links.length; i++) {
+    if (!hlIndexSet[i]) continue;
+    var l = links[i];
+    var otherId = l.source === selectedNode.id ? l.target : l.source;
+    if (otherId !== selectedNode.id) neighborLinks.push({ id: otherId, w: l.similarity || l.weight || 0.5 });
+  }
+  neighborLinks.sort(function(a, b) { return b.w - a.w; });
+  for (var i = 0; i < neighborLinks.length && labelIds.length < MAX_FOCUS_LABELS; i++) {
+    labelIds.push(neighborLinks[i].id);
+  }
+
+  var used = 0;
+  for (var i = 0; i < labelIds.length && used < focusLabelPool.length; i++) {
+    var mid = labelIds[i];
+    var m = nodeMap[mid];
+    if (!m) continue;
+    var ap = nodeAnimPos[mid];
+    if (!ap) continue;
+    if (!nodeVisible(m)) continue;
+
+    var r = nodeRadius(m);
+    var fl = focusLabelPool[used];
+
+    var txt = '#' + m.id + ' ' + (m.content || '').slice(0, 40);
+    if ((m.content || '').length > 40) txt += '...';
+    if (fl.text !== txt) fl.text = txt;
+
+    fl.position.set(ap.x, ap.y + r * 2 + 6 / transform.k);
+    fl.scale.set(0.38 / transform.k);
+
+    var col = COLORS[m.category] || COLORS.general;
+    fl.style.fill = mid === selectedNode.id ? 0xffffff : col.hex;
+
+    var targetAlpha = dimEased * (mid === selectedNode.id ? 0.95 : 0.75);
+    fl.alpha += (targetAlpha - fl.alpha) * 0.15;
+    fl.visible = true;
+    used++;
+  }
+
+  for (var i = used; i < focusLabelPool.length; i++) {
+    var fl = focusLabelPool[i];
+    if (fl.visible) { fl.alpha = Math.max(0, fl.alpha - 0.08); if (fl.alpha <= 0.01) fl.visible = false; }
+  }
+}
+
+function updateOverlay() {
+  overlayGfx.clear();
+
+  if (transform.k > 1.5) {
+    var now = Date.now();
+    var oneDayAgo = now - 86400000;
+    for (var mi = 0; mi < memories.length; mi++) {
+      var m = memories[mi];
+      if (!nodeVisible(m)) continue;
+      var ap = nodeAnimPos[m.id];
+      if (!ap) continue;
+      var r = nodeRadius(m);
+
+      // Forgotten: X cross
+      if (m.is_forgotten) {
+        var cs = r * 0.5;
+        overlayGfx.lineStyle(1.5 / transform.k, 0xef4444, 0.6);
+        overlayGfx.moveTo(ap.x - cs, ap.y - cs); overlayGfx.lineTo(ap.x + cs, ap.y + cs);
+        overlayGfx.moveTo(ap.x + cs, ap.y - cs); overlayGfx.lineTo(ap.x - cs, ap.y + cs);
+      }
+
+      // New (< 24h): small dot
+      var createdAt = m.created_at ? new Date(m.created_at).getTime() : 0;
+      if (createdAt > oneDayAgo) {
+        overlayGfx.lineStyle(0); overlayGfx.beginFill(0x22c55e, 0.8);
+        overlayGfx.drawCircle(ap.x + r * 0.75, ap.y - r * 0.55, 2.5 / transform.k);
+        overlayGfx.endFill();
+      }
+
+      // Expiring soon: pulsing outline
+      if (m.forget_after) {
+        var expiresAt = new Date(m.forget_after).getTime();
+        var hoursLeft = (expiresAt - now) / 3600000;
+        if (hoursLeft > 0 && hoursLeft < 48) {
+          overlayGfx.lineStyle(1 / transform.k, 0xfbbf24, 0.4 + Math.sin(time * 2) * 0.15);
+          overlayGfx.drawCircle(ap.x, ap.y, r + 4 / transform.k);
+        }
+      }
+
+      // Static: faint ring
+      if (m.is_static) {
+        var col = COLORS[m.category] || COLORS.general;
+        overlayGfx.lineStyle(0.8 / transform.k, col.hex, 0.2);
+        overlayGfx.drawCircle(ap.x, ap.y, r + 4 / transform.k);
+      }
+    }
+  }
+
+  // Selected ring
+  if (selectedNode) {
+    var ap = nodeAnimPos[selectedNode.id];
+    if (ap) {
+      var r = nodeRadius(selectedNode);
+      var selPulse = Math.sin(time * 3) * 0.5 + 0.5;
+      var selR = r + (5 + selPulse * 3) / transform.k;
+      var col = COLORS[selectedNode.category] || COLORS.general;
+      overlayGfx.lineStyle(3 / transform.k, col.hex, 0.1 + selPulse * 0.08);
+      overlayGfx.drawCircle(ap.x, ap.y, selR + 2 / transform.k);
+      overlayGfx.lineStyle(1.2 / transform.k, col.hex, 0.3 + selPulse * 0.25);
+      overlayGfx.drawCircle(ap.x, ap.y, selR);
+    }
+  }
+
+  // Hover ring
+  if (hoveredNode && (!selectedNode || hoveredNode.id !== selectedNode.id)) {
+    var ap = nodeAnimPos[hoveredNode.id];
+    if (ap) {
+      var r = nodeRadius(hoveredNode);
+      var col = COLORS[hoveredNode.category] || COLORS.general;
+      overlayGfx.lineStyle(0.8 / transform.k, col.hex, 0.35);
+      overlayGfx.drawCircle(ap.x, ap.y, r + 4 / transform.k);
+    }
+  }
+}
+
+// ===== Main Ticker =====
+app.ticker.add(function() {
+  time = performance.now() * 0.001;
+  var dt = app.ticker.deltaMS / 1000;
+
+  // Entry animation
+  if (entryProgress < 1 && loadTime > 0) {
+    entryProgress = Math.min(1, (performance.now() - loadTime) / 2500);
+  }
+
+  // Dim animation
+  dimTarget = selectedNode ? 1 : 0;
+  if (dimProgress < dimTarget) dimProgress = Math.min(dimTarget, dimProgress + dt / 1.5);
+  else if (dimProgress > dimTarget) dimProgress = Math.max(dimTarget, dimProgress - dt / 0.5);
+  var dimEased = easeOutCubic(dimProgress);
+
+  // Entry phases
+  var phaseCenter = clamp01(entryProgress / 0.15);
+  var phaseTrunk = clamp01((entryProgress - 0.12) / 0.23);
+  var phaseBranch = clamp01((entryProgress - 0.45) / 0.3);
+  var phaseNodes = clamp01((entryProgress - 0.6) / 0.4);
+  var entryEased = easeOutExpo(entryProgress);
+
+  computeAnimatedPositions();
+
+  // Async force-sim settling
+  if (_simSettling && _forceSim && _fnMap) {
+    var _t0 = performance.now();
+    while (performance.now() - _t0 < 8 && _forceSim.alpha() > 0.01) {
+      _forceSim.tick();
+    }
+    var _ids = Object.keys(_fnMap);
+    for (var _si = 0; _si < _ids.length; _si++) {
+      var _fn = _fnMap[_ids[_si]];
+      if (_fn) nodeAnimPos[_fn.id] = { x: _fn.x, y: _fn.y };
+    }
+    if (_forceSim.alpha() <= 0.01) {
+      _simSettling = false;
+      computeLayout();
+      computeAnimatedPositions();
+      buildScene();
+    }
+  }
+
+  // World-space effects
+  updateCurves(phaseTrunk, phaseBranch, dimEased);
+  updateParticles(entryEased, dimEased);
+  updateEnergyPulses(dt, entryEased, dimEased);
+  updatePulseRings(entryEased, dimEased);
+  updateNodeSparks(dt, entryEased, dimEased);
+  updateHub(phaseCenter);
+  updateClusters(phaseNodes, dimEased);
+  updateNodes(phaseNodes, dimEased);
+  updateFocusLabels(dimEased);
+  updateOverlay();
+});
+
+// ===== d3.zoom =====
+var zoom = d3.zoom().scaleExtent([0.06, 18]).on('zoom', function(e) {
+  transform = e.transform;
+  world.position.set(transform.x, transform.y);
+  world.scale.set(transform.k);
+  updateZoomLevel();
+});
+d3.select(app.view).call(zoom).on('dblclick.zoom', null);
+
+// ===== Interaction =====
+function screenToWorld(sx, sy) {
+  return [(sx - transform.x) / transform.k, (sy - transform.y) / transform.k];
+}
+
+function findNode(sx, sy) {
+  var wxy = screenToWorld(sx, sy), wx = wxy[0], wy = wxy[1];
+  var closest = null, closestDist = Infinity;
+  for (var i = 0; i < memories.length; i++) {
+    var m = memories[i];
+    if (!nodeVisible(m)) continue;
+    var mCluster = memToCluster[m.id];
+    if (mCluster && !clusters[mCluster].expanded) continue;
+    var ap = nodeAnimPos[m.id];
+    if (!ap) continue;
+    var r = nodeRadius(m);
+    var hitR = r + 10 / transform.k;
+    var dx = ap.x - wx, dy = ap.y - wy;
+    var dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > hitR) continue;
+    if (dist < closestDist) { closest = m; closestDist = dist; }
+  }
+  return closest;
+}
+
+function findCluster(sx, sy) {
+  var wxy = screenToWorld(sx, sy), wx = wxy[0], wy = wxy[1];
+  var cids = Object.keys(clusters);
+  for (var i = 0; i < cids.length; i++) {
+    var cid = cids[i];
+    var cluster = clusters[cid];
+    if (cluster.expanded) continue;
+    if (currentFilter !== 'all' && cluster.cat !== currentFilter) continue;
+    var ap = clusterAnimPos[cid];
+    if (!ap) continue;
+    var count = cluster.memIds.length;
+    var hitR = 10 + Math.sqrt(count) * 4 + 8 / transform.k;
+    var dx = ap.x - wx, dy = ap.y - wy;
+    if (Math.sqrt(dx * dx + dy * dy) < hitR) return cid;
+  }
+  return null;
+}
+
+function toggleCluster(cid) {
+  if (expandedClusters[cid]) {
+    delete expandedClusters[cid];
+  } else {
+    expandedClusters[cid] = true;
+  }
+  computeLayout();
+  computeAnimatedPositions();
+  buildScene();
+  entryProgress = 1;
+  if (listPanelOpen) renderListPanel();
+}
+
+function hitCenterHub(sx, sy) {
+  var wxy = screenToWorld(sx, sy);
+  var dx = centerAnimPos.x - wxy[0], dy = centerAnimPos.y - wxy[1];
+  return Math.sqrt(dx * dx + dy * dy) < CENTER_HUB_R + 8 / transform.k;
+}
+
+// ===== Tooltip =====
+var tooltip = document.getElementById('tooltip');
+function showTooltip(m, x, y) {
+  tooltip.querySelector('.tt-id').textContent = '#' + m.id;
+  tooltip.querySelector('.tt-cat').textContent = m.category;
+  tooltip.querySelector('.tt-cat').style.color = nodeCol(m).core;
+  tooltip.querySelector('.tt-text').textContent = m.content.slice(0, 140) + (m.content.length > 140 ? '...' : '');
+  var tx = x + 16, ty = y - 16;
+  if (tx + 320 > screenW) tx = x - 336;
+  if (ty < 0) ty = 16;
+  tooltip.style.left = tx + 'px';
+  tooltip.style.top = ty + 'px';
+  tooltip.style.opacity = '1';
+}
+function hideTooltip() { tooltip.style.opacity = '0'; }
+
+function showClusterTooltip(cid, x, y) {
+  var cluster = clusters[cid];
+  if (!cluster) return;
+  var col = COLORS[cluster.cat] || COLORS.general;
+  tooltip.querySelector('.tt-id').textContent = cluster.memIds.length + ' memories';
+  tooltip.querySelector('.tt-cat').textContent = cluster.cat;
+  tooltip.querySelector('.tt-cat').style.color = col.core;
+  tooltip.querySelector('.tt-text').textContent = cluster.label + ' -- click to expand';
+  var tx = x + 16, ty = y - 16;
+  if (tx + 320 > screenW) tx = x - 336;
+  if (ty < 0) ty = 16;
+  tooltip.style.left = tx + 'px';
+  tooltip.style.top = ty + 'px';
+  tooltip.style.opacity = '1';
+}
+
+// ===== Mouse Events =====
+app.view.addEventListener('mousemove', function(e) {
+  var node = findNode(e.clientX, e.clientY);
+  var clHit = !node ? findCluster(e.clientX, e.clientY) : null;
+  if (node !== hoveredNode) {
+    hoveredNode = node;
+    var hubHit = !node && !clHit ? hitCenterHub(e.clientX, e.clientY) : false;
+    app.view.style.cursor = (node || hubHit || clHit) ? 'pointer' : 'default';
+    if (node) {
+      showTooltip(node, e.clientX, e.clientY);
+    } else if (clHit) {
+      showClusterTooltip(clHit, e.clientX, e.clientY);
+    } else {
+      hideTooltip();
+    }
+  } else if (node) {
+    showTooltip(node, e.clientX, e.clientY);
+  } else if (clHit) {
+    showClusterTooltip(clHit, e.clientX, e.clientY);
+    app.view.style.cursor = 'pointer';
+  }
+});
+
+app.view.addEventListener('click', function(e) {
+  var node = findNode(e.clientX, e.clientY);
+  if (node) { openSidebar(node); return; }
+  var clusterHit = findCluster(e.clientX, e.clientY);
+  if (clusterHit) { toggleCluster(clusterHit); return; }
+  if (hitCenterHub(e.clientX, e.clientY)) { currentFilter = 'all'; closeSidebar(); return; }
+});
+
+// ===== Sidebar =====
+function openSidebar(m) {
+  selectedNode = m;
+  dimProgress = 0;
+
+  hlSet = {}; hlIndexSet = {};
+  var hlIndices = getHighlightPath(m.id);
+  hlSet[m.id] = true;
+  for (var i = 0; i < hlIndices.length; i++) {
+    hlIndexSet[hlIndices[i]] = true;
+    var l = links[hlIndices[i]];
+    hlSet[l.source] = true;
+    hlSet[l.target] = true;
+  }
+
+  var sb = document.getElementById('sidebar-inner');
+  var col = nodeCol(m);
+  var badges = '';
+  if (m.is_static) badges += '<span class="badge badge-static">STATIC</span>';
+  if (m.is_forgotten) badges += '<span class="badge badge-forgotten">FORGOTTEN</span>';
+  if (m.is_inference) badges += '<span class="badge badge-inference">INFERRED</span>';
+  var html = '<div class="mem-header"><div class="mem-id">#' + m.id + ' &middot; v' + (m.version || 1) + badges + '</div>';
+  html += '<span class="mem-category" style="background:rgba(' + col.r + ',' + col.g + ',' + col.b + ',0.1);color:' + col.core + '">' + m.category + '</span></div>';
+  html += '<div class="mem-content">' + escHtml(m.content) + '</div>';
+  html += '<div class="mem-meta">';
+  html += '<span class="label">importance</span><span class="value">' + m.importance + '/10</span>';
+  html += '<span class="label">sources</span><span class="value">' + (m.source_count || 1) + '</span>';
+  html += '<span class="label">created</span><span class="value">' + formatDate(m.created_at) + '</span>';
+  if (m.forget_after) html += '<span class="label">forget_after</span><span class="value">' + m.forget_after + '</span>';
+  if (m.parent_memory_id) html += '<span class="label">parent</span><span class="value">#' + m.parent_memory_id + '</span>';
+  html += '</div>';
+  var linked = links.filter(function(l) { return l.source === m.id || l.target === m.id; }).slice(0, 30);
+  if (linked.length > 0) {
+    html += '<div class="linked-section"><h3>Connections (' + linked.length + ')</h3>';
+    for (var i = 0; i < linked.length; i++) {
+      var l = linked[i];
+      var otherId = l.source === m.id ? l.target : l.source;
+      var other = nodeMap[otherId];
+      if (!other) continue;
+      html += '<div class="linked-item" onclick="navigateTo(' + other.id + ')">';
+      html += '<span class="link-type">' + (l.type || 'similarity') + ' &middot; ' + ((l.similarity || 0) * 100).toFixed(0) + '%</span>';
+      html += '<div class="link-preview">#' + other.id + ' ' + escHtml(other.content.slice(0, 80)) + '</div></div>';
+    }
+    html += '</div>';
+  }
+  // Next/Prev navigation
+  html += '<div class="sb-nav">';
+  html += '<button class="sb-nav-btn" onclick="navPrevMemory()" id="sb-prev-btn" title="Previous memory">';
+  html += '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>Prev</button>';
+  html += '<button class="sb-nav-btn" onclick="navNextMemory()" id="sb-next-btn" title="Next memory">';
+  html += 'Next<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 6 15 12 9 18"/></svg></button>';
+  html += '</div>';
+  // Action buttons
+  html += '<div style="display:flex;gap:6px;margin-top:10px;">';
+  html += '<button onclick="editMemory(' + m.id + ')" style="flex:1;padding:7px;border-radius:7px;border:1px solid rgba(196,162,101,0.2);background:rgba(196,162,101,0.08);color:#c4a265;font-size:10px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif;">Edit</button>';
+  html += '<button onclick="archiveMemory(' + m.id + ')" style="flex:1;padding:7px;border-radius:7px;border:1px solid rgba(255,200,48,0.2);background:rgba(255,200,48,0.06);color:#ffc830;font-size:10px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif;">Archive</button>';
+  html += '<button onclick="deleteMemoryConfirm(' + m.id + ')" style="flex:1;padding:7px;border-radius:7px;border:1px solid rgba(255,58,110,0.2);background:rgba(255,58,110,0.06);color:#ff3a6e;font-size:10px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif;">Delete</button>';
+  html += '</div>';
+  sb.innerHTML = html;
+  document.getElementById('sidebar').classList.add('open');
+  updateListPanelActive(m.id);
+}
+
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  selectedNode = null;
+  hlSet = {}; hlIndexSet = {};
+}
+
+function navigateTo(id) {
+  var m = nodeMap[id];
+  if (!m) return;
+  var ap = nodeAnimPos[m.id] || nodePositions[m.id];
+  if (!ap) return;
+  openSidebar(m);
+  var tx = screenW / 2 - ap.x * transform.k;
+  var ty = screenH / 2 - ap.y * transform.k;
+  d3.select(app.view).transition().duration(700).ease(d3.easeCubicInOut)
+    .call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(transform.k));
+}
+
+// ===== Search =====
+async function doSearch() {
+  var q = document.getElementById('search').value.trim();
+  if (!q) { searchHighlight.clear(); return; }
+  try {
+    var res = await fetch(BASE + '/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q, limit: 20 }) });
+    var data = await res.json();
+    searchHighlight = new Set((data.results || []).map(function(r) { return r.id; }));
+    if (data.results && data.results.length > 0) {
+      var first = nodeMap[data.results[0].id];
+      if (first) { openSidebar(first); navigateTo(first.id); }
+    }
+  } catch(e) { console.error('Search failed:', e); }
+}
+
+// ===== Utility =====
+function escHtml(s) { return s ? s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : ''; }
+function formatDate(s) {
+  if (!s) return '\u2014';
+  try { return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+  catch(e) { return s; }
+}
+function shortDate(s) {
+  if (!s) return '\u2014';
+  try { return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
+  catch(e) { return s; }
+}
+function memoryTitle(m) {
+  var text = (m.content || '').trim();
+  var firstLine = text.split('\n')[0].replace(/^#+\s*/, '').replace(/^\[.*?\]\s*/, '');
+  if (firstLine.length > 80) firstLine = firstLine.slice(0, 77) + '...';
+  return firstLine || 'Memory #' + m.id;
+}
+function memoryPreview(m) {
+  var lines = (m.content || '').trim().split('\n');
+  var preview = lines.slice(1).join(' ').replace(/\s+/g, ' ').trim();
+  if (!preview && lines[0]) preview = lines[0].replace(/^#+\s*/, '');
+  if (preview.length > 140) preview = preview.slice(0, 137) + '...';
+  return preview;
+}
+
+// ===== Grid/Graph View Toggle =====
+var currentView = 'graph';
+var gridFilter = 'all';
+
+function switchView(view) {
+  currentView = view;
+  var tabs = document.querySelectorAll('.view-tab');
+  for (var i = 0; i < tabs.length; i++) {
+    tabs[i].classList.toggle('active', tabs[i].getAttribute('data-view') === view);
+  }
+  var canvas = document.querySelector('canvas');
+  var gridView = document.getElementById('grid-view');
+  var vpControls = document.getElementById('viewport-controls');
+  var legendPanel = document.getElementById('legend-panel');
+  if (view === 'grid') {
+    if (canvas) canvas.style.display = 'none';
+    if (vpControls) vpControls.style.display = 'none';
+    if (legendPanel) legendPanel.style.display = 'none';
+    gridView.classList.add('open');
+    buildGridFilters();
+    renderGridView();
+  } else {
+    if (canvas) canvas.style.display = 'block';
+    if (vpControls) vpControls.style.display = '';
+    if (legendPanel) legendPanel.style.display = '';
+    gridView.classList.remove('open');
+  }
+}
+
+function buildGridFilters() {
+  var container = document.getElementById('grid-filters');
+  if (!container) return;
+  var cats = ['all', 'task', 'discovery', 'decision', 'state', 'issue', 'general'];
+  var html = '';
+  for (var i = 0; i < cats.length; i++) {
+    var c = cats[i];
+    var col = COLORS[c] || { core: '#c4a265' };
+    var isActive = gridFilter === c;
+    var count = c === 'all' ? memories.length : memories.filter(function(m) { return m.category === c; }).length;
+    if (c !== 'all' && count === 0) continue;
+    html += '<span class="grid-chip' + (isActive ? ' active' : '') + '" onclick="gridFilter=\'' + c + '\';buildGridFilters();renderGridView()" style="' + (isActive ? '--chip-color:' + col.core + ';--chip-bg:' + col.core + '1a;border-color:' + col.core + '66' : '') + '">';
+    if (c !== 'all') html += '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:' + col.core + ';margin-right:5px;vertical-align:middle;"></span>';
+    html += c.charAt(0).toUpperCase() + c.slice(1);
+    html += '<span style="font-size:8px;opacity:0.5;margin-left:4px;">' + count + '</span></span>';
+  }
+  container.innerHTML = html;
+}
+
+function renderGridView() {
+  var container = document.getElementById('grid-cards');
+  var countEl = document.getElementById('grid-count');
+  if (!container) return;
+
+  var query = (document.getElementById('grid-search').value || '').toLowerCase().trim();
+  var filtered = memories.filter(function(m) {
+    if (m.is_forgotten || m.is_archived) return false;
+    if (gridFilter !== 'all' && m.category !== gridFilter) return false;
+    if (query && (m.content || '').toLowerCase().indexOf(query) === -1) return false;
+    return true;
+  });
+
+  filtered.sort(function(a, b) {
+    if (b.importance !== a.importance) return (b.importance || 0) - (a.importance || 0);
+    return (b.id || 0) - (a.id || 0);
+  });
+
+  if (countEl) countEl.textContent = filtered.length + ' memories';
+
+  var html = '';
+  var limit = Math.min(filtered.length, 200);
+  for (var i = 0; i < limit; i++) {
+    var m = filtered[i];
+    var col = COLORS[m.category] || COLORS.general;
+    var content = (m.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    var date = m.created_at ? new Date(m.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+    var source = (m.source || '').replace(/</g, '&lt;');
+
+    html += '<div class="grid-card" onclick="switchView(\'graph\');selectNodeById(' + m.id + ')" style="--card-accent:' + col.core + '">';
+    html += '<div style="position:absolute;left:0;top:8px;bottom:8px;width:2px;border-radius:2px;background:' + col.core + ';opacity:0.6;"></div>';
+    html += '<div class="grid-card-header">';
+    html += '<span class="grid-card-cat" style="background:' + col.core + '1a;color:' + col.core + '">' + (m.category || 'general') + '</span>';
+    html += '<span class="grid-card-id">#' + m.id + '</span>';
+    if (source) html += '<span class="grid-card-source">' + source + '</span>';
+    html += '</div>';
+    html += '<div class="grid-card-content">' + content + '</div>';
+    html += '<div class="grid-card-footer">';
+    if (date) html += '<span>' + date + '</span>';
+    html += '<span class="grid-card-imp">imp: ' + (m.importance || 5) + '</span>';
+    if (m.version > 1) html += '<span>v' + m.version + '</span>';
+    html += '</div></div>';
+  }
+  if (filtered.length > limit) {
+    html += '<div style="text-align:center;padding:20px;color:#333;font-size:12px;">Showing ' + limit + ' of ' + filtered.length + '</div>';
+  }
+  container.innerHTML = html;
+}
+
+function selectNodeById(id) {
+  var m = nodeMap[id];
+  if (m) {
+    selectedNode = m;
+    dimTarget = 1;
+    computeLayout();
+    computeAnimatedPositions();
+    buildScene();
+    openSidebar(m);
+  }
+}
+
+// ===== List Panel =====
+var listPanelOpen = false;
+var listFilter = 'all';
+var listSort = 'newest';
+var listSearchQuery = '';
+var listSearchResults = null;
+var listSearchDebounce = null;
+
+function toggleListPanel() {
+  listPanelOpen = !listPanelOpen;
+  document.getElementById('list-panel').classList.toggle('open', listPanelOpen);
+  document.getElementById('list-toggle').classList.toggle('active', listPanelOpen);
+  document.getElementById('viewport-controls').classList.toggle('shifted', listPanelOpen);
+  document.getElementById('legend-panel').classList.toggle('shifted', listPanelOpen);
+  if (listPanelOpen) renderListPanel();
+}
+
+function buildListFilters() {
+  var container = document.getElementById('lp-filters');
+  var cats = ['all', 'task', 'discovery', 'decision', 'state', 'issue'];
+  var counts = {};
+  memories.forEach(function(m) { counts[m.category] = (counts[m.category] || 0) + 1; });
+  var html = '';
+  cats.forEach(function(cat) {
+    var isAll = cat === 'all';
+    var col = COLORS[cat] || COLORS.general;
+    var active = listFilter === cat ? ' active' : '';
+    var count = isAll ? memories.length : (counts[cat] || 0);
+    var style = '';
+    if (!isAll) {
+      style = ' style="--chip-color:' + col.core + ';--chip-bg:rgba(' + col.r + ',' + col.g + ',' + col.b + ',0.12);--chip-glow:rgba(' + col.r + ',' + col.g + ',' + col.b + ',0.1)"';
+    }
+    html += '<button class="lp-chip' + active + '"' + style + ' onclick="setListFilter(\'' + cat + '\')">';
+    if (!isAll) html += '<span class="lp-chip-dot" style="background:' + col.core + ';box-shadow:0 0 6px ' + col.glow + '"></span>';
+    html += (isAll ? 'All' : cat);
+    html += '<span class="lp-chip-count">' + count + '</span>';
+    html += '</button>';
+  });
+
+  // Source filter chips
+  var sources = {};
+  memories.forEach(function(m) { if (m.source) sources[m.source] = (sources[m.source] || 0) + 1; });
+  var sourceKeys = Object.keys(sources).sort(function(a, b) { return sources[b] - sources[a]; });
+  if (sourceKeys.length > 1) {
+    html += '<div style="width:100%;height:1px;background:rgba(255,255,255,0.04);margin:6px 0"></div>';
+    var srcActive = sourceFilter === 'all' ? ' active' : '';
+    html += '<button class="lp-chip' + srcActive + '" onclick="setSourceFilter(\'all\')">All sources</button>';
+    sourceKeys.forEach(function(src) {
+      var srcAct = sourceFilter === src ? ' active' : '';
+      var safeSrc = src.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      html += '<button class="lp-chip' + srcAct + '" style="--chip-color:#c4a265;--chip-bg:rgba(196,162,101,0.1)" onclick="setSourceFilter(\'' + safeSrc + '\')">';
+      html += src + '<span class="lp-chip-count">' + sources[src] + '</span></button>';
+    });
+  }
+
+  // Cluster summary
+  var clusterCount = Object.keys(clusters).length;
+  var expandedCount = Object.keys(expandedClusters).length;
+  if (clusterCount > 0) {
+    html += '<div style="width:100%;height:1px;background:rgba(255,255,255,0.04);margin:6px 0"></div>';
+    html += '<div style="display:flex;gap:6px;align-items:center;width:100%">';
+    html += '<span style="font-size:10px;color:#666;flex:1">' + clusterCount + ' clusters';
+    if (expandedCount > 0) html += ' (' + expandedCount + ' expanded)';
+    html += '</span>';
+    if (expandedCount > 0) {
+      html += '<button class="lp-chip" onclick="collapseAll()" style="font-size:9px;padding:2px 8px">Collapse all</button>';
+    }
+    html += '</div>';
+  }
+
+  container.innerHTML = html;
+}
+
+function setSourceFilter(src) {
+  sourceFilter = src;
+  buildListFilters();
+  renderListItems();
+}
+
+function collapseAll() {
+  expandedClusters = {};
+  computeLayout();
+  computeAnimatedPositions();
+  buildScene();
+  entryProgress = 1;
+  buildListFilters();
+  renderListItems();
+}
+
+function setListFilter(cat) {
+  listFilter = cat;
+  buildListFilters();
+  renderListItems();
+}
+
+function setListSort(sort) {
+  listSort = sort;
+  document.querySelectorAll('.lp-sort-btn').forEach(function(btn) {
+    btn.classList.toggle('active', btn.dataset.sort === sort);
+  });
+  renderListItems();
+}
+
+function getFilteredMemories() {
+  var source;
+  if (listSearchResults) {
+    source = listSearchResults.map(function(r) { return nodeMap[r.id]; }).filter(Boolean);
+  } else {
+    source = memories.slice();
+  }
+  if (listFilter !== 'all') {
+    source = source.filter(function(m) { return m.category === listFilter; });
+  }
+  if (sourceFilter !== 'all') {
+    source = source.filter(function(m) { return (m.source || '') === sourceFilter; });
+  }
+  if (listSearchQuery && !listSearchResults) {
+    var q = listSearchQuery.toLowerCase();
+    source = source.filter(function(m) {
+      return (m.content || '').toLowerCase().indexOf(q) !== -1 ||
+             (m.category || '').toLowerCase().indexOf(q) !== -1 ||
+             String(m.id).indexOf(q) !== -1;
+    });
+  }
+  if (listSort === 'newest') {
+    source.sort(function(a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });
+  } else if (listSort === 'oldest') {
+    source.sort(function(a, b) { return (a.created_at || '').localeCompare(b.created_at || ''); });
+  } else if (listSort === 'importance') {
+    source.sort(function(a, b) { return (b.importance || 0) - (a.importance || 0); });
+  } else if (listSort === 'id') {
+    source.sort(function(a, b) { return b.id - a.id; });
+  }
+  return source;
+}
+
+function renderListItems() {
+  var container = document.getElementById('lp-list');
+  var filtered = getFilteredMemories();
+  document.getElementById('lp-count').textContent = filtered.length + ' item' + (filtered.length !== 1 ? 's' : '');
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="lp-empty">' +
+      '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><circle cx="12" cy="12" r="10"/><path d="M8 15s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>' +
+      '<div class="lp-empty-text">No memories found</div>' +
+      '<div class="lp-empty-sub">' + (listSearchQuery ? 'Try a different search term' : 'Adjust your filters') + '</div></div>';
+    return;
+  }
+
+  var html = '';
+  if (listSearchResults) {
+    html += '<div class="lp-search-status">' +
+      '<span>' + listSearchResults.length + ' search results</span>' +
+      '<a class="lp-search-clear-results" onclick="clearListSearch()">Clear search</a></div>';
+  }
+
+  for (var i = 0; i < filtered.length; i++) {
+    var m = filtered[i];
+    var col = COLORS[m.category] || COLORS.general;
+    var active = selectedNode && selectedNode.id === m.id ? ' active-card' : '';
+    var delay = Math.min(i * 0.02, 0.5);
+    var badges = '';
+    if (m.is_static) badges += '<span class="badge badge-static">STATIC</span>';
+    if (m.is_forgotten) badges += '<span class="badge badge-forgotten">FORGOT</span>';
+    if ((m.version || 1) > 1) badges += '<span class="badge" style="background:rgba(196,162,101,0.1);color:#c4a265;border:1px solid rgba(196,162,101,0.15)">v' + m.version + '</span>';
+
+    var typeIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="' + col.core + '" stroke-width="2" stroke-linecap="round">';
+    if (m.category === 'task') typeIcon += '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>';
+    else if (m.category === 'discovery') typeIcon += '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>';
+    else if (m.category === 'decision') typeIcon += '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>';
+    else if (m.category === 'state') typeIcon += '<rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>';
+    else if (m.category === 'issue') typeIcon += '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>';
+    else typeIcon += '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>';
+    typeIcon += '</svg>';
+
+    var impVal = m.importance || 1;
+    var starCount = Math.ceil(impVal / 2);
+    var starsHtml = '';
+    for (var s = 0; s < 5; s++) {
+      starsHtml += '<svg class="star' + (s < starCount ? '' : ' dim') + '" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
+    }
+
+    html += '<div class="lp-card' + active + '" data-id="' + m.id + '" onclick="listCardClick(' + m.id + ')" style="animation-delay:' + delay + 's;--card-accent:' + col.core + ';--card-glow:rgba(' + col.r + ',' + col.g + ',' + col.b + ',0.08);--card-border-hover:rgba(' + col.r + ',' + col.g + ',' + col.b + ',0.2)">';
+    if (badges) html += '<div class="lp-card-badges">' + badges + '</div>';
+    html += '<div class="lp-card-type">' + typeIcon + '<span class="lp-card-type-label">' + m.category + '</span><span class="lp-card-id">#' + m.id + '</span></div>';
+    html += '<div class="lp-card-title">' + escHtml(memoryTitle(m)) + '</div>';
+    html += '<div class="lp-card-preview">' + escHtml(memoryPreview(m)) + '</div>';
+    html += '<div class="lp-card-footer"><div class="lp-card-imp">' + starsHtml + '<span class="lp-card-imp-num">' + impVal + '</span></div>';
+    html += '<span class="lp-card-date">' + shortDate(m.created_at) + '</span></div>';
+    html += '</div>';
+  }
+  container.innerHTML = html;
+}
+
+function renderListPanel() {
+  buildListFilters();
+  renderListItems();
+}
+
+function listCardClick(id) {
+  var m = nodeMap[id];
+  if (!m) return;
+  openSidebar(m);
+  navigateTo(id);
+}
+
+function updateListPanelActive(activeId) {
+  if (!listPanelOpen) return;
+  document.querySelectorAll('.lp-card').forEach(function(card) {
+    card.classList.toggle('active-card', Number(card.dataset.id) === activeId);
+  });
+  var activeCard = document.querySelector('.lp-card[data-id="' + activeId + '"]');
+  if (activeCard) {
+    activeCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+// List panel search
+var lpSearchInput = document.getElementById('lp-search-input');
+var lpSearchClear = document.getElementById('lp-search-clear');
+
+lpSearchInput.addEventListener('input', function() {
+  listSearchQuery = this.value.trim();
+  lpSearchClear.classList.toggle('visible', listSearchQuery.length > 0);
+  listSearchResults = null;
+  renderListItems();
+  if (listSearchDebounce) clearTimeout(listSearchDebounce);
+  if (listSearchQuery.length >= 3) {
+    listSearchDebounce = setTimeout(function() {
+      doListApiSearch(listSearchQuery);
+    }, 400);
+  }
+});
+
+lpSearchInput.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') { clearListSearch(); e.stopPropagation(); }
+});
+
+async function doListApiSearch(q) {
+  try {
+    var res = await fetch(BASE + '/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: q, limit: 50 })
+    });
+    var data = await res.json();
+    if (listSearchQuery === q && data.results) {
+      listSearchResults = data.results;
+      searchHighlight = new Set(data.results.map(function(r) { return r.id; }));
+      renderListItems();
+    }
+  } catch(e) { /* silent */ }
+}
+
+function clearListSearch() {
+  listSearchQuery = '';
+  listSearchResults = null;
+  searchHighlight.clear();
+  lpSearchInput.value = '';
+  lpSearchClear.classList.remove('visible');
+  renderListItems();
+}
+
+// ===== Next / Prev Memory Navigation =====
+function getVisibleMemoryList() {
+  if (listPanelOpen) return getFilteredMemories();
+  return memories.slice().sort(function(a, b) { return a.id - b.id; });
+}
+
+function navNextMemory() {
+  if (!selectedNode) return;
+  var list = getVisibleMemoryList();
+  var idx = -1;
+  for (var i = 0; i < list.length; i++) { if (list[i].id === selectedNode.id) { idx = i; break; } }
+  if (idx >= 0 && idx < list.length - 1) {
+    var next = list[idx + 1];
+    openSidebar(next);
+    navigateTo(next.id);
+  }
+}
+
+function navPrevMemory() {
+  if (!selectedNode) return;
+  var list = getVisibleMemoryList();
+  var idx = -1;
+  for (var i = 0; i < list.length; i++) { if (list[i].id === selectedNode.id) { idx = i; break; } }
+  if (idx > 0) {
+    var prev = list[idx - 1];
+    openSidebar(prev);
+    navigateTo(prev.id);
+  }
+}
+
+// ===== Legend =====
+var legendOpen = false;
+function toggleLegend() {
+  legendOpen = !legendOpen;
+  document.querySelector('.legend-toggle').classList.toggle('open', legendOpen);
+  document.getElementById('legend-body').classList.toggle('open', legendOpen);
+}
+
+function buildLegend() {
+  var body = document.getElementById('legend-body');
+  var cats = ['task', 'discovery', 'decision', 'state', 'issue'];
+  var counts = {};
+  memories.forEach(function(m) { counts[m.category] = (counts[m.category] || 0) + 1; });
+  var html = '';
+  cats.forEach(function(cat) {
+    var col = COLORS[cat];
+    html += '<div class="legend-row">';
+    html += '<div class="legend-dot" style="background:' + col.core + ';--dot-glow:' + col.glow + '"></div>';
+    html += '<span class="legend-label">' + cat + '</span>';
+    html += '<span class="legend-count">' + (counts[cat] || 0) + '</span>';
+    html += '</div>';
+  });
+  html += '<div class="legend-row" style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.04)">';
+  html += '<div class="legend-dot" style="background:#c4a265;--dot-glow:#a68845;width:10px;height:10px"></div>';
+  html += '<span class="legend-label" style="color:#666">Hub (center)</span>';
+  html += '</div>';
+  body.innerHTML = html;
+}
+
+// ===== Viewport Controls =====
+function fitView() {
+  if (memories.length === 0) return;
+  var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  memories.forEach(function(m) {
+    var p = nodeAnimPos[m.id] || nodePositions[m.id];
+    if (p) {
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    }
+  });
+  var padding = 120;
+  var dx = maxX - minX + padding * 2;
+  var dy = maxY - minY + padding * 2;
+  var cx = (minX + maxX) / 2;
+  var cy = (minY + maxY) / 2;
+  var scale = Math.min(screenW / dx, screenH / dy, 2);
+  scale = Math.max(scale, 0.1);
+  var tx = screenW / 2 - cx * scale;
+  var ty = screenH / 2 - cy * scale;
+  d3.select(app.view).transition().duration(800).ease(d3.easeCubicInOut)
+    .call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+}
+
+function centerView() {
+  var cx = centerAnimPos.x || 0;
+  var cy = centerAnimPos.y || 0;
+  var tx = screenW / 2 - cx * transform.k;
+  var ty = screenH / 2 - cy * transform.k;
+  d3.select(app.view).transition().duration(600).ease(d3.easeCubicInOut)
+    .call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(transform.k));
+}
+
+function zoomStep(dir) {
+  var factor = dir > 0 ? 1.3 : 1 / 1.3;
+  var newK = Math.max(0.05, Math.min(transform.k * factor, 8));
+  var cx = screenW / 2, cy = screenH / 2;
+  var tx = cx - (cx - transform.x) * (newK / transform.k);
+  var ty = cy - (cy - transform.y) * (newK / transform.k);
+  d3.select(app.view).transition().duration(300).ease(d3.easeCubicOut)
+    .call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(newK));
+}
+
+function updateZoomLevel() {
+  var pct = Math.round(transform.k * 100);
+  var el = document.getElementById('zoom-level');
+  if (el) el.textContent = pct + '%';
+}
+
+// ===== GUI CRUD =====
+function openCreateDialog() {
+  document.getElementById('modal-title').textContent = 'Create Memory';
+  document.getElementById('modal-edit-id').value = '';
+  document.getElementById('modal-cat').value = 'task';
+  document.getElementById('modal-content').value = '';
+  document.getElementById('modal-imp').value = '5';
+  document.getElementById('modal-static').checked = false;
+  document.getElementById('mem-modal').style.display = 'flex';
+  setTimeout(function() { document.getElementById('modal-content').focus(); }, 100);
+}
+
+function editMemory(id) {
+  var m = nodeMap[id];
+  if (!m) return;
+  document.getElementById('modal-title').textContent = 'Edit Memory #' + id;
+  document.getElementById('modal-edit-id').value = String(id);
+  document.getElementById('modal-cat').value = m.category || 'task';
+  document.getElementById('modal-content').value = m.content || '';
+  document.getElementById('modal-imp').value = String(m.importance || 5);
+  document.getElementById('modal-static').checked = !!m.is_static;
+  document.getElementById('mem-modal').style.display = 'flex';
+  setTimeout(function() { document.getElementById('modal-content').focus(); }, 100);
+}
+
+function closeModal() {
+  document.getElementById('mem-modal').style.display = 'none';
+}
+
+async function saveModal() {
+  var editId = document.getElementById('modal-edit-id').value;
+  var content = document.getElementById('modal-content').value.trim();
+  if (!content) return;
+  var payload = {
+    content: content,
+    category: document.getElementById('modal-cat').value,
+    importance: Number(document.getElementById('modal-imp').value) || 5,
+    is_static: document.getElementById('modal-static').checked,
+  };
+  try {
+    var url, method;
+    if (editId) {
+      url = BASE + '/gui/memories/' + editId;
+      method = 'PATCH';
+    } else {
+      url = BASE + '/gui/memories';
+      method = 'POST';
+    }
+    var res = await fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    var data = await res.json();
+    if (data.created || data.updated) {
+      closeModal();
+      refreshData();
+    } else {
+      alert('Error: ' + (data.error || 'Unknown error'));
+    }
+  } catch(e) { alert('Save failed: ' + e.message); }
+}
+
+async function archiveMemory(id) {
+  if (!confirm('Archive memory #' + id + '?')) return;
+  try {
+    await fetch(BASE + '/memory/' + id + '/archive', { method: 'POST' });
+    closeSidebar();
+    refreshData();
+  } catch(e) { alert('Archive failed: ' + e.message); }
+}
+
+async function deleteMemoryConfirm(id) {
+  if (!confirm('Permanently delete memory #' + id + '? This cannot be undone.')) return;
+  try {
+    await fetch(BASE + '/gui/memories/' + id, { method: 'DELETE' });
+    closeSidebar();
+    refreshData();
+  } catch(e) { alert('Delete failed: ' + e.message); }
+}
+
+// ===== Data Loading =====
+function normalizeGraphData(gData) {
+  var rawNodes = gData.nodes || gData.memories || [];
+  var rawLinks = gData.links || gData.edges || [];
+  var mems = rawNodes.map(function(n) {
+    var numId = typeof n.id === 'string' && n.id.match(/^m(\d+)$/) ? parseInt(n.id.slice(1)) : n.id;
+    return {
+      id: numId,
+      content: n.content || n.label || '',
+      category: n.category || n.group || 'general',
+      importance: n.importance || 5,
+      is_forgotten: n.is_forgotten || false,
+      is_archived: n.is_archived || false,
+      is_static: n.is_static || false,
+      parent_memory_id: n.parent_memory_id || null,
+      confidence: n.confidence,
+      source_count: n.source_count || 1,
+      source: n.source || '',
+      created_at: n.created_at || '',
+      version: n.version || 1,
+      tags: n.tags || [],
+      forget_after: n.forget_after || null
+    };
+  });
+  var lnks = rawLinks.map(function(l) {
+    var src = l.source_id || l.source;
+    var tgt = l.target_id || l.target;
+    if (typeof src === 'string' && src.match(/^m\d+$/)) src = parseInt(src.slice(1));
+    if (typeof tgt === 'string' && tgt.match(/^m\d+$/)) tgt = parseInt(tgt.slice(1));
+    return { source: src, target: tgt, similarity: l.similarity || l.weight || 0.5, type: l.type || 'similarity' };
+  });
+  return { memories: mems, links: lnks };
+}
+
+async function loadData() {
+  try {
+    var gRes = await fetch(BASE + '/graph');
+    var gData = await gRes.json();
+    var norm = normalizeGraphData(gData);
+    memories = norm.memories;
+    links = norm.links;
+    nodeMap = {};
+    memories.forEach(function(m) { nodeMap[m.id] = m; });
+    lastMemoryCount = memories.length;
+    lastMaxId = memories.reduce(function(mx, m) { return m.id > mx ? m.id : mx; }, 0);
+    document.getElementById('stat-nodes').textContent = memories.length;
+    document.getElementById('stat-links').textContent = links.length;
+    document.getElementById('loading').style.display = 'none';
+    computeLayout();
+    document.getElementById('stat-clusters').textContent = Object.keys(clusters).length;
+    computeAnimatedPositions();
+    buildScene();
+    _simSettling = true;
+    loadTime = performance.now();
+    entryProgress = 0;
+    buildLegend();
+    if (listPanelOpen) renderListPanel();
+    updateZoomLevel();
+    setTimeout(fitView, 100);
+    scheduleRefresh();
+  } catch(e) {
+    document.getElementById('loading').innerHTML = '<div class="text" style="color:#f87171">Failed: ' + e.message + '</div>';
+  }
+}
+
+function scheduleRefresh() {
+  if (refreshTimer) clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(refreshData, REFRESH_INTERVAL);
+}
+
+async function refreshData() {
+  try {
+    var gRes = await fetch(BASE + '/graph');
+    var gData = await gRes.json();
+    var norm = normalizeGraphData(gData);
+    var newMems = norm.memories;
+    var newLinks = norm.links;
+    var newMaxId = newMems.reduce(function(mx, m) { return m.id > mx ? m.id : mx; }, 0);
+
+    if (newMems.length !== lastMemoryCount || newMaxId !== lastMaxId) {
+      memories = newMems;
+      links = newLinks;
+      nodeMap = {};
+      memories.forEach(function(m) { nodeMap[m.id] = m; });
+      lastMemoryCount = memories.length;
+      lastMaxId = newMaxId;
+      document.getElementById('stat-nodes').textContent = memories.length;
+      document.getElementById('stat-links').textContent = links.length;
+      computeLayout();
+      document.getElementById('stat-clusters').textContent = Object.keys(clusters).length;
+      computeAnimatedPositions();
+      buildScene();
+      entryProgress = 1;
+      buildLegend();
+      if (listPanelOpen) renderListPanel();
+      if (selectedNode) {
+        var updated = nodeMap[selectedNode.id];
+        if (updated) openSidebar(updated); else closeSidebar();
+      }
+    }
+  } catch(e) { /* silent retry */ }
+  scheduleRefresh();
+}
+
+// ===== Keyboard =====
+document.getElementById('search').addEventListener('keydown', function(e) { if (e.key === 'Enter') doSearch(); });
+document.addEventListener('keydown', function(e) {
+  var tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') {
+    if (e.key === 'Escape') {
+      e.target.blur();
+      closeSidebar();
+    }
+    return;
+  }
+  if (e.key === 'Escape') { closeModal(); closeSidebar(); }
+  if (e.key === 'l' || e.key === 'L') toggleListPanel();
+  if (e.key === 'n' || e.key === 'N') openCreateDialog();
+  if (e.key === 'z' || e.key === 'Z') fitView();
+  if (e.key === 'c' && !e.ctrlKey && !e.metaKey) centerView();
+  if (e.key === 'g' || e.key === 'G') switchView(currentView === 'graph' ? 'grid' : 'graph');
+  if (e.key === '=' || e.key === '+') zoomStep(1);
+  if (e.key === '-') zoomStep(-1);
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); navNextMemory(); }
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); navPrevMemory(); }
+});
+
+// ===== Resize =====
+window.addEventListener('resize', function() {
+  screenW = window.innerWidth;
+  screenH = window.innerHeight;
+  app.renderer.resize(screenW, screenH);
+  buildBackground();
+  if (memories.length > 0) {
+    computeLayout();
+    computeAnimatedPositions();
+    buildScene();
+  }
+});
+
+// ===== Init =====
+var _dbg = document.getElementById('loading').querySelector('.text');
+try { _dbg.textContent = 'Building background...'; buildBackground(); } catch(e) { _dbg.textContent = 'FAIL buildBackground: ' + e.message; throw e; }
+_dbg.textContent = 'Loading data (fetching /graph)...';
+loadData();
+
+// ========================================================================
+// INBOX / REVIEW QUEUE
+// ========================================================================
+var inboxPanelOpen = false;
+var inboxItems = [];
+var inboxSelected = new Set();
+
+function toggleInboxPanel() {
+  inboxPanelOpen = !inboxPanelOpen;
+  document.getElementById('inbox-panel').classList.toggle('open', inboxPanelOpen);
+  document.getElementById('inbox-toggle').classList.toggle('active', inboxPanelOpen);
+  if (inboxPanelOpen) {
+    if (listPanelOpen) toggleListPanel();
+    loadInbox();
+  }
+}
+
+async function loadInbox() {
+  try {
+    var resp = await fetch('/inbox?limit=100');
+    var data = await resp.json();
+    inboxItems = data.pending || [];
+    inboxSelected.clear();
+    renderInbox();
+    updateInboxBadge(data.total || 0);
+  } catch (e) { console.error('Failed to load inbox:', e); }
+}
+
+function updateInboxBadge(count) {
+  var badge = document.getElementById('inbox-badge');
+  var countEl = document.getElementById('inbox-count');
+  if (count > 0) {
+    badge.style.display = 'block';
+    badge.textContent = count > 99 ? '99+' : count;
+    countEl.textContent = count + ' pending';
+  } else {
+    badge.style.display = 'none';
+    countEl.textContent = '0 pending';
+  }
+}
+
+var inboxCatColors = {
+  task: { bg: 'rgba(196,162,101,0.12)', color: '#c4a265' },
+  state: { bg: 'rgba(176,120,136,0.12)', color: '#b07888' },
+  discovery: { bg: 'rgba(94,174,189,0.12)', color: '#5eaebd' },
+  decision: { bg: 'rgba(212,184,122,0.12)', color: '#d4b87a' },
+  issue: { bg: 'rgba(192,96,96,0.12)', color: '#c06060' },
+  general: { bg: 'rgba(90,158,126,0.12)', color: '#5a9e7e' },
+};
+
+function inboxEsc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function inboxTimeAgo(dateStr) {
+  var d = new Date(dateStr + 'Z');
+  var diff = (Date.now() - d.getTime()) / 1000;
+  if (diff < 60) return Math.floor(diff) + 's ago';
+  if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+  return Math.floor(diff/86400) + 'd ago';
+}
+
+function renderInbox() {
+  var container = document.getElementById('inbox-list');
+  if (!inboxItems.length) {
+    container.innerHTML = '<div class="inbox-empty">' +
+      '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>' +
+      '<p>Inbox empty</p><small>All memories have been reviewed</small></div>';
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < inboxItems.length; i++) {
+    var m = inboxItems[i];
+    var cc = inboxCatColors[m.category] || inboxCatColors.general;
+    var checked = inboxSelected.has(m.id) ? ' checked' : '';
+    var sel = inboxSelected.has(m.id) ? ' selected' : '';
+    var tags = '';
+    if (m.tags && m.tags.length) {
+      tags = '<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">';
+      for (var t = 0; t < m.tags.length && t < 5; t++) {
+        tags += '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,0.04);color:#555">' + inboxEsc(m.tags[t]) + '</span>';
+      }
+      tags += '</div>';
+    }
+    html += '<div class="inbox-card' + sel + '" data-id="' + m.id + '">' +
+      '<div class="inbox-card-header">' +
+        '<input type="checkbox" onchange="inboxToggleSelect(' + m.id + ')"' + checked + '>' +
+        '<span class="inbox-card-meta">#' + m.id + ' &middot; ' + inboxEsc(m.source || 'unknown') + ' &middot; ' + inboxTimeAgo(m.created_at) + '</span>' +
+        '<span class="inbox-card-cat" style="background:' + cc.bg + ';color:' + cc.color + '">' + inboxEsc(m.category) + '</span>' +
+      '</div>' +
+      '<div class="inbox-card-content" onclick="this.classList.toggle(&quot;expanded&quot;)">' + inboxEsc(m.content) + '</div>' +
+      tags +
+      '<div class="inbox-card-actions">' +
+        '<button class="inbox-btn approve" onclick="inboxApprove(' + m.id + ')">&#10003; Approve</button>' +
+        '<button class="inbox-btn edit" onclick="inboxEdit(' + m.id + ')">&#9998; Edit</button>' +
+        '<button class="inbox-btn reject" onclick="inboxReject(' + m.id + ')">&#10005; Reject</button>' +
+      '</div>' +
+    '</div>';
+  }
+  container.innerHTML = html;
+}
+
+function inboxToggleSelect(id) {
+  if (inboxSelected.has(id)) inboxSelected.delete(id);
+  else inboxSelected.add(id);
+  document.querySelectorAll('.inbox-card').forEach(function(c) {
+    var cid = Number(c.dataset.id);
+    c.classList.toggle('selected', inboxSelected.has(cid));
+    var cb = c.querySelector('input[type="checkbox"]');
+    if (cb) cb.checked = inboxSelected.has(cid);
+  });
+}
+
+function inboxSelectAll() {
+  var allSelected = inboxSelected.size === inboxItems.length;
+  inboxSelected.clear();
+  if (!allSelected) for (var i = 0; i < inboxItems.length; i++) inboxSelected.add(inboxItems[i].id);
+  renderInbox();
+}
+
+async function inboxApprove(id) {
+  try {
+    await fetch('/inbox/' + id + '/approve', { method: 'POST' });
+    inboxItems = inboxItems.filter(function(m) { return m.id !== id; });
+    inboxSelected.delete(id);
+    renderInbox();
+    updateInboxBadge(inboxItems.length);
+    inboxToast('Memory #' + id + ' approved', 'success');
+  } catch (e) { inboxToast('Approve failed: ' + e.message, 'error'); }
+}
+
+async function inboxReject(id) {
+  if (!confirm('Reject memory #' + id + '? It will be archived.')) return;
+  try {
+    await fetch('/inbox/' + id + '/reject', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: 'Rejected from inbox review' })
+    });
+    inboxItems = inboxItems.filter(function(m) { return m.id !== id; });
+    inboxSelected.delete(id);
+    renderInbox();
+    updateInboxBadge(inboxItems.length);
+    inboxToast('Memory #' + id + ' rejected', 'info');
+  } catch (e) { inboxToast('Reject failed: ' + e.message, 'error'); }
+}
+
+async function inboxEdit(id) {
+  var mem = inboxItems.find(function(m) { return m.id === id; });
+  if (!mem) return;
+  var newContent = prompt('Edit memory content:', mem.content);
+  if (newContent === null) return;
+  if (!newContent.trim()) { inboxToast('Content cannot be empty', 'error'); return; }
+  try {
+    await fetch('/inbox/' + id + '/edit', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: newContent.trim() })
+    });
+    inboxItems = inboxItems.filter(function(m) { return m.id !== id; });
+    inboxSelected.delete(id);
+    renderInbox();
+    updateInboxBadge(inboxItems.length);
+    inboxToast('Memory #' + id + ' edited & approved', 'success');
+  } catch (e) { inboxToast('Edit failed: ' + e.message, 'error'); }
+}
+
+async function inboxBulkApprove() {
+  var ids = Array.from(inboxSelected);
+  if (!ids.length) { inboxToast('No memories selected', 'info'); return; }
+  try {
+    await fetch('/inbox/bulk', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: ids, action: 'approve' })
+    });
+    inboxItems = inboxItems.filter(function(m) { return !inboxSelected.has(m.id); });
+    inboxSelected.clear();
+    renderInbox();
+    updateInboxBadge(inboxItems.length);
+    inboxToast(ids.length + ' memories approved', 'success');
+  } catch (e) { inboxToast('Bulk approve failed: ' + e.message, 'error'); }
+}
+
+async function inboxBulkReject() {
+  var ids = Array.from(inboxSelected);
+  if (!ids.length) { inboxToast('No memories selected', 'info'); return; }
+  if (!confirm('Reject ' + ids.length + ' memories?')) return;
+  try {
+    await fetch('/inbox/bulk', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: ids, action: 'reject' })
+    });
+    inboxItems = inboxItems.filter(function(m) { return !inboxSelected.has(m.id); });
+    inboxSelected.clear();
+    renderInbox();
+    updateInboxBadge(inboxItems.length);
+    inboxToast(ids.length + ' memories rejected', 'info');
+  } catch (e) { inboxToast('Bulk reject failed: ' + e.message, 'error'); }
+}
+
+function inboxToast(msg, type) {
+  var toast = document.createElement('div');
+  var colors = { success: '#34d399', error: '#f87171', info: '#c4a265' };
+  var c = colors[type] || colors.info;
+  toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:10px 20px;' +
+    'border-radius:10px;font-size:12px;font-family:Inter,sans-serif;z-index:9999;' +
+    'background:rgba(15,20,25,0.95);border:1px solid ' + c + '30;color:' + c + ';' +
+    'backdrop-filter:blur(20px);box-shadow:0 8px 32px rgba(0,0,0,0.4);transition:opacity 0.3s';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(function() { toast.style.opacity = '0'; }, 2500);
+  setTimeout(function() { toast.remove(); }, 3000);
+}
+
+// Keyboard shortcut: I to toggle inbox
+document.addEventListener('keydown', function(e) {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.key === 'i' || e.key === 'I') { e.preventDefault(); toggleInboxPanel(); }
+});
+
+// Poll inbox count every 30 seconds
+setInterval(async function() {
+  try { var r = await fetch('/inbox?limit=1'); var d = await r.json(); updateInboxBadge(d.total||0); } catch(e){}
+}, 30000);
+
+// Initial inbox badge load
+(async function() {
+  try { var r = await fetch('/inbox?limit=1'); var d = await r.json(); updateInboxBadge(d.total||0); } catch(e){}
+})();
+// END INBOX
+
+</script>
+</body>
+</html>

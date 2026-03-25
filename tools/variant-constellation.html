@@ -334,31 +334,35 @@ void main(){
   vec2 c=gl_PointCoord*2.0-1.0;
   float d=length(c);
   if(v_type<0.5){
-    // Glow: soft radial falloff
-    float a=max(1.0-d,0.0);a=a*a;
+    // Glow: wide soft radial falloff
+    float a=max(1.0-d,0.0);a=a*a*a;
     fragColor=vec4(v_color.rgb,v_color.a*a);
   }else if(v_type<1.5){
-    // Neuron cell body: organic wobble membrane with bright nucleus
+    // CONSTELLATION STAR: bright core + 4 diffraction spikes + halo
     float angle=atan(c.y,c.x);
-    float s1=v_seed*6.283;
-    float wobble=sin(angle*3.0+s1)*0.14
-                +sin(angle*5.0+s1*1.7)*0.09
-                +sin(angle*8.0+s1*2.3)*0.05;
-    float cellR=0.52+wobble;
-    // Nucleus: bright inner core
-    float nucleus=1.0-smoothstep(0.0,cellR*0.45,d);
-    // Membrane: organic edge
-    float membrane=1.0-smoothstep(cellR-0.08,cellR+0.03,d);
-    // Cytoplasm: faint fill between nucleus and membrane
-    float cyto=1.0-smoothstep(cellR*0.4,cellR-0.05,d);
-    float a=max(nucleus*0.9,membrane*0.8)+cyto*0.15;
-    vec3 col=v_color.rgb*(0.6+nucleus*0.6);
-    fragColor=vec4(col,v_color.a*clamp(a,0.0,1.0));
+    // Bright core
+    float core=1.0-smoothstep(0.0,0.18,d);
+    // Secondary core glow
+    float inner=1.0-smoothstep(0.0,0.4,d);
+    // 4 diffraction spikes (cross pattern, rotated by seed)
+    float rot=v_seed*3.14159;
+    float a1=angle+rot;
+    float spike4=pow(max(cos(a1*2.0),0.0),24.0)*max(1.0-d*0.7,0.0);
+    // 6 secondary spikes (star pattern)
+    float spike6=pow(max(cos((angle+rot*1.7)*3.0),0.0),40.0)*max(1.0-d*0.85,0.0)*0.5;
+    // Outer halo
+    float halo=(1.0-smoothstep(0.3,0.95,d))*0.2;
+    // Combine
+    float brightness=core*1.0+inner*0.4+spike4*0.7+spike6*0.35+halo;
+    // Hot white core blending to category color at edges
+    vec3 white=vec3(1.0,0.98,0.95);
+    vec3 col=mix(v_color.rgb*1.3,white,core*0.8+inner*0.3);
+    fragColor=vec4(col,v_color.a*clamp(brightness,0.0,1.0));
   }else if(v_type<2.5){
     // Selection ring
-    float ring=abs(d-0.8)-0.08;
-    float a=1.0-smoothstep(0.0,0.06,ring);
-    fragColor=vec4(v_color.rgb,v_color.a*a);
+    float ring=abs(d-0.75)-0.06;
+    float a=1.0-smoothstep(0.0,0.04,ring);
+    fragColor=vec4(v_color.rgb,v_color.a*a*0.8);
   }else{
     if(d>1.0)discard;
     fragColor=v_color;
@@ -371,7 +375,7 @@ var lineVAO, pointVAO, glowVAO, lineVBO, pointVBO, glowVBO;
 var lineLocs = {}, pointLocs = {};
 
 // Pre-allocated vertex buffers
-var MAX_LINE_VERTS = 160000;
+var MAX_LINE_VERTS = 500000;
 var MAX_POINT_VERTS = 50000;
 var MAX_GLOW_VERTS = 10000;
 var lineArray = new Float32Array(MAX_LINE_VERTS * 6);
@@ -476,10 +480,10 @@ function processGraphData(data) {
     if (ntype === 'project') cat = 'project';
 
     var imp = n.importance || 0.5;
-    var radius = 4 + imp * 8 + (n.source_count || 0) * 0.3;
-    if (ntype === 'entity') radius = Math.max(radius, 8);
-    if (ntype === 'project') radius = Math.max(radius, 10);
-    radius = Math.min(radius, 20);
+    var radius = 10 + imp * 16 + (n.source_count || 0) * 0.8;
+    if (ntype === 'entity') radius = Math.max(radius, 20);
+    if (ntype === 'project') radius = Math.max(radius, 25);
+    radius = Math.min(radius, 45);
 
     return {
       id: id,
@@ -573,8 +577,47 @@ function hideLoading() {
 }
 
 // ============================================================
-// D3 FORCE SIMULATION
+// STRUCTURED LAYOUT + D3 FORCE SIMULATION
 // ============================================================
+
+function structuredLayout() {
+  if (nodes.length === 0 || communityCount === 0) return;
+  var commNodes = {};
+  for (var i = 0; i < nodes.length; i++) {
+    var c = nodes[i].community;
+    if (c === undefined) c = 0;
+    if (!commNodes[c]) commNodes[c] = [];
+    commNodes[c].push(nodes[i]);
+  }
+  var commIds = Object.keys(commNodes).map(Number);
+  commIds.sort(function(a, b) { return commNodes[b].length - commNodes[a].length; });
+  var clusterRadius = Math.max(600, Math.sqrt(nodes.length) * 45);
+  var commCenters = {};
+  for (var ci = 0; ci < commIds.length; ci++) {
+    var angle = (ci / commIds.length) * Math.PI * 2 - Math.PI / 2;
+    var sizeRatio = commNodes[commIds[ci]].length / nodes.length;
+    var r = clusterRadius * (0.6 + (1 - sizeRatio) * 0.8);
+    commCenters[commIds[ci]] = { x: Math.cos(angle) * r, y: Math.sin(angle) * r };
+  }
+  for (var ci = 0; ci < commIds.length; ci++) {
+    var cid = commIds[ci];
+    var members = commNodes[cid];
+    var center = commCenters[cid];
+    members.sort(function(a, b) {
+      return (b.centrality || 0) + (b.importance || 0) - (a.centrality || 0) - (a.importance || 0);
+    });
+    if (members.length > 0) { members[0].x = center.x; members[0].y = center.y; }
+    var goldenAngle = Math.PI * (3 - Math.sqrt(5));
+    var ringSpacing = Math.max(35, members.length * 0.8);
+    for (var mi = 1; mi < members.length; mi++) {
+      var angle = mi * goldenAngle;
+      var ring = Math.sqrt(mi) * ringSpacing;
+      members[mi].x = center.x + Math.cos(angle) * ring;
+      members[mi].y = center.y + Math.sin(angle) * ring;
+    }
+  }
+}
+
 function initSimulation() {
   lastNodeCount = nodes.length;
   lastMaxId = nodes.reduce(function(mx, n) {
@@ -591,37 +634,18 @@ function initSimulation() {
     .velocityDecay(0.35)
     .force('link', d3.forceLink(links)
       .id(function(d) { return d.id; })
-      .distance(function(d) { return 30 + (1 - d.weight) * 80; })
-      .strength(function(d) { return 0.15 + d.weight * 0.35; })
+      .distance(function(d) { return 30 + (1 - d.weight) * 120; })
+      .strength(function(d) { return 0.2 + d.weight * 0.5; })
     )
     .force('charge', d3.forceManyBody()
-      .strength(function(d) { return -180 - d.importance * 100; })
-      .distanceMax(1000)
+      .strength(function(d) { return -30 - d.importance * 50; })
+      .distanceMax(400)
     )
     .force('collide', d3.forceCollide()
-      .radius(function(d) { return d.radius * 1.5 + 6; })
+      .radius(function(d) { return d.radius + 3; })
       .strength(0.7)
     )
-    .force('center', d3.forceCenter(0, 0).strength(0.012))
-    .force('cluster', function(alpha) {
-      // Pull nodes toward their community centroid - creates distinct cluster groups
-      var cx = {}, cy = {}, cn = {};
-      for (var i = 0; i < nodes.length; i++) {
-        var n = nodes[i], comm = n.community;
-        if (comm === undefined) continue;
-        cx[comm] = (cx[comm] || 0) + n.x;
-        cy[comm] = (cy[comm] || 0) + n.y;
-        cn[comm] = (cn[comm] || 0) + 1;
-      }
-      for (var k in cx) { cx[k] /= cn[k]; cy[k] /= cn[k]; }
-      // Attract to centroid
-      for (var i = 0; i < nodes.length; i++) {
-        var n = nodes[i], comm = n.community;
-        if (cx[comm] === undefined) continue;
-        n.vx += (cx[comm] - n.x) * alpha * 0.08;
-        n.vy += (cy[comm] - n.y) * alpha * 0.08;
-      }
-    })
+    .force('center', d3.forceCenter(0, 0).strength(0.03))
     .on('tick', onSimTick)
     .on('end', onSimEnd);
 }
@@ -758,10 +782,46 @@ function analyzeGraph() {
     if (!changed) break;
   }
 
-  // Normalize: largest community = 0
+  // Merge small communities into nearest large neighbor
+  var MAX_COMMUNITIES = 10;
   var sizes = {};
   nodes.forEach(function(n) { sizes[n.community] = (sizes[n.community] || 0) + 1; });
   var sorted = Object.keys(sizes).sort(function(a, b) { return sizes[b] - sizes[a]; });
+  var keepSet = {};
+  var keepComms = sorted.slice(0, MAX_COMMUNITIES);
+  keepComms.forEach(function(c) { keepSet[c] = true; });
+  if (sorted.length > MAX_COMMUNITIES) {
+    var smallComms = sorted.slice(MAX_COMMUNITIES);
+    for (var si = 0; si < smallComms.length; si++) {
+      var sc = smallComms[si];
+      var affinity = {};
+      for (var ni = 0; ni < nodes.length; ni++) {
+        var n = nodes[ni];
+        if (String(n.community) !== sc) continue;
+        var nb = adj[n.id] || [];
+        for (var nbi = 0; nbi < nb.length; nbi++) {
+          var peer = nodeMap[nb[nbi].id];
+          if (!peer) continue;
+          var pc = String(peer.community);
+          if (keepSet[pc]) {
+            affinity[pc] = (affinity[pc] || 0) + (nb[nbi].weight || 0.5);
+          }
+        }
+      }
+      var bestComm = keepComms[0], bestW = -1;
+      for (var ac in affinity) {
+        if (affinity[ac] > bestW) { bestW = affinity[ac]; bestComm = ac; }
+      }
+      for (var ni = 0; ni < nodes.length; ni++) {
+        if (String(nodes[ni].community) === sc) {
+          nodes[ni].community = parseInt(bestComm);
+        }
+      }
+    }
+  }
+  sizes = {};
+  nodes.forEach(function(n) { sizes[n.community] = (sizes[n.community] || 0) + 1; });
+  sorted = Object.keys(sizes).sort(function(a, b) { return sizes[b] - sizes[a]; });
   var remap = {};
   sorted.forEach(function(c, i) { remap[c] = i; });
   nodes.forEach(function(n) { n.community = remap[n.community]; });
@@ -1065,34 +1125,34 @@ function drawBackground() {
   var w = W, h = H;
   bgCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  bgCtx.fillStyle = '#030510';
+  bgCtx.fillStyle = '#010208';
   bgCtx.fillRect(0, 0, w, h);
 
   var grad = bgCtx.createLinearGradient(0, 0, w, h);
-  grad.addColorStop(0, 'rgba(3,5,16,1)');
-  grad.addColorStop(0.3, 'rgba(8,8,35,1)');
-  grad.addColorStop(0.6, 'rgba(18,10,60,1)');
-  grad.addColorStop(1, 'rgba(25,15,80,1)');
+  grad.addColorStop(0, 'rgba(1,2,8,1)');
+  grad.addColorStop(0.3, 'rgba(3,4,18,1)');
+  grad.addColorStop(0.6, 'rgba(6,4,25,1)');
+  grad.addColorStop(1, 'rgba(10,6,35,1)');
   bgCtx.fillStyle = grad;
   bgCtx.fillRect(0, 0, w, h);
 
   var glow1 = bgCtx.createRadialGradient(w * 0.55, h * 1.15, 0, w * 0.55, h * 1.15, h * 1.0);
-  glow1.addColorStop(0, 'rgba(40,70,255,0.55)');
-  glow1.addColorStop(0.2, 'rgba(50,60,240,0.35)');
-  glow1.addColorStop(0.5, 'rgba(40,30,180,0.18)');
+  glow1.addColorStop(0, 'rgba(40,70,255,0.275)');
+  glow1.addColorStop(0.2, 'rgba(50,60,240,0.175)');
+  glow1.addColorStop(0.5, 'rgba(40,30,180,0.09)');
   glow1.addColorStop(1, 'rgba(0,0,0,0)');
   bgCtx.fillStyle = glow1;
   bgCtx.fillRect(0, 0, w, h);
 
   var glow2 = bgCtx.createRadialGradient(w * 0.7, h * 0.6, 0, w * 0.7, h * 0.6, h * 0.5);
-  glow2.addColorStop(0, 'rgba(80,30,180,0.2)');
-  glow2.addColorStop(0.5, 'rgba(50,20,120,0.08)');
+  glow2.addColorStop(0, 'rgba(80,30,180,0.1)');
+  glow2.addColorStop(0.5, 'rgba(50,20,120,0.04)');
   glow2.addColorStop(1, 'rgba(0,0,0,0)');
   bgCtx.fillStyle = glow2;
   bgCtx.fillRect(0, 0, w, h);
 
   var glow3 = bgCtx.createRadialGradient(w * 0.2, h * 0.95, 0, w * 0.2, h * 0.95, h * 0.5);
-  glow3.addColorStop(0, 'rgba(60,40,180,0.15)');
+  glow3.addColorStop(0, 'rgba(60,40,180,0.075)');
   glow3.addColorStop(1, 'rgba(0,0,0,0)');
   bgCtx.fillStyle = glow3;
   bgCtx.fillRect(0, 0, w, h);
@@ -1104,19 +1164,20 @@ function fillLines(vpL, vpR, vpT, vpB) {
   var c = 0;
   var dp = dimProgress;
 
-  // Edges
+  // Edges - drawn as curved bezier arcs
+  var CURVE_SEGS = 8;
   for (var i = 0; i < links.length; i++) {
-    if (c >= MAX_LINE_VERTS - 2) break;
+    if (c >= MAX_LINE_VERTS - CURVE_SEGS * 2 - 2) break;
     var l = links[i];
     var s = typeof l.source === 'object' ? l.source : nodeMap[l.source];
     var t = typeof l.target === 'object' ? l.target : nodeMap[l.target];
     if (!s || !t) continue;
     if (timelineDate && (!_isTimeVisible(s) || !_isTimeVisible(t))) continue;
     var w = l.weight;
-    // Filter weak edges to reduce noise
     if (w < 0.2) continue;
-    var minX = Math.min(s.x, t.x), maxX = Math.max(s.x, t.x);
-    var minY = Math.min(s.y, t.y), maxY = Math.max(s.y, t.y);
+    var margin2 = 200;
+    var minX = Math.min(s.x, t.x) - margin2, maxX = Math.max(s.x, t.x) + margin2;
+    var minY = Math.min(s.y, t.y) - margin2, maxY = Math.max(s.y, t.y) + margin2;
     if (maxX < vpL || minX > vpR || maxY < vpT || minY > vpB) continue;
 
     var isHi = false;
@@ -1126,27 +1187,64 @@ function fillLines(vpL, vpR, vpT, vpB) {
     }
 
     var sameComm = s.community !== undefined && s.community === t.community;
-    var alpha = sameComm ? (0.06 + w * 0.15) : (0.25 + w * 0.5);
-    if (dp > 0.01 && !isHi) alpha *= (1 - dp * 0.85);
-    if (isHi) alpha = Math.min(alpha * 2.5, 0.9);
-
-    // Cross-community edges: bright white-ish. Same-community: faint community color
-    var sc = _nodeColor(s), tc = _nodeColor(t);
-    var r, g, b;
-    if (sameComm) {
-      r = (sc[0] + tc[0]) * 0.5;
-      g = (sc[1] + tc[1]) * 0.5;
-      b = (sc[2] + tc[2]) * 0.5;
+    // Weight-based visibility: weak edges nearly invisible, strong edges visible
+    var alpha;
+    if (w < 0.65) {
+      alpha = 0.03 + w * 0.06;
+    } else if (w < 0.85) {
+      alpha = 0.08 + (w - 0.65) * 0.5;
     } else {
-      r = (sc[0] + tc[0]) * 0.35 + 0.3;
-      g = (sc[1] + tc[1]) * 0.35 + 0.3;
-      b = (sc[2] + tc[2]) * 0.35 + 0.3;
+      alpha = 0.2 + (w - 0.85) * 1.2;
+    }
+    if (dp > 0.01 && !isHi) alpha *= (1 - dp * 0.92);
+    if (isHi) alpha = Math.min(alpha * 2.5 + 0.15, 0.7);
+
+    var sc = _nodeColor(s), tc = _nodeColor(t);
+    // Desaturate non-highlighted edges toward grey
+    var r, g, b;
+    if (isHi) {
+      r = (sc[0] + tc[0]) * 0.5; g = (sc[1] + tc[1]) * 0.5; b = (sc[2] + tc[2]) * 0.5;
+    } else {
+      r = (sc[0] + tc[0]) * 0.25 + 0.35; g = (sc[1] + tc[1]) * 0.25 + 0.38; b = (sc[2] + tc[2]) * 0.25 + 0.42;
     }
 
-    var idx = c * 6;
-    d[idx]=s.x; d[idx+1]=s.y; d[idx+2]=r; d[idx+3]=g; d[idx+4]=b; d[idx+5]=alpha;
-    d[idx+6]=t.x; d[idx+7]=t.y; d[idx+8]=r; d[idx+9]=g; d[idx+10]=b; d[idx+11]=alpha;
-    c += 2;
+    // Quadratic bezier control point: perpendicular offset at midpoint
+    var mx = (s.x + t.x) * 0.5, my = (s.y + t.y) * 0.5;
+    var dx = t.x - s.x, dy = t.y - s.y;
+    var dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    // Consistent curve direction from ID hash, magnitude scales with distance
+    var hash = 0;
+    var sid = String(s.id), tid = String(t.id);
+    for (var hi = 0; hi < sid.length; hi++) hash = ((hash << 5) - hash + sid.charCodeAt(hi)) | 0;
+    for (var hi = 0; hi < tid.length; hi++) hash = ((hash << 5) - hash + tid.charCodeAt(hi)) | 0;
+    var curveFrac = 0.15 + (((hash & 0x7fffffff) % 100) / 100) * 0.2;
+    var curveDir = (hash & 1) ? 1 : -1;
+    var nx = -dy / dist, ny = dx / dist;
+    var cpx = mx + nx * dist * curveFrac * curveDir;
+    var cpy = my + ny * dist * curveFrac * curveDir;
+
+    // Draw bezier as line segments with alpha fade at endpoints
+    var prevX = s.x, prevY = s.y;
+    for (var seg = 1; seg <= CURVE_SEGS; seg++) {
+      var tt = seg / CURVE_SEGS;
+      var u = 1 - tt;
+      var bx = u * u * s.x + 2 * u * tt * cpx + tt * tt * t.x;
+      var by = u * u * s.y + 2 * u * tt * cpy + tt * tt * t.y;
+      // Fade alpha at endpoints for soft connection
+      var edgeFade = Math.min(tt, 1 - tt) * 2;
+      edgeFade = Math.min(edgeFade * 3, 1); // quick ramp, mostly full alpha in middle
+      var segAlpha = alpha * (0.3 + 0.7 * edgeFade);
+      // Color interpolation from source to target
+      var cr = sc[0] * (1 - tt) + tc[0] * tt;
+      var cg = sc[1] * (1 - tt) + tc[1] * tt;
+      var cb = sc[2] * (1 - tt) + tc[2] * tt;
+      if (!sameComm) { cr = cr * 0.7 + 0.3; cg = cg * 0.7 + 0.3; cb = cb * 0.7 + 0.3; }
+      var idx = c * 6;
+      d[idx]=prevX; d[idx+1]=prevY; d[idx+2]=cr; d[idx+3]=cg; d[idx+4]=cb; d[idx+5]=segAlpha;
+      d[idx+6]=bx; d[idx+7]=by; d[idx+8]=cr; d[idx+9]=cg; d[idx+10]=cb; d[idx+11]=segAlpha;
+      c += 2;
+      prevX = bx; prevY = by;
+    }
   }
 
   // Dendrite branches (neuron shape built from lines, not dots)
@@ -1163,8 +1261,8 @@ function fillLines(vpL, vpR, vpT, vpB) {
     var cr = cc[0], cg = cc[1], cb = cc[2];
     for (var di = 0; di < dd.length; di++) {
       if (c >= MAX_LINE_VERTS - 2) break;
-      var dendA = dd[di].primary ? 0.5 * na : 0.35 * na;
-      var tipA = dd[di].primary ? 0.3 * na : 0.15 * na;
+      var dendA = dd[di].primary ? 0.7 * na : 0.5 * na;
+      var tipA = dd[di].primary ? 0.15 * na : 0.08 * na;
       var idx = c * 6;
       d[idx]=n.x+dd[di].x1; d[idx+1]=n.y+dd[di].y1; d[idx+2]=cr; d[idx+3]=cg; d[idx+4]=cb; d[idx+5]=dendA;
       d[idx+6]=n.x+dd[di].x2; d[idx+7]=n.y+dd[di].y2; d[idx+8]=cr; d[idx+9]=cg; d[idx+10]=cb; d[idx+11]=tipA;
@@ -1184,9 +1282,9 @@ function ensureDendrites(n) {
   function rng() { seed = (seed * 16807 + 0) % 2147483647; return (seed & 0x7fffffff) / 2147483647; }
 
   var dends = [];
-  var count = 3 + Math.floor(rng() * 4 + n.importance * 1.5);
-  count = Math.min(count, 8);
-  var baseLen = n.radius * 1.8;
+  var count = 6 + Math.floor(rng() * 4 + n.importance * 2);
+  count = Math.min(count, 14);
+  var baseLen = n.radius * 3.5;
 
   for (var i = 0; i < count; i++) {
     var angle = (i / count) * Math.PI * 2 + (rng() - 0.5) * 0.8;
@@ -1194,19 +1292,6 @@ function ensureDendrites(n) {
     var ex = Math.cos(angle) * len;
     var ey = Math.sin(angle) * len;
     dends.push({ x1: 0, y1: 0, x2: ex, y2: ey, primary: true });
-
-    // Branch: 50% chance
-    if (rng() > 0.5) {
-      var ba = angle + (rng() - 0.5) * 1.4;
-      var bl = len * (0.3 + rng() * 0.5);
-      dends.push({ x1: ex, y1: ey, x2: ex + Math.cos(ba) * bl, y2: ey + Math.sin(ba) * bl });
-    }
-    // Second branch: 25% chance
-    if (rng() > 0.75) {
-      var ba2 = angle + (rng() - 0.5) * 1.6;
-      var bl2 = len * (0.2 + rng() * 0.3);
-      dends.push({ x1: ex, y1: ey, x2: ex + Math.cos(ba2) * bl2, y2: ey + Math.sin(ba2) * bl2 });
-    }
   }
   n._dends = dends;
 }
@@ -1235,10 +1320,10 @@ function fillPoints(vpL, vpR, vpT, vpB) {
 
     // === GLOW BUFFER (additive blend) ===
     // Subtle inner glow behind dandelion
-    var atmR = n.radius * 3.0 * scale;
+    var atmR = n.radius * 4.5 * scale;
     var gi = gc * 8;
     g[gi]=n.x; g[gi+1]=n.y; g[gi+2]=cr; g[gi+3]=cg; g[gi+4]=cb;
-    g[gi+5]=0.12*na; g[gi+6]=atmR; g[gi+7]=0;
+    g[gi+5]=0.18*na; g[gi+6]=atmR; g[gi+7]=0;
     gc++;
 
     // Hover/select glow
@@ -1261,7 +1346,7 @@ function fillPoints(vpL, vpR, vpT, vpB) {
     }
 
     // Soma (cell body center) - small bright anchor, dendrites define the shape
-    var coreR = Math.max(2, n.radius * 0.22) * scale;
+    var coreR = Math.max(5, n.radius * 0.55) * scale;
     var idx = c * 8;
     d[idx]=n.x; d[idx+1]=n.y; d[idx+2]=cr; d[idx+3]=cg; d[idx+4]=cb;
     d[idx+5]=1.0*na; d[idx+6]=coreR; d[idx+7]=1;

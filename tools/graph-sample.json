@@ -1,0 +1,838 @@
+{
+  "nodes": [
+    {
+      "id": "m2",
+      "label": "GitLab instance on Rocky: Podman container, port 8",
+      "category": "discovery",
+      "importance": 5,
+      "source": "opencode@Zanverse"
+    },
+    {
+      "id": "m8",
+      "label": "Ollama v0.17.7 installed on Windows PC (100.105.14",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Zanverse"
+    },
+    {
+      "id": "m9",
+      "label": "Chat UI for Ollama on Windows — INCOMPLETE. Open W",
+      "category": "state",
+      "importance": 5,
+      "source": "opencode@Zanverse"
+    },
+    {
+      "id": "m12",
+      "label": "Forge Box (94.156.152.50): 12-core Intel Xeon Gold",
+      "category": "state",
+      "importance": 5,
+      "source": "opencode@Zanverse"
+    },
+    {
+      "id": "m14",
+      "label": "OVERALL PROJECT STATUS (as of 2026-03-06):\n\nCOMPLE",
+      "category": "state",
+      "importance": 5,
+      "source": "opencode@Zanverse"
+    },
+    {
+      "id": "m22",
+      "label": "Zan-clone selfbot FULLY FIXED and back online (202",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Zanverse"
+    },
+    {
+      "id": "m23",
+      "label": "BAV Website Visual Enhancement DEPLOYED. Created a",
+      "category": "task",
+      "importance": 5,
+      "source": "unknown"
+    },
+    {
+      "id": "m26",
+      "label": "BAV CRM fully deployed at https://crm.bayaudiovide",
+      "category": "task",
+      "importance": 5,
+      "source": "unknown"
+    },
+    {
+      "id": "m28",
+      "label": "Nextcloud external storage mount of /home/zan is F",
+      "category": "task",
+      "importance": 5,
+      "source": "unknown"
+    },
+    {
+      "id": "m29",
+      "label": "BAV Accounts Manager - FULLY DEPLOYED AND WORKING.",
+      "category": "task",
+      "importance": 5,
+      "source": "unknown"
+    },
+    {
+      "id": "m30",
+      "label": "RULE: NEVER assign or generate passwords. ALWAYS a",
+      "category": "decision",
+      "importance": 5,
+      "source": "opencode@Zanverse"
+    },
+    {
+      "id": "m35",
+      "label": "COMPLETED: Rewrote BAV Accounts as Centralized Acc",
+      "category": "task",
+      "importance": 5,
+      "source": "unknown"
+    },
+    {
+      "id": "m36",
+      "label": "Accounts Manager v2 is now live at https://account",
+      "category": "state",
+      "importance": 5,
+      "source": "unknown"
+    },
+    {
+      "id": "m43",
+      "label": "BAV Form Submission System - FULLY DEPLOYED AND WO",
+      "category": "task",
+      "importance": 5,
+      "source": "unknown"
+    },
+    {
+      "id": "m46",
+      "label": "Mindset Tattoo — Booking page DEPLOYED and admin.m",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Zanverse"
+    },
+    {
+      "id": "m47",
+      "label": "BAV Page Builder - All fixes completed and tested.",
+      "category": "task",
+      "importance": 5,
+      "source": "unknown"
+    },
+    {
+      "id": "m48",
+      "label": "DO NOT TOUCH EasyBooks (books.bayaudiovideo.dev). ",
+      "category": "decision",
+      "importance": 5,
+      "source": "unknown"
+    },
+    {
+      "id": "m49",
+      "label": "BAV Scheduler PROJECT_PLAN.md updated with full Vo",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m51",
+      "label": "BAV Hub Audit (2026-03-07): Single-file Bun+Hono a",
+      "category": "state",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m52",
+      "label": "Builder audit completed (2026-03-07): /home/zan/ba",
+      "category": "discovery",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m54",
+      "label": "PostgreSQL 17.8 installed and fully configured on ",
+      "category": "state",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m55",
+      "label": "Accounts Manager fully populated 2026-03-07. BAV: ",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@manual"
+    },
+    {
+      "id": "m57",
+      "label": "Phase 0 SQLite-to-PG migration FULLY COMPLETE. All",
+      "category": "task",
+      "importance": 5,
+      "source": "unknown"
+    },
+    {
+      "id": "m58",
+      "label": "MegaMind is now at 192.168.8.133:4200 (Rocky inter",
+      "category": "state",
+      "importance": 5,
+      "source": "unknown"
+    },
+    {
+      "id": "m60",
+      "label": "Phase 1 Go API COMPLETE AND DEPLOYED. Commit 815ff",
+      "category": "task",
+      "importance": 5,
+      "source": "unknown"
+    },
+    {
+      "id": "m64",
+      "label": "Phase 1 NEXT STEPS (not yet done): 1) Flutter app ",
+      "category": "state",
+      "importance": 5,
+      "source": "unknown"
+    },
+    {
+      "id": "m65",
+      "label": "Telnyx account created (2026-03-07). Free account,",
+      "category": "state",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m66",
+      "label": "Zanverse Pangolin VPS (46.225.188.154, Debian 13) ",
+      "category": "state",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m67",
+      "label": "Root SSH hardening audit completed across all serv",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m68",
+      "label": "OVH VPS hosting zanverse.lol — IP: 40.160.252.134,",
+      "category": "state",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m71",
+      "label": "OVH VPS FULL AUDIT (40.160.252.134, vps-6b7824f3) ",
+      "category": "state",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m73",
+      "label": "OVH VPS LISTENING PORTS (40.160.252.134) — 2026-03",
+      "category": "state",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m74",
+      "label": "OVH VPS CRON JOBS + KEY PATHS (40.160.252.134) — 2",
+      "category": "state",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m76",
+      "label": "ZANVERSE-INSTRUCTIONS.md found at /home/zan/ZANVER",
+      "category": "discovery",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m77",
+      "label": "Headscale migration session 2026-03-08 progress:\n\n",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m78",
+      "label": "OVH VPS (40.160.252.134) has a LOCAL Headscale pod",
+      "category": "issue",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m79",
+      "label": "BAV Scheduler FULLY DEPLOYED AND LIVE at https://s",
+      "category": "task",
+      "importance": 5,
+      "source": "unknown"
+    },
+    {
+      "id": "m80",
+      "label": "ZanChat PWA fully deployed and operational at http",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode-rocky"
+    },
+    {
+      "id": "m82",
+      "label": "ZANVERSE DOWNLOAD SIGNING SYSTEM (investigated 202",
+      "category": "discovery",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m85",
+      "label": "Zan's Discord IDs: Main account = 9834264363061821",
+      "category": "discovery",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m89",
+      "label": "BAV Scheduler - All code committed and pushed to b",
+      "category": "task",
+      "importance": 5,
+      "source": "unknown"
+    },
+    {
+      "id": "m90",
+      "label": "TIMEZONE BUG FIX: schedule.go had America/Chicago ",
+      "category": "issue",
+      "importance": 5,
+      "source": "unknown"
+    },
+    {
+      "id": "m92",
+      "label": "Updated check 1 (Discord reply targeting) in all 3",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m95",
+      "label": "Monitoring stack deployed on Rocky Linux (100.64.0",
+      "category": "state",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m96",
+      "label": "OVH VPS monitoring agents (100.64.0.9 / 40.160.252",
+      "category": "state",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m97",
+      "label": "Rocky Linux tailscale0 had OLD Tailscale IP 100.12",
+      "category": "issue",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m99",
+      "label": "BAV Scheduler commit 6aa517e pushed to GitHub+GitL",
+      "category": "task",
+      "importance": 5,
+      "source": "unknown"
+    },
+    {
+      "id": "m102",
+      "label": "Discord bots (dib-bot, gir-v2, zim-bot) on OVH VPS",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m104",
+      "label": "Commit 9a4450d pushed to both GitHub and GitLab. D",
+      "category": "task",
+      "importance": 5,
+      "source": "unknown"
+    },
+    {
+      "id": "m106",
+      "label": "ZanChat PWA session summary (2026-03-07):\n\nCOMPLET",
+      "category": "state",
+      "importance": 5,
+      "source": "opencode-rocky"
+    },
+    {
+      "id": "m107",
+      "label": "Zanverse library 2026-03-08 session 2: (1) Removed",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m108",
+      "label": "Rocky Headscale IP changed from 100.120.223.125 (T",
+      "category": "state",
+      "importance": 5,
+      "source": "unknown"
+    },
+    {
+      "id": "m110",
+      "label": "Mindset Tattoo booking fix COMPLETED (2026-03-07).",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode-rocky"
+    },
+    {
+      "id": "m112",
+      "label": "Zanverse site fully verified as of 2026-03-08. All",
+      "category": "state",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m114",
+      "label": "Discord bot zanmemory separation COMPLETED (2026-0",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m115",
+      "label": "Grafana exposed at https://grafana.zanverse.dev/ C",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m116",
+      "label": "Mindset Tattoo Coolify auto-deploy FIXED (2026-03-",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode-rocky"
+    },
+    {
+      "id": "m117",
+      "label": "INCIDENT 2026-03-08: All Zanverse sites returning ",
+      "category": "issue",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m118",
+      "label": "www.zanverse.lol was broken on Mar 8 2026. Root ca",
+      "category": "issue",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m119",
+      "label": "Fixed CrowdSec banning Zan's home IP (65.99.123.19",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m121",
+      "label": "Phase 2 Time Tracking is DEPLOYED and LIVE at sche",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m123",
+      "label": "Grafana monitoring fully deployed across all 8 inf",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m127",
+      "label": "ZanOps/Uptime Kuma monitoring fix COMPLETED (2026-",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m128",
+      "label": "SELinux on Rocky Linux was blocking Grafana (grafa",
+      "category": "issue",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m136",
+      "label": "Support Bot Blueprint COMPLETED (2026-03-08). All ",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m137",
+      "label": "WAN Speed Monitor dashboard successfully uploaded ",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m138",
+      "label": "Vaultwarden is already fully accessible at https:/",
+      "category": "state",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m139",
+      "label": "Vaultwarden backup sync from OVH VPS to Rocky set ",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m141",
+      "label": "Support bot blueprint pushed to GitHub: https://gi",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m142",
+      "label": "Phase 5 (Live Map & Route Optimization) is COMPLET",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m149",
+      "label": "Mindset Studio booking visibility fix deployed (20",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m150",
+      "label": "Vaultwarden migration from OVH to Hetzner COMPLETE",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m151",
+      "label": "DISCOVERY: Pangolin Traefik routing has TWO route ",
+      "category": "discovery",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m152",
+      "label": "DECISION: Vaultwarden container on Hetzner created",
+      "category": "decision",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m153",
+      "label": "Security audit remediation for www.zanverse.lol — ",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m154",
+      "label": "COMPLETED: WAN Speed Monitoring + Whatbox Integrat",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m160",
+      "label": "Mindset Studio booking fix FULLY COMPLETE AND DEPL",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m162",
+      "label": "Phase 7 (Client Portal) FULLY DEPLOYED AND LIVE (2",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m164",
+      "label": "Vaultwarden account fix COMPLETED. Deleted both br",
+      "category": "task",
+      "importance": 5,
+      "source": "opencode@Verse"
+    },
+    {
+      "id": "m165",
+      "label": "PROJECT PHASES STATUS (as of Mar 8 2026):\n1. Site ",
+      "category": "state",
+      "importance": 5,
+      "source": "opencode@Verse"
+    }
+  ],
+  "edges": [
+    {
+      "source": "m26",
+      "target": "m29",
+      "weight": 0.77
+    },
+    {
+      "source": "m26",
+      "target": "m35",
+      "weight": 0.72
+    },
+    {
+      "source": "m29",
+      "target": "m26",
+      "weight": 0.77
+    },
+    {
+      "source": "m29",
+      "target": "m35",
+      "weight": 0.77
+    },
+    {
+      "source": "m29",
+      "target": "m36",
+      "weight": 0.73
+    },
+    {
+      "source": "m35",
+      "target": "m26",
+      "weight": 0.72
+    },
+    {
+      "source": "m35",
+      "target": "m29",
+      "weight": 0.77
+    },
+    {
+      "source": "m35",
+      "target": "m36",
+      "weight": 0.75
+    },
+    {
+      "source": "m36",
+      "target": "m29",
+      "weight": 0.73
+    },
+    {
+      "source": "m36",
+      "target": "m35",
+      "weight": 0.75
+    },
+    {
+      "source": "m46",
+      "target": "m160",
+      "weight": 0.73
+    },
+    {
+      "source": "m58",
+      "target": "m108",
+      "weight": 0.73
+    },
+    {
+      "source": "m64",
+      "target": "m79",
+      "weight": 0.77
+    },
+    {
+      "source": "m68",
+      "target": "m71",
+      "weight": 0.72
+    },
+    {
+      "source": "m68",
+      "target": "m78",
+      "weight": 0.72
+    },
+    {
+      "source": "m71",
+      "target": "m68",
+      "weight": 0.72
+    },
+    {
+      "source": "m71",
+      "target": "m76",
+      "weight": 0.82
+    },
+    {
+      "source": "m71",
+      "target": "m77",
+      "weight": 0.76
+    },
+    {
+      "source": "m71",
+      "target": "m127",
+      "weight": 0.72
+    },
+    {
+      "source": "m71",
+      "target": "m150",
+      "weight": 0.73
+    },
+    {
+      "source": "m76",
+      "target": "m71",
+      "weight": 0.82
+    },
+    {
+      "source": "m76",
+      "target": "m77",
+      "weight": 0.74
+    },
+    {
+      "source": "m76",
+      "target": "m150",
+      "weight": 0.71
+    },
+    {
+      "source": "m77",
+      "target": "m71",
+      "weight": 0.76
+    },
+    {
+      "source": "m77",
+      "target": "m76",
+      "weight": 0.74
+    },
+    {
+      "source": "m78",
+      "target": "m68",
+      "weight": 0.72
+    },
+    {
+      "source": "m79",
+      "target": "m64",
+      "weight": 0.77
+    },
+    {
+      "source": "m80",
+      "target": "m106",
+      "weight": 0.78
+    },
+    {
+      "source": "m82",
+      "target": "m153",
+      "weight": 0.73
+    },
+    {
+      "source": "m95",
+      "target": "m123",
+      "weight": 0.79
+    },
+    {
+      "source": "m106",
+      "target": "m80",
+      "weight": 0.78
+    },
+    {
+      "source": "m107",
+      "target": "m112",
+      "weight": 0.71
+    },
+    {
+      "source": "m108",
+      "target": "m58",
+      "weight": 0.73
+    },
+    {
+      "source": "m112",
+      "target": "m107",
+      "weight": 0.71
+    },
+    {
+      "source": "m115",
+      "target": "m117",
+      "weight": 0.71
+    },
+    {
+      "source": "m117",
+      "target": "m115",
+      "weight": 0.71
+    },
+    {
+      "source": "m121",
+      "target": "m142",
+      "weight": 0.73
+    },
+    {
+      "source": "m123",
+      "target": "m95",
+      "weight": 0.79
+    },
+    {
+      "source": "m123",
+      "target": "m154",
+      "weight": 0.71
+    },
+    {
+      "source": "m127",
+      "target": "m71",
+      "weight": 0.72
+    },
+    {
+      "source": "m137",
+      "target": "m154",
+      "weight": 0.7
+    },
+    {
+      "source": "m139",
+      "target": "m150",
+      "weight": 0.74
+    },
+    {
+      "source": "m142",
+      "target": "m121",
+      "weight": 0.73
+    },
+    {
+      "source": "m149",
+      "target": "m160",
+      "weight": 0.77
+    },
+    {
+      "source": "m150",
+      "target": "m139",
+      "weight": 0.74
+    },
+    {
+      "source": "m150",
+      "target": "m71",
+      "weight": 0.73
+    },
+    {
+      "source": "m150",
+      "target": "m76",
+      "weight": 0.71
+    },
+    {
+      "source": "m151",
+      "target": "m152",
+      "weight": 0.77
+    },
+    {
+      "source": "m152",
+      "target": "m151",
+      "weight": 0.77
+    },
+    {
+      "source": "m153",
+      "target": "m82",
+      "weight": 0.73
+    },
+    {
+      "source": "m154",
+      "target": "m123",
+      "weight": 0.71
+    },
+    {
+      "source": "m154",
+      "target": "m137",
+      "weight": 0.7
+    },
+    {
+      "source": "m160",
+      "target": "m149",
+      "weight": 0.77
+    },
+    {
+      "source": "m160",
+      "target": "m46",
+      "weight": 0.73
+    }
+  ],
+  "node_count": 80,
+  "edge_count": 54
+}
