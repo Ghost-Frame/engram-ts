@@ -813,7 +813,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
       ).all(auth.user_id);
 
       const exportData = {
-        version: "engram-v5.8",
+        version: "engram-v5.9",
         exported_at: new Date().toISOString(),
         memories: mems,
         links: memLinks,
@@ -8141,11 +8141,7 @@ function autoArchiveDeadMemories(): void {
 }
 
 // Schedule background jobs
-// Decay refresh: every 6 hours
-setInterval(() => { refreshDecayScores(); }, 6 * 60 * 60 * 1000);
+// NOTE: Decay refresh runs in server-split.ts (15min, lease-protected). Do NOT duplicate here.
 
 // Auto-archive: every 24 hours
 setInterval(() => { autoArchiveDeadMemories(); }, 24 * 60 * 60 * 1000);
-
-// Run decay refresh once on startup (after a short delay to let DB init)
-setTimeout(() => { refreshDecayScores(); }, 5000);
