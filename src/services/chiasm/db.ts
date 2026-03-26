@@ -49,5 +49,3 @@ migrate(`CREATE INDEX IF NOT EXISTS idx_chiasm_task_updates_task_id ON chiasm_ta
 
 export const getTaskById = db.prepare("SELECT * FROM chiasm_tasks WHERE id = ?");
 export const deleteTaskStmt = db.prepare("DELETE FROM chiasm_tasks WHERE id = ?");
-export const taskCount = db.prepare("SELECT COUNT(*) as count FROM chiasm_tasks");
-export const activeTaskCount = db.prepare("SELECT COUNT(*) as count FROM chiasm_tasks WHERE status = 'active'");

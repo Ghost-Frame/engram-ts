@@ -59,24 +59,34 @@ export function getTask(id: number): Task | undefined {
   return getTaskById.get(id) as Task | undefined;
 }
 
+// Transaction-safe inserts (no RETURNING -- avoids libsql "statements in progress" bug)
+const insertTaskTx = db.prepare(
+  "INSERT INTO chiasm_tasks (agent, project, title, summary) VALUES (?, ?, ?, ?)"
+);
+const insertTaskUpdateTx = db.prepare(
+  "INSERT INTO chiasm_task_updates (task_id, agent, status, summary) VALUES (?, ?, ?, ?)"
+);
+const updateTaskTx = db.prepare(
+  "UPDATE chiasm_tasks SET status = ?, summary = ?, updated_at = datetime('now') WHERE id = ?"
+);
+const getLastRowId = db.prepare("SELECT last_insert_rowid() as id");
+
 export function createTask(data: { agent: string; project: string; title: string; summary?: string }): Task {
   const run = db.transaction(() => {
-    const result = db.prepare(
-      "INSERT INTO chiasm_tasks (agent, project, title, summary) VALUES (?, ?, ?, ?) RETURNING *"
-    ).get(data.agent, data.project, data.title, data.summary ?? null) as Task;
+    insertTaskTx.run(data.agent, data.project, data.title, data.summary ?? null);
+    const { id } = getLastRowId.get() as { id: number };
 
-    db.prepare(
-      "INSERT INTO chiasm_task_updates (task_id, agent, status, summary) VALUES (?, ?, 'active', ?)"
-    ).run(result.id, data.agent, data.summary ?? null);
+    insertTaskUpdateTx.run(id, data.agent, "active", data.summary ?? null);
 
     publish("system", "chiasm", "task.created", {
-      task_id: result.id, agent: data.agent, project: data.project, title: data.title,
+      task_id: id, agent: data.agent, project: data.project, title: data.title,
     });
 
-    return result;
+    return id;
   });
 
-  return run();
+  const id = run();
+  return getTask(id)!;
 }
 
 export function updateTask(id: number, data: { status?: string; summary?: string }): Task | undefined {
@@ -87,22 +97,16 @@ export function updateTask(id: number, data: { status?: string; summary?: string
   const summary = data.summary ?? existing.summary;
 
   const run = db.transaction(() => {
-    const result = db.prepare(
-      "UPDATE chiasm_tasks SET status = ?, summary = ?, updated_at = datetime('now') WHERE id = ? RETURNING *"
-    ).get(status, summary, id) as Task;
-
-    db.prepare(
-      "INSERT INTO chiasm_task_updates (task_id, agent, status, summary) VALUES (?, ?, ?, ?)"
-    ).run(id, existing.agent, status, summary);
+    updateTaskTx.run(status, summary, id);
+    insertTaskUpdateTx.run(id, existing.agent, status, summary);
 
     publish("system", "chiasm", "task.updated", {
       task_id: id, agent: existing.agent, status, previous_status: existing.status,
     });
-
-    return result;
   });
 
-  return run();
+  run();
+  return getTask(id);
 }
 
 export function deleteTask(id: number): boolean {

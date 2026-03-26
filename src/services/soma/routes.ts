@@ -15,6 +15,8 @@ import {
   getStats,
 } from "./registry.ts";
 
+const VALID_AGENT_STATUSES = new Set(["pending", "online", "offline", "error"]);
+
 export async function handleSomaRoutes(
   method: string,
   url: URL,
@@ -74,6 +76,9 @@ export async function handleSomaRoutes(
 
   if (agentMatch && method === "PATCH") {
     const body = await req.json().catch(() => ({})) as any;
+    if (body.status !== undefined && !VALID_AGENT_STATUSES.has(body.status)) {
+      return errorResponse(`Invalid status. Must be one of: ${[...VALID_AGENT_STATUSES].join(", ")}`, 400, requestId);
+    }
     const agent = updateAgent(parseInt(agentMatch[1], 10), body);
     if (!agent) return errorResponse("Agent not found", 404, requestId);
     return json(agent);
@@ -97,9 +102,11 @@ export async function handleSomaRoutes(
   // POST /soma/agents/:id/logs
   const logMatch = sub.match(/^\/agents\/(\d+)\/logs$/);
   if (logMatch && method === "POST") {
+    const agentId = parseInt(logMatch[1], 10);
+    if (!getAgent(agentId)) return errorResponse("Agent not found", 404, requestId);
     const body = await req.json().catch(() => ({})) as any;
     if (!body.message || typeof body.message !== "string") return errorResponse("message required", 400, requestId);
-    const entry = addLog(parseInt(logMatch[1], 10), body);
+    const entry = addLog(agentId, body);
     return json(entry, 201);
   }
 
@@ -128,6 +135,14 @@ export async function handleSomaRoutes(
       if (e.message?.includes("UNIQUE")) return errorResponse("Group already exists", 409, requestId);
       throw e;
     }
+  }
+
+  // DELETE /soma/groups/:id
+  const groupMatch = sub.match(/^\/groups\/(\d+)$/);
+  if (groupMatch && method === "DELETE") {
+    const ok = deleteGroup(parseInt(groupMatch[1], 10));
+    if (!ok) return errorResponse("Group not found", 404, requestId);
+    return json({ ok: true });
   }
 
   // GET /soma/groups/:id/members
