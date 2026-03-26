@@ -421,6 +421,14 @@ export function bufferToEmbedding(buf: Buffer | Uint8Array | ArrayBuffer): Float
 }
 
 export function embeddingToVectorJSON(emb: Float32Array): string {
+  if (emb.length !== EMBEDDING_DIM) {
+    throw new Error(`Embedding length ${emb.length} !== expected ${EMBEDDING_DIM}`);
+  }
+  for (let i = 0; i < emb.length; i++) {
+    if (!Number.isFinite(emb[i])) {
+      throw new Error(`Invalid embedding value at index ${i}: ${emb[i]}`);
+    }
+  }
   return "[" + Array.from(emb).join(",") + "]";
 }
 

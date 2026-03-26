@@ -11,6 +11,14 @@ import { DB_PATH, DATA_DIR, DEFAULT_RATE_LIMIT, DEFAULT_IMPORTANCE, EMBEDDING_DI
 import { FSRSRating, type FSRSMemoryState, fsrsProcessReview, calculateDecayScore } from '../fsrs/index.ts';
 
 export function embeddingToVectorJSON(emb: Float32Array): string {
+  if (emb.length !== EMBEDDING_DIM) {
+    throw new Error(`Embedding length ${emb.length} !== expected ${EMBEDDING_DIM}`);
+  }
+  for (let i = 0; i < emb.length; i++) {
+    if (!Number.isFinite(emb[i])) {
+      throw new Error(`Invalid embedding value at index ${i}: ${emb[i]}`);
+    }
+  }
   return "[" + Array.from(emb).join(",") + "]";
 }
 
@@ -18,8 +26,20 @@ mkdirSync(DATA_DIR, { recursive: true });
 
 export const db = new Database(DB_PATH);
 db.exec('PRAGMA journal_mode=WAL');
+db.exec('PRAGMA synchronous=NORMAL');    // NORMAL is safe for WAL mode (fsync on checkpoint)
 db.exec('PRAGMA foreign_keys=ON');
 db.exec('PRAGMA busy_timeout=5000');
+db.exec('PRAGMA wal_autocheckpoint=1000'); // Auto-checkpoint every 1000 pages (~4MB)
+
+// Startup integrity check (quick_check is fast, catches most corruption)
+try {
+  const result = db.prepare('PRAGMA quick_check').get() as { quick_check: string } | undefined;
+  if (result && result.quick_check !== 'ok') {
+    log.error({ msg: "db_integrity_check_failed", result: result.quick_check });
+  }
+} catch (e: any) {
+  log.error({ msg: "db_integrity_check_error", error: e.message });
+}
 
 
 db.exec(`
@@ -736,15 +756,25 @@ export let updateMemoryVec = db.prepare(
 /** Write vector column for a newly inserted memory (call after insertMemory) */
 export function writeVec(memoryId: number, embArray: Float32Array | null): void {
   if (!embArray) return;
+  // Validate BEFORE attempting DB write -- reject poison data at the gate
+  let vecJson: string;
   try {
-    updateMemoryVec.run(embeddingToVectorJSON(embArray), memoryId);
+    vecJson = embeddingToVectorJSON(embArray);
+  } catch (e: any) {
+    log.warn({ msg: "vec_write_rejected_invalid_embedding", id: memoryId, error: e.message });
+    opsCounters.vec_write_failures++;
+    return; // Do NOT write invalid data -- skip silently
+  }
+  try {
+    updateMemoryVec.run(vecJson, memoryId);
   } catch (e: any) {
     opsCounters.vec_write_failures++;
     if (!_rebuildInProgress && (e.code?.includes("CORRUPT") || e.message?.includes("malformed"))) {
       log.error({ msg: "vec_write_corrupt_detected", id: memoryId, triggering_rebuild: true });
       rebuildVectorIndex();
-      // Retry once after rebuild
-      try { updateMemoryVec.run(embeddingToVectorJSON(embArray), memoryId); } catch {}
+      try { updateMemoryVec.run(vecJson, memoryId); } catch (retryErr: any) {
+        log.error({ msg: "vec_write_retry_failed", id: memoryId, error: retryErr.message });
+      }
     } else {
       log.warn({ msg: "vec_write_failed", id: memoryId, error: e?.message });
     }
@@ -772,6 +802,7 @@ export function probeVectorHealth(): boolean {
 }
 
 let _rebuildInProgress = false;
+export function isRebuildInProgress(): boolean { return _rebuildInProgress; }
 
 /** Nuclear repair: drop all FLOAT32 columns and indexes, recreate empty, repopulate from BLOB embeddings. */
 export function rebuildVectorIndex(): { dropped: number; recreated: number; repopulated: number } {
@@ -782,91 +813,105 @@ export function rebuildVectorIndex(): { dropped: number; recreated: number; repo
   let dropped = 0, recreated = 0, repopulated = 0;
 
   try {
-    // 1. Drop all vector indexes
+    // Phase 1: Schema changes (DROP + ADD) -- must be outside transaction (DDL in libsql)
+    // Drop all vector indexes
     for (const idx of [
       "memories_vec_idx", "memories_vec_1024_idx",
       `memories_vec_${EMBEDDING_DIM}_idx`,
       "episodes_vec_1024_idx",
       `episodes_vec_${EMBEDDING_DIM}_idx`,
     ]) {
-      try { db.exec(`DROP INDEX IF EXISTS ${idx}`); dropped++; } catch {}
+      try { db.exec(`DROP INDEX IF EXISTS ${idx}`); dropped++; } catch (e: any) {
+        log.warn({ msg: "vector_rebuild_drop_index_skip", index: idx, error: e.message });
+      }
     }
 
-    // 2. Drop FLOAT32 columns from memories
+    // Drop FLOAT32 columns from memories
     for (const col of ["embedding_vec", "embedding_vec_1024", VECTOR_COL]) {
-      try { db.exec(`ALTER TABLE memories DROP COLUMN ${col}`); dropped++; } catch {}
+      try { db.exec(`ALTER TABLE memories DROP COLUMN ${col}`); dropped++; } catch (e: any) {
+        log.warn({ msg: "vector_rebuild_drop_col_skip", table: "memories", col, error: e.message });
+      }
     }
     // Drop from episodes
     for (const col of ["embedding_vec_1024", VECTOR_COL]) {
-      try { db.exec(`ALTER TABLE episodes DROP COLUMN ${col}`); dropped++; } catch {}
+      try { db.exec(`ALTER TABLE episodes DROP COLUMN ${col}`); dropped++; } catch (e: any) {
+        log.warn({ msg: "vector_rebuild_drop_col_skip", table: "episodes", col, error: e.message });
+      }
     }
 
-    // 3. Recreate ONLY the current EMBEDDING_DIM column
-    try {
-      db.exec(`ALTER TABLE memories ADD COLUMN ${VECTOR_COL} FLOAT32(${EMBEDDING_DIM})`);
-      db.exec(`CREATE INDEX IF NOT EXISTS memories_vec_${EMBEDDING_DIM}_idx ON memories(libsql_vector_idx(${VECTOR_COL}))`);
-      recreated++;
-    } catch (e: any) {
-      log.error({ msg: "vector_rebuild_recreate_failed", table: "memories", error: e.message });
-    }
-    try {
-      db.exec(`ALTER TABLE episodes ADD COLUMN ${VECTOR_COL} FLOAT32(${EMBEDDING_DIM})`);
-      db.exec(`CREATE INDEX IF NOT EXISTS episodes_vec_${EMBEDDING_DIM}_idx ON episodes(libsql_vector_idx(${VECTOR_COL}))`);
-      recreated++;
-    } catch (e: any) {
-      log.error({ msg: "vector_rebuild_recreate_failed", table: "episodes", error: e.message });
-    }
+    // Recreate ONLY the current EMBEDDING_DIM column + indexes
+    db.exec(`ALTER TABLE memories ADD COLUMN ${VECTOR_COL} FLOAT32(${EMBEDDING_DIM})`);
+    db.exec(`CREATE INDEX IF NOT EXISTS memories_vec_${EMBEDDING_DIM}_idx ON memories(libsql_vector_idx(${VECTOR_COL}))`);
+    recreated++;
 
-    // 4. Re-prepare the vector update statements (old ones reference dropped columns)
-    try {
-      updateMemoryVec = db.prepare(`UPDATE memories SET ${VECTOR_COL} = vector(?) WHERE id = ?`);
-      updateEpisodeVec = db.prepare(`UPDATE episodes SET ${VECTOR_COL} = vector(?) WHERE id = ?`);
-    } catch (e: any) {
-      log.error({ msg: "vector_rebuild_reprepare_failed", error: e.message });
-    }
+    db.exec(`ALTER TABLE episodes ADD COLUMN ${VECTOR_COL} FLOAT32(${EMBEDDING_DIM})`);
+    db.exec(`CREATE INDEX IF NOT EXISTS episodes_vec_${EMBEDDING_DIM}_idx ON episodes(libsql_vector_idx(${VECTOR_COL}))`);
+    recreated++;
 
-    // 5. Repopulate from BLOB embeddings (batched)
+    // Re-prepare the vector update statements (old ones reference dropped columns)
+    updateMemoryVec = db.prepare(`UPDATE memories SET ${VECTOR_COL} = vector(?) WHERE id = ?`);
+    updateEpisodeVec = db.prepare(`UPDATE episodes SET ${VECTOR_COL} = vector(?) WHERE id = ?`);
+
+    // Phase 2: Repopulate from BLOB embeddings (batched, in transaction)
     const BATCH = 100;
+    let memoryErrors = 0, episodeErrors = 0;
+
+    // Repopulate memories
     let offset = 0;
     while (true) {
       const rows = db.prepare(
         `SELECT id, embedding FROM memories WHERE embedding IS NOT NULL ORDER BY id LIMIT ? OFFSET ?`
       ).all(BATCH, offset) as Array<{ id: number; embedding: Buffer }>;
       if (!rows || rows.length === 0) break;
-      for (const row of rows) {
-        try {
-          const buf = row.embedding instanceof Buffer ? row.embedding : Buffer.from(row.embedding as any);
-          const f32 = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
-          if (f32.length === EMBEDDING_DIM) {
-            updateMemoryVec.run(embeddingToVectorJSON(f32), row.id);
-            repopulated++;
+      const batchWrite = db.transaction(() => {
+        for (const row of rows) {
+          try {
+            const buf = row.embedding instanceof Buffer ? row.embedding : Buffer.from(row.embedding as any);
+            const f32 = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+            if (f32.length === EMBEDDING_DIM) {
+              updateMemoryVec.run(embeddingToVectorJSON(f32), row.id);
+              repopulated++;
+            }
+          } catch (e: any) {
+            memoryErrors++;
+            if (memoryErrors <= 5) log.warn({ msg: "vector_rebuild_row_skip", table: "memories", id: row.id, error: e.message });
           }
-        } catch {}
-      }
+        }
+      });
+      batchWrite();
       offset += BATCH;
     }
 
-    // 6. Repopulate episodes
+    // Repopulate episodes
     offset = 0;
     while (true) {
       const rows = db.prepare(
         `SELECT id, embedding FROM episodes WHERE embedding IS NOT NULL ORDER BY id LIMIT ? OFFSET ?`
       ).all(BATCH, offset) as Array<{ id: number; embedding: Buffer }>;
       if (!rows || rows.length === 0) break;
-      for (const row of rows) {
-        try {
-          const buf = row.embedding instanceof Buffer ? row.embedding : Buffer.from(row.embedding as any);
-          const f32 = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
-          if (f32.length === EMBEDDING_DIM) {
-            updateEpisodeVec.run(embeddingToVectorJSON(f32), row.id);
-            repopulated++;
+      const batchWrite = db.transaction(() => {
+        for (const row of rows) {
+          try {
+            const buf = row.embedding instanceof Buffer ? row.embedding : Buffer.from(row.embedding as any);
+            const f32 = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+            if (f32.length === EMBEDDING_DIM) {
+              updateEpisodeVec.run(embeddingToVectorJSON(f32), row.id);
+              repopulated++;
+            }
+          } catch (e: any) {
+            episodeErrors++;
+            if (episodeErrors <= 5) log.warn({ msg: "vector_rebuild_row_skip", table: "episodes", id: row.id, error: e.message });
           }
-        } catch {}
-      }
+        }
+      });
+      batchWrite();
       offset += BATCH;
     }
 
-    log.warn({ msg: "vector_rebuild_complete", dropped, recreated, repopulated, ms: Date.now() - t0 });
+    log.warn({ msg: "vector_rebuild_complete", dropped, recreated, repopulated, memory_errors: memoryErrors, episode_errors: episodeErrors, ms: Date.now() - t0 });
+  } catch (e: any) {
+    log.error({ msg: "vector_rebuild_fatal", error: e.message, phase: "rebuild" });
+    throw e; // Let caller know rebuild failed
   } finally {
     _rebuildInProgress = false;
   }
@@ -1137,6 +1182,10 @@ export function updateDecayScores(userId?: number): number {
         m.importance, m.created_at, m.access_count, m.last_accessed_at,
         !!m.is_static, m.source_count, m.fsrs_stability
       );
+      if (!Number.isFinite(score)) {
+        log.warn({ msg: "decay_score_nan_skipped", id: m.id, importance: m.importance });
+        continue;
+      }
       updateDecay.run(Math.round(score * 1000) / 1000, m.id);
       updated++;
 

@@ -238,6 +238,7 @@ export function calculateDecayScore(
 
   // FSRS-6 power-law retrievability instead of exponential decay
   const R = fsrsRetrievability(effectiveStability, elapsedDays);
-  return importance * R;
+  const result = importance * R;
+  return Number.isFinite(result) ? result : importance * 0.5; // Guard against NaN/Infinity
 }
 

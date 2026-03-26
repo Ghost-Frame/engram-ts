@@ -48,7 +48,7 @@ try {
 try { writeFileSync(CRASH_SENTINEL, String(Date.now())); } catch {}
 
 // Database (importing triggers schema creation + migrations)
-import { db, updateMemoryEmbedding, writeVec, purgeExpiredScratchpad, getExpiredScratchSessions, insertMemory, updateMemoryVec, cleanupOldUsage, probeVectorHealth, rebuildVectorIndex } from "./src/db/index.ts";
+import { db, updateMemoryEmbedding, writeVec, purgeExpiredScratchpad, getExpiredScratchSessions, insertMemory, updateMemoryVec, cleanupOldUsage, probeVectorHealth, rebuildVectorIndex, isRebuildInProgress } from "./src/db/index.ts";
 
 // Embeddings
 import { initEmbedder, embed, refreshEmbeddingCache, embeddingCacheLatest, embeddingToBuffer, embeddingToVectorJSON, addToEmbeddingCache } from "./src/embeddings/index.ts";
@@ -289,17 +289,21 @@ server.listen(PORT, HOST, () => {
 // ============================================================================
 // WAL CHECKPOINT (every 5 minutes)
 // ============================================================================
-function walCheckpoint() {
+function walCheckpoint(mode: "PASSIVE" | "TRUNCATE" = "PASSIVE") {
+  if (isRebuildInProgress()) {
+    log.info({ msg: "wal_checkpoint_skipped", reason: "rebuild_in_progress" });
+    return;
+  }
   try {
     const cpStart = performance.now();
-    db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    db.exec(`PRAGMA wal_checkpoint(${mode})`);
     const cpMs = (performance.now() - cpStart).toFixed(1);
-    log.info({ msg: "wal_checkpoint", ms: cpMs });
+    log.info({ msg: "wal_checkpoint", mode, ms: cpMs });
     if (Number(cpMs) > 1000) {
-      log.warn({ msg: "wal_checkpoint_slow", ms: cpMs });
+      log.warn({ msg: "wal_checkpoint_slow", mode, ms: cpMs });
     }
   } catch (e: any) {
-    log.error({ msg: "wal_checkpoint_failed", error: e.message });
+    log.error({ msg: "wal_checkpoint_failed", mode, error: e.message });
   }
 }
 setInterval(walCheckpoint, 5 * 60 * 1000);
@@ -574,13 +578,16 @@ setInterval(withLease("garbage_collection", async () => {
   const hour = new Date().getHours();
   if (hour !== 4) return;
   try {
-    const forgotten = db.prepare("DELETE FROM memories WHERE is_forgotten = 1 AND updated_at < datetime('now', '-30 days')").run();
-    const links = db.prepare("DELETE FROM memory_links WHERE NOT EXISTS (SELECT 1 FROM memories m WHERE m.id = memory_links.source_id AND m.is_forgotten = 0) OR NOT EXISTS (SELECT 1 FROM memories m WHERE m.id = memory_links.target_id AND m.is_forgotten = 0)").run();
-    const scratch = db.prepare("DELETE FROM scratchpad WHERE expires_at IS NOT NULL AND expires_at < datetime('now')").run();
-    const audit_old = db.prepare("DELETE FROM audit_log WHERE created_at < datetime('now', '-90 days')").run();
-    try { cleanupOldUsage.run(180); } catch {}
-    const total = ((forgotten as any).changes || 0) + ((links as any).changes || 0) +
-      ((scratch as any).changes || 0) + ((audit_old as any).changes || 0);
+    const gcTransaction = db.transaction(() => {
+      const forgotten = db.prepare("DELETE FROM memories WHERE is_forgotten = 1 AND updated_at < datetime('now', '-30 days')").run();
+      const links = db.prepare("DELETE FROM memory_links WHERE NOT EXISTS (SELECT 1 FROM memories m WHERE m.id = memory_links.source_id AND m.is_forgotten = 0) OR NOT EXISTS (SELECT 1 FROM memories m WHERE m.id = memory_links.target_id AND m.is_forgotten = 0)").run();
+      const scratch = db.prepare("DELETE FROM scratchpad WHERE expires_at IS NOT NULL AND expires_at < datetime('now')").run();
+      const audit_old = db.prepare("DELETE FROM audit_log WHERE created_at < datetime('now', '-90 days')").run();
+      try { cleanupOldUsage.run(180); } catch {}
+      return ((forgotten as any).changes || 0) + ((links as any).changes || 0) +
+        ((scratch as any).changes || 0) + ((audit_old as any).changes || 0);
+    });
+    const total = gcTransaction();
     if (total > 0) {
       refreshEmbeddingCache();
       log.info({ msg: "gc_completed", deleted: total });
