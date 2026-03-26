@@ -25,7 +25,7 @@ import {
   AUTO_ARCHIVE_ENABLED, AUTO_ARCHIVE_RETRIEVABILITY, AUTO_ARCHIVE_MIN_AGE_DAYS, AUTO_ARCHIVE_MAX_ACCESS,
 } from "../config/index.ts";
 import { log, opsCounters } from "../config/logger.ts";
-import { handleThymusRoutes, handleSomaRoutes, handleChiasmRoutes } from "../services/index.ts";
+import { handleThymusRoutes, handleSomaRoutes, handleChiasmRoutes, handleAxonRoutes, handleLoomRoutes, handleBrocaRoutes } from "../services/index.ts";
 
 // Database + prepared statements
 import {
@@ -8039,13 +8039,16 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // CONSOLIDATED SERVICE ROUTES (Thymus, Soma, Chiasm)
+    // CONSOLIDATED SERVICE ROUTES (Thymus, Soma, Chiasm, Axon)
     // ========================================================================
     {
       const serviceRes =
         await handleThymusRoutes(method, url, req, requestId) ??
         await handleSomaRoutes(method, url, req, requestId) ??
-        await handleChiasmRoutes(method, url, req, requestId);
+        await handleChiasmRoutes(method, url, req, requestId) ??
+        await handleAxonRoutes(method, url, req, requestId) ??
+        await handleLoomRoutes(method, url, req, requestId) ??
+        await handleBrocaRoutes(method, url, req, requestId);
       if (serviceRes) {
         const elapsed = (performance.now() - requestStart).toFixed(1);
         log.info({ msg: "req", method, path: url.pathname, status: serviceRes.status, ms: elapsed, ip: clientIp, user: auth.user_id, rid: requestId });
@@ -8167,3 +8170,7 @@ function autoArchiveDeadMemories(): void {
 
 // Auto-archive: every 24 hours
 setInterval(() => { autoArchiveDeadMemories(); }, 24 * 60 * 60 * 1000);
+
+// Axon: prune expired events every hour
+import { pruneEvents as pruneAxonEvents } from "../services/axon/bus.ts";
+setInterval(() => { try { pruneAxonEvents(); } catch (e: any) { log.warn({ msg: "axon_prune_failed", error: e.message }); } }, 60 * 60 * 1000);

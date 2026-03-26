@@ -6,3 +6,6 @@
 export { handleThymusRoutes } from "./thymus/routes.ts";
 export { handleSomaRoutes } from "./soma/routes.ts";
 export { handleChiasmRoutes } from "./chiasm/routes.ts";
+export { handleAxonRoutes } from "./axon/routes.ts";
+export { handleLoomRoutes } from "./loom/routes.ts";
+export { handleBrocaRoutes } from "./broca/routes.ts";

@@ -4,7 +4,7 @@
 // ============================================================================
 
 import { db } from "../../db/index.ts";
-import { publish } from "../axon-stub.ts";
+import { publish } from "../axon/bus.ts";
 import { getTaskById, deleteTaskStmt } from "./db.ts";
 
 // -- Types --
@@ -78,14 +78,15 @@ export function createTask(data: { agent: string; project: string; title: string
 
     insertTaskUpdateTx.run(id, data.agent, "active", data.summary ?? null);
 
-    publish("system", "chiasm", "task.created", {
-      task_id: id, agent: data.agent, project: data.project, title: data.title,
-    });
-
     return id;
   });
 
   const id = run();
+
+  publish("system", "chiasm", "task.created", {
+    task_id: id, agent: data.agent, project: data.project, title: data.title,
+  });
+
   return getTask(id)!;
 }
 
@@ -99,13 +100,14 @@ export function updateTask(id: number, data: { status?: string; summary?: string
   const run = db.transaction(() => {
     updateTaskTx.run(status, summary, id);
     insertTaskUpdateTx.run(id, existing.agent, status, summary);
-
-    publish("system", "chiasm", "task.updated", {
-      task_id: id, agent: existing.agent, status, previous_status: existing.status,
-    });
   });
 
   run();
+
+  publish("system", "chiasm", "task.updated", {
+    task_id: id, agent: existing.agent, status, previous_status: existing.status,
+  });
+
   return getTask(id);
 }
 

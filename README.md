@@ -8,7 +8,7 @@ Store, search, recall, and link memories with automatic embeddings,
 fact extraction, versioning, deduplication, and graph visualization.
 
 [![License: Elastic-2.0](https://img.shields.io/badge/License-Elastic--2.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-5.10.0-gold.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-5.11.0-gold.svg)](CHANGELOG.md)
 
 [Quick Start](#quick-start) · [API Reference](#api-reference) · [SDKs](#sdks) · [MCP Server](#mcp-server) · [CLI](#cli) · [Self-Host](#self-hosting)
 
@@ -86,9 +86,9 @@ curl -X POST http://localhost:4200/recall \
 
 ## What's New
 
-### Syntheos Phase 1: Service Consolidation (v5.10.0)
+### Syntheos Service Consolidation (v5.11.0)
 
-Three standalone microservices absorbed into the Engram monolith as native modules. No new dependencies, no new processes. Same database, same auth.
+Six standalone microservices absorbed into the Engram monolith as native modules. No new dependencies, no new processes. Same database, same auth.
 
 **Thymus** (quality evaluation) - Rubric-based scoring engine for agent output quality. Define evaluation criteria with weighted scales, run evaluations, track agent scores over time. Stores quality metrics alongside memories.
 
@@ -128,7 +128,45 @@ Three standalone microservices absorbed into the Engram monolith as native modul
 - `GET /tasks/stats` - Task counts by status
 - `GET /feed` - Activity feed of recent task updates
 
-All three services share the main Engram database, reuse auth middleware, and publish events via the existing Axon event bus stub.
+**Axon** (event bus) - Real-time pub/sub event bus with SSE streaming, webhook fan-out, and cursor-based polling. Agents publish events to named channels, subscribe for real-time delivery or poll at their own pace.
+
+- `POST /axon/publish` - Publish an event to a channel
+- `GET /axon/events` - Query events with channel/type/source filtering
+- `GET /axon/channels` - List channels with event and subscriber counts
+- `POST /axon/channels` - Create a new channel
+- `POST /axon/subscribe` - Subscribe agent to channel (optional webhook URL)
+- `POST /axon/unsubscribe` - Remove subscription
+- `GET /axon/subscriptions` - List subscriptions
+- `GET /axon/poll` - Cursor-based event consumption
+- `GET /axon/stream` - SSE real-time event stream
+- `GET /axon/stats` - Bus statistics
+
+**Loom** (workflow orchestration) - Multi-step pipeline engine with dependency-based execution. Define reusable workflows with webhook, LLM, and transform step types. Runs track progress, retry failed steps, and collect outputs.
+
+- `POST /loom/workflows` - Create a workflow definition
+- `GET /loom/workflows` - List workflows
+- `POST /loom/runs` - Start a workflow run with input
+- `GET /loom/runs` - List runs with status filtering
+- `GET /loom/runs/:id` - Get run with full state
+- `POST /loom/runs/:id/cancel` - Cancel a running workflow
+- `GET /loom/runs/:id/steps` - Get step states for a run
+- `GET /loom/runs/:id/logs` - Get execution logs
+- `POST /loom/steps/:id/complete` - External callback to complete a step
+- `POST /loom/steps/:id/fail` - External callback to fail a step
+- `GET /loom/stats` - Workflow and run statistics
+
+**Broca** (action log and narrator) - Agent action logger with template-based narration and natural language query. Logs what agents do, translates actions into plain English, and answers questions about system activity.
+
+- `POST /broca/actions` - Log an action with auto-narration
+- `GET /broca/actions` - Query actions with filtering
+- `GET /broca/actions/:id` - Get single action
+- `GET /broca/actions/:id/narrate` - Generate narrative for action
+- `GET /broca/feed` - Activity feed with narratives
+- `POST /broca/narrate` - Bulk narrate actions
+- `POST /broca/ask` - Natural language query over the system
+- `GET /broca/stats` - Action statistics
+
+All six services share the main Engram database, reuse auth middleware, and publish events via the Axon event bus.
 
 <details>
 <summary><strong>v5.9.x</strong></summary>
@@ -688,6 +726,54 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 | `GET` | `/tasks/stats` | Task counts by status |
 | `GET` | `/feed` | Activity feed of recent task updates |
 
+### Axon (Event Bus)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/axon/publish` | Publish event to a channel |
+| `GET` | `/axon/events` | Query events (filter by channel, type, source) |
+| `GET` | `/axon/events/:id` | Get single event |
+| `GET` | `/axon/channels` | List channels with counts |
+| `POST` | `/axon/channels` | Create channel |
+| `POST` | `/axon/subscribe` | Subscribe agent to channel |
+| `POST` | `/axon/unsubscribe` | Remove subscription |
+| `GET` | `/axon/subscriptions` | List subscriptions |
+| `GET` | `/axon/poll` | Cursor-based event consumption |
+| `GET` | `/axon/stream` | SSE real-time event stream |
+| `GET` | `/axon/stats` | Bus statistics |
+
+### Loom (Workflow Orchestration)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/loom/workflows` | Create workflow definition |
+| `GET` | `/loom/workflows` | List workflows |
+| `GET` | `/loom/workflows/:id` | Get workflow |
+| `PATCH` | `/loom/workflows/:id` | Update workflow |
+| `DELETE` | `/loom/workflows/:id` | Delete workflow |
+| `POST` | `/loom/runs` | Start workflow run |
+| `GET` | `/loom/runs` | List runs (filter by status, workflow) |
+| `GET` | `/loom/runs/:id` | Get run state |
+| `POST` | `/loom/runs/:id/cancel` | Cancel run |
+| `GET` | `/loom/runs/:id/steps` | Get step states |
+| `GET` | `/loom/runs/:id/logs` | Get execution logs |
+| `POST` | `/loom/steps/:id/complete` | Complete step (external callback) |
+| `POST` | `/loom/steps/:id/fail` | Fail step (external callback) |
+| `GET` | `/loom/stats` | Workflow statistics |
+
+### Broca (Action Log)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/broca/actions` | Log action with auto-narration |
+| `GET` | `/broca/actions` | Query actions |
+| `GET` | `/broca/actions/:id` | Get single action |
+| `GET` | `/broca/actions/:id/narrate` | Generate narrative |
+| `GET` | `/broca/feed` | Activity feed with narratives |
+| `POST` | `/broca/narrate` | Bulk narrate actions |
+| `POST` | `/broca/ask` | Natural language query |
+| `GET` | `/broca/stats` | Action statistics |
+
 ### System
 
 | Method | Path | Description |
@@ -786,6 +872,11 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
 │  │ Thymus   │  │  Soma    │  │ Chiasm   │           │
 │  │ (Quality)│  │(Registry)│  │ (Tasks)  │           │
+│  └──────────┘  └──────────┘  └──────────┘           │
+│                                                       │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
+│  │  Axon    │  │  Loom    │  │  Broca   │           │
+│  │(EventBus)│  │(Workflow)│  │(Narrator)│           │
 │  └──────────┘  └──────────┘  └──────────┘           │
 └──────────────────────────────────────────────────────┘
 ```
