@@ -80,6 +80,7 @@ curl -X POST http://localhost:4200/recall \
 - 📋 **Audit trail** - every mutation logged (who, what, when, from where)
 - 📊 **Structured JSON logging** - configurable log levels, request IDs, zero raw console output
 - 💾 **Backup & checkpoint** - download SQLite DB via API, manual WAL checkpoint, graceful shutdown
+- 🏗️ **Structural analysis** - deterministic graph analysis engine (absorbed from OpenSpace). Describe systems in EN syntax, get topology classification (Pipeline/Tree/DAG/Cycle), node roles, bridges, betweenness centrality, blast radius, shortest paths, and Louvain community detection. 12 MCP tools for architecture reasoning.
 - 🐳 **One-command deploy** - `docker compose up`
 
 ---
@@ -88,7 +89,7 @@ curl -X POST http://localhost:4200/recall \
 
 ### Syntheos Service Consolidation (v5.11.0)
 
-Six standalone microservices absorbed into the Engram monolith as native modules. No new dependencies, no new processes. Same database, same auth.
+Seven standalone microservices absorbed into the Engram monolith as native modules. No new dependencies, no new processes. Same database, same auth.
 
 **Thymus** (quality evaluation) - Rubric-based scoring engine for agent output quality. Define evaluation criteria with weighted scales, run evaluations, track agent scores over time. Stores quality metrics alongside memories.
 
@@ -166,7 +167,24 @@ Six standalone microservices absorbed into the Engram monolith as native modules
 - `POST /broca/ask` - Natural language query over the system
 - `GET /broca/stats` - Action statistics
 
-All six services share the main Engram database, reuse auth middleware, and publish events via the Axon event bus.
+**OpenSpace** (structural analysis) - Deterministic graph analysis engine for architecture reasoning. Describe systems in EN (Entity-Notation) syntax and get topology classification, node role detection, bridge analysis, betweenness centrality, shortest paths, blast radius assessment, structural diffs, and Louvain community detection. No AI inside the computation -- pure graph theory via Graphology.
+
+- `structural_analyze` - Topology classification (Pipeline/Tree/DAG/Cycle), node roles (SOURCE/SINK/FORK/JOIN/HUB), bridges
+- `structural_detail` - Concurrency metrics, critical path, flow depth, resilience analysis
+- `structural_between` - Betweenness centrality for any node (0-1)
+- `structural_distance` - Shortest path with subsystem crossing annotations
+- `structural_trace` - Follow directed flow from A to B along yields->needs edges
+- `structural_impact` - Blast radius: what disconnects if a node is removed
+- `structural_diff` - Structural diff between two system descriptions
+- `structural_evolve` - Dry-run architectural changes, preview structural delta
+- `structural_categorize` - Auto-discover subsystem boundaries via Louvain
+- `structural_extract` - Extract a named subsystem as standalone EN source
+- `structural_compose` - Merge two EN graphs with entity linking
+- `structural_memory_graph` - Analyze Engram's own memory link graph structurally
+
+Available via MCP tools or HTTP at `/structural/*` endpoints. No LLM required.
+
+All seven services share the main Engram database, reuse auth middleware, and publish events via the Axon event bus.
 
 <details>
 <summary><strong>v5.9.x</strong></summary>
@@ -470,14 +488,14 @@ Add to `claude_desktop_config.json`:
 
 | Tool | Description |
 |------|-------------|
-| `memory_store` | Store a new memory with category, importance, and model attribution |
-| `memory_recall` | Semantic + full-text search across memories |
+| `memory_store` | Store a new memory with category, importance, model, and optional source attribution |
+| `memory_search_preset` | Semantic search with query-optimized presets: fact, timeline, preference, decision, recent |
+| `memory_recall` | Load broad session context (static facts + semantic + important + recent). For precise search, use `memory_search_preset` |
 | `memory_context` | Token-budget-aware context packing for LLM injection |
 | `memory_list` | List recent memories, optionally filtered by category |
 | `memory_delete` | Delete a memory by ID |
 | `memory_guard` | Check a proposed action against stored rules (allow/warn/block) |
 | `memory_inbox` | Review pending memories awaiting triage (approve/reject) |
-| `memory_search_preset` | Search with opinionated presets: fact, timeline, preference, decision, recent |
 | `memory_entities` | List or search tracked entities (people, servers, tools, services) |
 | `memory_projects` | List or search tracked projects |
 | `memory_episodes` | List conversation episodes (sessions of related work) |

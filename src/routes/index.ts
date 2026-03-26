@@ -4306,9 +4306,11 @@ Return JSON:
 
         const results: Map<number, { memory: any; score: number; source: string }> = new Map();
 
-        // 1. Static facts (always included, highest priority)
+        // 1. Static facts (capped to 25% of limit to leave room for semantic results -- fixes #10)
         let staticFacts = getStaticMemories.all(auth.user_id) as Array<any>;
         if (recallSourceFilter) staticFacts = staticFacts.filter((s: any) => s.source && s.source.includes(recallSourceFilter));
+        const staticCap = Math.max(1, Math.ceil(limit * 0.25));
+        if (staticFacts.length > staticCap) staticFacts = staticFacts.slice(0, staticCap);
         for (const sf of staticFacts) {
           results.set(sf.id, { memory: sf, score: 100, source: "static" });
         }
