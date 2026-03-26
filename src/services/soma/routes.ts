@@ -1,0 +1,168 @@
+// ============================================================================
+// Soma routes -- agent registry, heartbeat, groups, logs
+// Prefix: /soma/*
+// ============================================================================
+
+import { json, errorResponse } from "../../helpers/index.ts";
+import { bounded } from "../types.ts";
+import {
+  registerAgent, getAgent, listAgents, updateAgent, deregisterAgent,
+  heartbeat, getStaleAgents,
+  createGroup, listGroups, getGroupFn, deleteGroup,
+  addToGroup, removeFromGroup, getGroupMembers,
+  findByCapability,
+  addLog, getLogs,
+  getStats,
+} from "./registry.ts";
+
+export async function handleSomaRoutes(
+  method: string,
+  url: URL,
+  req: Request,
+  requestId: string,
+): Promise<Response | null> {
+  const path = url.pathname;
+
+  if (!path.startsWith("/soma/") && path !== "/soma") return null;
+
+  const sub = path.slice("/soma".length); // e.g. "/agents" or "/agents/5"
+
+  // -- Agents (fixed routes FIRST, before parameterized) --
+
+  if (sub === "/agents" && method === "POST") {
+    const body = await req.json().catch(() => ({})) as any;
+    const { name, type, description, capabilities, config } = body;
+    if (!name || typeof name !== "string") return errorResponse("name required", 400, requestId);
+    if (!type || typeof type !== "string") return errorResponse("type required", 400, requestId);
+    try {
+      return json(registerAgent({ name, type, description, capabilities, config }), 201);
+    } catch (e: any) {
+      if (e.message?.includes("UNIQUE")) return errorResponse("Agent already exists", 409, requestId);
+      throw e;
+    }
+  }
+
+  if (sub === "/agents" && method === "GET") {
+    return json(listAgents({
+      type: url.searchParams.get("type") ?? undefined,
+      status: url.searchParams.get("status") ?? undefined,
+      capability: url.searchParams.get("capability") ?? undefined,
+      limit: bounded(url.searchParams.get("limit"), 1, 500, 100),
+    }));
+  }
+
+  // GET /soma/agents/stale -- MUST come before /soma/agents/:id
+  if (sub === "/agents/stale" && method === "GET") {
+    const minutes = bounded(url.searchParams.get("minutes"), 1, 1440, 5);
+    return json(getStaleAgents(minutes));
+  }
+
+  // GET /soma/agents/capability/:name -- MUST come before /soma/agents/:id
+  const capMatch = sub.match(/^\/agents\/capability\/(.+)$/);
+  if (capMatch && method === "GET") {
+    return json(findByCapability(decodeURIComponent(capMatch[1])));
+  }
+
+  // /soma/agents/:id routes
+  const agentMatch = sub.match(/^\/agents\/(\d+)$/);
+
+  if (agentMatch && method === "GET") {
+    const agent = getAgent(parseInt(agentMatch[1], 10));
+    if (!agent) return errorResponse("Agent not found", 404, requestId);
+    return json(agent);
+  }
+
+  if (agentMatch && method === "PATCH") {
+    const body = await req.json().catch(() => ({})) as any;
+    const agent = updateAgent(parseInt(agentMatch[1], 10), body);
+    if (!agent) return errorResponse("Agent not found", 404, requestId);
+    return json(agent);
+  }
+
+  if (agentMatch && method === "DELETE") {
+    const ok = deregisterAgent(parseInt(agentMatch[1], 10));
+    if (!ok) return errorResponse("Agent not found", 404, requestId);
+    return json({ ok: true });
+  }
+
+  // POST /soma/agents/:id/heartbeat
+  const hbMatch = sub.match(/^\/agents\/(\d+)\/heartbeat$/);
+  if (hbMatch && method === "POST") {
+    const body = await req.json().catch(() => ({})) as any;
+    const agent = heartbeat(parseInt(hbMatch[1], 10), body.status);
+    if (!agent) return errorResponse("Agent not found", 404, requestId);
+    return json(agent);
+  }
+
+  // POST /soma/agents/:id/logs
+  const logMatch = sub.match(/^\/agents\/(\d+)\/logs$/);
+  if (logMatch && method === "POST") {
+    const body = await req.json().catch(() => ({})) as any;
+    if (!body.message || typeof body.message !== "string") return errorResponse("message required", 400, requestId);
+    const entry = addLog(parseInt(logMatch[1], 10), body);
+    return json(entry, 201);
+  }
+
+  // GET /soma/agents/:id/logs
+  if (logMatch && method === "GET") {
+    const logs = getLogs(parseInt(logMatch[1], 10), {
+      level: url.searchParams.get("level") ?? undefined,
+      limit: bounded(url.searchParams.get("limit"), 1, 1000, 100),
+    });
+    return json(logs);
+  }
+
+  // -- Groups --
+
+  if (sub === "/groups" && method === "GET") {
+    return json(listGroups());
+  }
+
+  if (sub === "/groups" && method === "POST") {
+    const body = await req.json().catch(() => ({})) as any;
+    const { name, description } = body;
+    if (!name || typeof name !== "string") return errorResponse("name required", 400, requestId);
+    try {
+      return json(createGroup({ name, description }), 201);
+    } catch (e: any) {
+      if (e.message?.includes("UNIQUE")) return errorResponse("Group already exists", 409, requestId);
+      throw e;
+    }
+  }
+
+  // GET /soma/groups/:id/members
+  const membersMatch = sub.match(/^\/groups\/(\d+)\/members$/);
+  if (membersMatch && method === "GET") {
+    const group = getGroupFn(parseInt(membersMatch[1], 10));
+    if (!group) return errorResponse("Group not found", 404, requestId);
+    return json(getGroupMembers(parseInt(membersMatch[1], 10)));
+  }
+
+  // POST /soma/groups/:id/members
+  if (membersMatch && method === "POST") {
+    const body = await req.json().catch(() => ({})) as any;
+    const agentId = body.agent_id;
+    if (!agentId || typeof agentId !== "number") return errorResponse("agent_id required", 400, requestId);
+    const group = getGroupFn(parseInt(membersMatch[1], 10));
+    if (!group) return errorResponse("Group not found", 404, requestId);
+    const agent = getAgent(agentId);
+    if (!agent) return errorResponse("Agent not found", 404, requestId);
+    return json(addToGroup(agentId, parseInt(membersMatch[1], 10)), 201);
+  }
+
+  // DELETE /soma/groups/:id/members/:agentId
+  const rmMemberMatch = sub.match(/^\/groups\/(\d+)\/members\/(\d+)$/);
+  if (rmMemberMatch && method === "DELETE") {
+    const ok = removeFromGroup(parseInt(rmMemberMatch[2], 10), parseInt(rmMemberMatch[1], 10));
+    if (!ok) return errorResponse("Membership not found", 404, requestId);
+    return json({ ok: true });
+  }
+
+  // -- Stats --
+
+  if (sub === "/stats" && method === "GET") {
+    return json(getStats());
+  }
+
+  return null; // Not a soma route match
+}
