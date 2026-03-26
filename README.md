@@ -8,7 +8,7 @@ Store, search, recall, and link memories with automatic embeddings,
 fact extraction, versioning, deduplication, and graph visualization.
 
 [![License: Elastic-2.0](https://img.shields.io/badge/License-Elastic--2.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-5.9.5-gold.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-5.10.0-gold.svg)](CHANGELOG.md)
 
 [Quick Start](#quick-start) · [API Reference](#api-reference) · [SDKs](#sdks) · [MCP Server](#mcp-server) · [CLI](#cli) · [Self-Host](#self-hosting)
 
@@ -86,20 +86,64 @@ curl -X POST http://localhost:4200/recall \
 
 ## What's New
 
-### PageRank for Memory Graphs
-Full iterative PageRank algorithm with type-aware edge weighting. Memories linked to by important memories score higher, not just memories with lots of connections. Scores are normalized 0-1 and stored per memory. Runs automatically every 25th store alongside community detection.
+### Syntheos Phase 1: Service Consolidation (v5.10.0)
 
-### Search Ranking from Graph Structure
-Search results now get a 0-15% boost based on their PageRank score. Structurally important memories (the ones that hold clusters together, get referenced by other high-value memories) surface higher in `/search` and `/context` results. This works on top of the existing RRF scoring, decay, and temporal signals.
+Three standalone microservices absorbed into the Engram monolith as native modules. No new dependencies, no new processes. Same database, same auth.
 
-### Auto Graph Analysis on Store
-Every 25th memory stored triggers background community detection and PageRank recomputation via the durable job queue. Communities and centrality scores stay current without manual admin calls. No impact on store latency since it runs in the post-store pipeline.
+**Thymus** (quality evaluation) - Rubric-based scoring engine for agent output quality. Define evaluation criteria with weighted scales, run evaluations, track agent scores over time. Stores quality metrics alongside memories.
 
-### Temporal Graph Evolution
-New `GET /graph/timeline` endpoint returns weekly aggregates of graph growth: new memories, running totals, link counts per week. Shows how the knowledge graph evolved over time.
+- `POST /thymus/rubrics` - Create evaluation rubrics with weighted criteria
+- `GET /thymus/rubrics` - List rubrics
+- `POST /thymus/evaluations` - Score agent output against a rubric
+- `GET /thymus/evaluations` - List evaluations with agent/rubric filtering
+- `GET /thymus/agents/:agent/scores` - Aggregate scores per agent
+- `POST /thymus/metrics` - Record arbitrary quality metrics
+- `GET /thymus/metrics` - Query metrics with time range and agent filtering
+- `GET /thymus/stats` - Rubric, evaluation, and metric counts
 
-### Enriched Graph Endpoint
-`/graph` now returns `pagerank_score` per node. Node sizes are boosted by PageRank, so structurally important hub memories appear larger in the graph visualization.
+**Soma** (agent registry) - Agent lifecycle management. Register agents with capabilities, track heartbeats, organize into groups, collect structured logs.
+
+- `POST /soma/agents` - Register an agent
+- `GET /soma/agents` - List agents with type/status/capability filtering
+- `PATCH /soma/agents/:id` - Update agent metadata
+- `DELETE /soma/agents/:id` - Deregister (atomic cascade delete)
+- `POST /soma/agents/:id/heartbeat` - Heartbeat with optional status update
+- `GET /soma/agents/stale` - Find agents that missed heartbeats
+- `POST /soma/agents/:id/logs` - Submit structured log entries
+- `GET /soma/agents/:id/logs` - Read agent logs
+- `POST /soma/groups` - Create agent groups
+- `GET /soma/groups` - List groups
+- `POST /soma/groups/:id/members` - Add agent to group
+- `DELETE /soma/groups/:id/members/:agentId` - Remove from group
+- `GET /soma/agents/capability/:name` - Find agents by capability
+- `GET /soma/stats` - Registry statistics
+
+**Chiasm** (task tracking) - Lightweight task coordination for multi-agent systems. Agents create tasks, update status, and read each other's active work via a feed endpoint.
+
+- `POST /tasks` - Create a task
+- `GET /tasks` - List tasks with status/agent/project filtering
+- `GET /tasks/:id` - Get task with full audit trail
+- `PATCH /tasks/:id` - Update status/summary (creates audit entry)
+- `DELETE /tasks/:id` - Delete task
+- `GET /tasks/stats` - Task counts by status
+- `GET /feed` - Activity feed of recent task updates
+
+All three services share the main Engram database, reuse auth middleware, and publish events via the existing Axon event bus stub.
+
+<details>
+<summary><strong>v5.9.x</strong></summary>
+
+**PageRank for Memory Graphs** - Full iterative PageRank algorithm with type-aware edge weighting. Memories linked to by important memories score higher, not just memories with lots of connections. Scores are normalized 0-1 and stored per memory. Runs automatically every 25th store alongside community detection.
+
+**Search Ranking from Graph Structure** - Search results now get a 0-15% boost based on their PageRank score. Structurally important memories surface higher in `/search` and `/context` results. This works on top of the existing RRF scoring, decay, and temporal signals.
+
+**Auto Graph Analysis on Store** - Every 25th memory stored triggers background community detection and PageRank recomputation via the durable job queue. No impact on store latency.
+
+**Temporal Graph Evolution** - New `GET /graph/timeline` endpoint returns weekly aggregates of graph growth.
+
+**Enriched Graph Endpoint** - `/graph` now returns `pagerank_score` per node. Node sizes are boosted by PageRank.
+
+</details>
 
 <details>
 <summary><strong>v5.8.3</strong></summary>
@@ -596,6 +640,54 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 | `POST` | `/inbox/:id/edit` | Edit content + auto-approve |
 | `POST` | `/inbox/bulk` | Bulk approve/reject |
 
+### Thymus (Quality Evaluation)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/thymus/rubrics` | Create evaluation rubric with weighted criteria |
+| `GET` | `/thymus/rubrics` | List rubrics |
+| `GET` | `/thymus/rubrics/:id` | Get rubric by ID |
+| `POST` | `/thymus/evaluations` | Score agent output against a rubric |
+| `GET` | `/thymus/evaluations` | List evaluations (filter by agent, rubric) |
+| `GET` | `/thymus/agents/:agent/scores` | Aggregate score stats for an agent |
+| `POST` | `/thymus/metrics` | Record a quality metric |
+| `GET` | `/thymus/metrics` | Query metrics (filter by agent, metric, time range) |
+| `GET` | `/thymus/stats` | Rubric, evaluation, and metric counts |
+
+### Soma (Agent Registry)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/soma/agents` | Register a new agent |
+| `GET` | `/soma/agents` | List agents (filter by type, status, capability) |
+| `GET` | `/soma/agents/:id` | Get agent by ID |
+| `PATCH` | `/soma/agents/:id` | Update agent metadata |
+| `DELETE` | `/soma/agents/:id` | Deregister agent (cascade deletes logs and group memberships) |
+| `POST` | `/soma/agents/:id/heartbeat` | Send heartbeat with optional status |
+| `GET` | `/soma/agents/stale` | Find agents that missed heartbeats |
+| `POST` | `/soma/agents/:id/logs` | Submit structured log entry |
+| `GET` | `/soma/agents/:id/logs` | Read agent logs |
+| `POST` | `/soma/groups` | Create agent group |
+| `GET` | `/soma/groups` | List groups |
+| `GET` | `/soma/groups/:id` | Get group with member list |
+| `DELETE` | `/soma/groups/:id` | Delete group |
+| `POST` | `/soma/groups/:id/members` | Add agent to group |
+| `DELETE` | `/soma/groups/:id/members/:agentId` | Remove agent from group |
+| `GET` | `/soma/agents/capability/:name` | Find agents by capability |
+| `GET` | `/soma/stats` | Registry statistics |
+
+### Chiasm (Task Tracking)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/tasks` | Create a task |
+| `GET` | `/tasks` | List tasks (filter by status, agent, project) |
+| `GET` | `/tasks/:id` | Get task with audit trail |
+| `PATCH` | `/tasks/:id` | Update task status/summary |
+| `DELETE` | `/tasks/:id` | Delete task |
+| `GET` | `/tasks/stats` | Task counts by status |
+| `GET` | `/feed` | Activity feed of recent task updates |
+
 ### System
 
 | Method | Path | Description |
@@ -689,6 +781,11 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
 │  │ SimHash  │  │Personality│  │ Temporal │           │
 │  │  Dedup   │  │  Engine   │  │  Facts   │           │
+│  └──────────┘  └──────────┘  └──────────┘           │
+│                                                       │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
+│  │ Thymus   │  │  Soma    │  │ Chiasm   │           │
+│  │ (Quality)│  │(Registry)│  │ (Tasks)  │           │
 │  └──────────┘  └──────────┘  └──────────┘           │
 └──────────────────────────────────────────────────────┘
 ```

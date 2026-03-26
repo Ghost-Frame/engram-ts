@@ -5,6 +5,23 @@ All notable changes to Engram will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.0] - 2026-03-26
+
+### Added
+- **Syntheos Phase 1: Service Consolidation** - Three standalone microservices absorbed into the Engram monolith as native modules under `src/services/`. Zero new dependencies, zero new processes. All services share the main database, auth middleware, and event bus.
+- **Thymus** (`src/services/thymus/`): Rubric-based quality evaluation engine. Create rubrics with weighted criteria, score agent outputs, aggregate per-agent stats, and record arbitrary quality metrics. Endpoints under `/thymus/*`.
+- **Soma** (`src/services/soma/`): Agent lifecycle registry. Register agents with capabilities, track heartbeats, detect stale agents, organize into groups, collect structured logs. Endpoints under `/soma/*`.
+- **Chiasm** (`src/services/chiasm/`): Task tracking and coordination. Agents create tasks, update status with audit trail, read each other's active work via a feed endpoint. Endpoints under `/tasks/*` and `/feed`.
+- **Shared service infrastructure** (`src/services/`): Common types, helpers (`parseJsonFields`, `parseJsonFieldsAll`), Axon event bus stub for cross-service pub/sub, bounded integer validation.
+- **Service design spec** (`docs/superpowers/plans/2026-03-26-service-consolidation-design.md`): Architecture document for the consolidation approach.
+
+### Fixed
+- Division by zero in Thymus scoring normalization when `scale_max === scale_min`
+- Soma heartbeat endpoint now validates status against allowed values before passing to engine
+- Soma `deregisterAgent` wrapped in transaction for atomic cascade deletes
+- Added `ON DELETE CASCADE` to Soma foreign key references (agent_groups, agent_logs)
+- Added `CHECK` constraint on Chiasm task status column
+
 ## [5.9.5] - 2026-03-25
 
 ### Fixed
