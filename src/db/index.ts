@@ -11,6 +11,14 @@ import { DB_PATH, DATA_DIR, DEFAULT_RATE_LIMIT, DEFAULT_IMPORTANCE, EMBEDDING_DI
 import { FSRSRating, type FSRSMemoryState, fsrsProcessReview, calculateDecayScore } from '../fsrs/index.ts';
 
 export function embeddingToVectorJSON(emb: Float32Array): string {
+  if (emb.length !== EMBEDDING_DIM) {
+    throw new Error(`Embedding length ${emb.length} !== expected ${EMBEDDING_DIM}`);
+  }
+  for (let i = 0; i < emb.length; i++) {
+    if (!Number.isFinite(emb[i])) {
+      throw new Error(`Invalid embedding value at index ${i}: ${emb[i]}`);
+    }
+  }
   return "[" + Array.from(emb).join(",") + "]";
 }
 
@@ -18,8 +26,20 @@ mkdirSync(DATA_DIR, { recursive: true });
 
 export const db = new Database(DB_PATH);
 db.exec('PRAGMA journal_mode=WAL');
+db.exec('PRAGMA synchronous=NORMAL');    // NORMAL is safe for WAL mode (fsync on checkpoint)
 db.exec('PRAGMA foreign_keys=ON');
 db.exec('PRAGMA busy_timeout=5000');
+db.exec('PRAGMA wal_autocheckpoint=1000'); // Auto-checkpoint every 1000 pages (~4MB)
+
+// Startup integrity check (quick_check is fast, catches most corruption)
+try {
+  const result = db.prepare('PRAGMA quick_check').get() as { quick_check: string } | undefined;
+  if (result && result.quick_check !== 'ok') {
+    log.error({ msg: "db_integrity_check_failed", result: result.quick_check });
+  }
+} catch (e: any) {
+  log.error({ msg: "db_integrity_check_error", error: e.message });
+}
 
 
 db.exec(`
@@ -76,7 +96,7 @@ db.exec(`
 // Schema version tracking
 db.exec("CREATE TABLE IF NOT EXISTS schema_versions (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime('now')), description TEXT)");
 
-function getSchemaVersion(): number {
+function _getSchemaVersion(): number {
   try {
     const row = db.prepare("SELECT MAX(version) as v FROM schema_versions").get() as { v: number | null };
     return row?.v || 0;
@@ -129,6 +149,12 @@ for (const [col, def] of v3Columns) {
 migrate("ALTER TABLE memories ADD COLUMN importance INTEGER NOT NULL DEFAULT 5");
 migrate("ALTER TABLE memories ADD COLUMN model TEXT");
 migrate("ALTER TABLE memories ADD COLUMN embedding BLOB");
+
+// Columns referenced by prepared statements -- must run before they're compiled
+migrate("ALTER TABLE memories ADD COLUMN recall_hits INTEGER NOT NULL DEFAULT 0");
+migrate("ALTER TABLE memories ADD COLUMN recall_misses INTEGER NOT NULL DEFAULT 0");
+migrate("ALTER TABLE memories ADD COLUMN adaptive_score REAL");
+migrate("ALTER TABLE memories ADD COLUMN pagerank_score REAL DEFAULT 0");
 
 // v3.1 indexes
 migrate("CREATE INDEX IF NOT EXISTS idx_memories_archived ON memories(is_archived) WHERE is_archived = 1");
@@ -248,9 +274,11 @@ for (const [col, def] of v50Columns) {
 }
 migrate("CREATE INDEX IF NOT EXISTS idx_memories_fsrs_stability ON memories(fsrs_stability) WHERE fsrs_stability IS NOT NULL");
 
-// v5.0 — Native vector column (libsql FLOAT32)
-migrate("ALTER TABLE memories ADD COLUMN embedding_vec FLOAT32(384)");
-migrate("CREATE INDEX IF NOT EXISTS memories_vec_idx ON memories(libsql_vector_idx(embedding_vec))");
+// v5.0 — Native vector column (libsql FLOAT32) — SKIP if already dropped by v60 migration
+if (_getSchemaVersion() < 60) {
+  migrate("ALTER TABLE memories ADD COLUMN embedding_vec FLOAT32(384)");
+  migrate("CREATE INDEX IF NOT EXISTS memories_vec_idx ON memories(libsql_vector_idx(embedding_vec))");
+}
 
 // v5.7 — BGE-large 1024-dim vector column
 migrate("ALTER TABLE memories ADD COLUMN embedding_vec_1024 FLOAT32(1024)");
@@ -265,6 +293,14 @@ if (EMBEDDING_DIM !== 384 && EMBEDDING_DIM !== 1024) {
   migrate(`CREATE INDEX IF NOT EXISTS memories_vec_${EMBEDDING_DIM}_idx ON memories(libsql_vector_idx(${VECTOR_COL}))`);
   migrate(`ALTER TABLE episodes ADD COLUMN ${VECTOR_COL} FLOAT32(${EMBEDDING_DIM})`);
   migrate(`CREATE INDEX IF NOT EXISTS episodes_vec_${EMBEDDING_DIM}_idx ON episodes(libsql_vector_idx(${VECTOR_COL}))`);
+}
+
+// v5.9.1 — Drop unused 384-dim ghost vector column (0 rows populated, contributes to vtab corruption)
+if (_getSchemaVersion() < 60) {
+  migrate("DROP INDEX IF EXISTS memories_vec_idx");
+  try { db.exec("ALTER TABLE memories DROP COLUMN embedding_vec"); } catch {}
+  setSchemaVersion(60, "Drop unused 384-dim ghost vector column");
+  log.info({ msg: "dropped_384_ghost_column" });
 }
 
 // Webhooks table
@@ -713,17 +749,174 @@ export const updateMemoryEmbedding = db.prepare(
   `UPDATE memories SET embedding = ? WHERE id = ?`
 );
 
-export const updateMemoryVec = db.prepare(
+export let updateMemoryVec = db.prepare(
   `UPDATE memories SET ${VECTOR_COL} = vector(?) WHERE id = ?`
 );
 
 /** Write vector column for a newly inserted memory (call after insertMemory) */
 export function writeVec(memoryId: number, embArray: Float32Array | null): void {
   if (!embArray) return;
-  try { updateMemoryVec.run(embeddingToVectorJSON(embArray), memoryId); } catch (e: any) {
+  // Validate BEFORE attempting DB write -- reject poison data at the gate
+  let vecJson: string;
+  try {
+    vecJson = embeddingToVectorJSON(embArray);
+  } catch (e: any) {
+    log.warn({ msg: "vec_write_rejected_invalid_embedding", id: memoryId, error: e.message });
     opsCounters.vec_write_failures++;
-    log.warn({ msg: "vec_write_failed", id: memoryId, error: e?.message });
+    return; // Do NOT write invalid data -- skip silently
   }
+  try {
+    updateMemoryVec.run(vecJson, memoryId);
+  } catch (e: any) {
+    opsCounters.vec_write_failures++;
+    if (!_rebuildInProgress && (e.code?.includes("CORRUPT") || e.message?.includes("malformed"))) {
+      log.error({ msg: "vec_write_corrupt_detected", id: memoryId, triggering_rebuild: true });
+      rebuildVectorIndex();
+      try { updateMemoryVec.run(vecJson, memoryId); } catch (retryErr: any) {
+        log.error({ msg: "vec_write_retry_failed", id: memoryId, error: retryErr.message });
+      }
+    } else {
+      log.warn({ msg: "vec_write_failed", id: memoryId, error: e?.message });
+    }
+  }
+}
+
+/** Fast corruption probe — tries a no-op vector update in a transaction, rolls back. Returns true if healthy. */
+export function probeVectorHealth(): boolean {
+  try {
+    const testRow = db.prepare(`SELECT id FROM memories WHERE ${VECTOR_COL} IS NOT NULL LIMIT 1`).get() as { id: number } | undefined;
+    if (!testRow) return true; // no vector data = nothing to corrupt
+    db.exec("BEGIN");
+    db.prepare(`UPDATE memories SET decay_score = decay_score WHERE id = ?`).run(testRow.id);
+    db.exec("ROLLBACK");
+    return true;
+  } catch (e: any) {
+    try { db.exec("ROLLBACK"); } catch {}
+    if (e.code?.includes("CORRUPT") || e.message?.includes("malformed")) {
+      log.error({ msg: "vector_health_probe_failed", error: e.message, code: e.code });
+      return false;
+    }
+    // Non-corruption error, still healthy
+    return true;
+  }
+}
+
+let _rebuildInProgress = false;
+export function isRebuildInProgress(): boolean { return _rebuildInProgress; }
+
+/** Nuclear repair: drop all FLOAT32 columns and indexes, recreate empty, repopulate from BLOB embeddings. */
+export function rebuildVectorIndex(): { dropped: number; recreated: number; repopulated: number } {
+  if (_rebuildInProgress) return { dropped: 0, recreated: 0, repopulated: 0 };
+  _rebuildInProgress = true;
+  log.warn({ msg: "vector_rebuild_start" });
+  const t0 = Date.now();
+  let dropped = 0, recreated = 0, repopulated = 0;
+
+  try {
+    // Phase 1: Schema changes (DROP + ADD) -- must be outside transaction (DDL in libsql)
+    // Drop all vector indexes
+    for (const idx of [
+      "memories_vec_idx", "memories_vec_1024_idx",
+      `memories_vec_${EMBEDDING_DIM}_idx`,
+      "episodes_vec_1024_idx",
+      `episodes_vec_${EMBEDDING_DIM}_idx`,
+    ]) {
+      try { db.exec(`DROP INDEX IF EXISTS ${idx}`); dropped++; } catch (e: any) {
+        log.warn({ msg: "vector_rebuild_drop_index_skip", index: idx, error: e.message });
+      }
+    }
+
+    // Drop FLOAT32 columns from memories
+    for (const col of ["embedding_vec", "embedding_vec_1024", VECTOR_COL]) {
+      try { db.exec(`ALTER TABLE memories DROP COLUMN ${col}`); dropped++; } catch (e: any) {
+        log.warn({ msg: "vector_rebuild_drop_col_skip", table: "memories", col, error: e.message });
+      }
+    }
+    // Drop from episodes
+    for (const col of ["embedding_vec_1024", VECTOR_COL]) {
+      try { db.exec(`ALTER TABLE episodes DROP COLUMN ${col}`); dropped++; } catch (e: any) {
+        log.warn({ msg: "vector_rebuild_drop_col_skip", table: "episodes", col, error: e.message });
+      }
+    }
+
+    // Recreate ONLY the current EMBEDDING_DIM column + indexes
+    db.exec(`ALTER TABLE memories ADD COLUMN ${VECTOR_COL} FLOAT32(${EMBEDDING_DIM})`);
+    db.exec(`CREATE INDEX IF NOT EXISTS memories_vec_${EMBEDDING_DIM}_idx ON memories(libsql_vector_idx(${VECTOR_COL}))`);
+    recreated++;
+
+    db.exec(`ALTER TABLE episodes ADD COLUMN ${VECTOR_COL} FLOAT32(${EMBEDDING_DIM})`);
+    db.exec(`CREATE INDEX IF NOT EXISTS episodes_vec_${EMBEDDING_DIM}_idx ON episodes(libsql_vector_idx(${VECTOR_COL}))`);
+    recreated++;
+
+    // Re-prepare the vector update statements (old ones reference dropped columns)
+    updateMemoryVec = db.prepare(`UPDATE memories SET ${VECTOR_COL} = vector(?) WHERE id = ?`);
+    updateEpisodeVec = db.prepare(`UPDATE episodes SET ${VECTOR_COL} = vector(?) WHERE id = ?`);
+
+    // Phase 2: Repopulate from BLOB embeddings (batched, in transaction)
+    const BATCH = 100;
+    let memoryErrors = 0, episodeErrors = 0;
+
+    // Repopulate memories
+    let offset = 0;
+    while (true) {
+      const rows = db.prepare(
+        `SELECT id, embedding FROM memories WHERE embedding IS NOT NULL ORDER BY id LIMIT ? OFFSET ?`
+      ).all(BATCH, offset) as Array<{ id: number; embedding: Buffer }>;
+      if (!rows || rows.length === 0) break;
+      const batchWrite = db.transaction(() => {
+        for (const row of rows) {
+          try {
+            const buf = row.embedding instanceof Buffer ? row.embedding : Buffer.from(row.embedding as any);
+            const f32 = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+            if (f32.length === EMBEDDING_DIM) {
+              updateMemoryVec.run(embeddingToVectorJSON(f32), row.id);
+              repopulated++;
+            }
+          } catch (e: any) {
+            memoryErrors++;
+            if (memoryErrors <= 5) log.warn({ msg: "vector_rebuild_row_skip", table: "memories", id: row.id, error: e.message });
+          }
+        }
+      });
+      batchWrite();
+      offset += BATCH;
+    }
+
+    // Repopulate episodes
+    offset = 0;
+    while (true) {
+      const rows = db.prepare(
+        `SELECT id, embedding FROM episodes WHERE embedding IS NOT NULL ORDER BY id LIMIT ? OFFSET ?`
+      ).all(BATCH, offset) as Array<{ id: number; embedding: Buffer }>;
+      if (!rows || rows.length === 0) break;
+      const batchWrite = db.transaction(() => {
+        for (const row of rows) {
+          try {
+            const buf = row.embedding instanceof Buffer ? row.embedding : Buffer.from(row.embedding as any);
+            const f32 = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+            if (f32.length === EMBEDDING_DIM) {
+              updateEpisodeVec.run(embeddingToVectorJSON(f32), row.id);
+              repopulated++;
+            }
+          } catch (e: any) {
+            episodeErrors++;
+            if (episodeErrors <= 5) log.warn({ msg: "vector_rebuild_row_skip", table: "episodes", id: row.id, error: e.message });
+          }
+        }
+      });
+      batchWrite();
+      offset += BATCH;
+    }
+
+    log.warn({ msg: "vector_rebuild_complete", dropped, recreated, repopulated, memory_errors: memoryErrors, episode_errors: episodeErrors, ms: Date.now() - t0 });
+  } catch (e: any) {
+    log.error({ msg: "vector_rebuild_fatal", error: e.message, phase: "rebuild" });
+    throw e; // Let caller know rebuild failed
+  } finally {
+    _rebuildInProgress = false;
+  }
+
+  return { dropped, recreated, repopulated };
 }
 
 export const getAllEmbeddings = db.prepare(
@@ -769,7 +962,7 @@ export const deleteMemory = db.transaction((id: number) => {
   nullifyRootRefs.run(id);
   db.prepare(`DELETE FROM memories WHERE id = ?`).run(id);
 });
-export const getMemory = db.prepare(`SELECT * FROM memories WHERE id = ?`);
+export const getMemory = db.prepare(`SELECT id, content, category, source, session_id, importance, embedding, version, is_latest, parent_memory_id, root_memory_id, source_count, is_static, is_forgotten, forget_after, forget_reason, is_inference, is_archived, created_at, updated_at, model, last_accessed_at, access_count, tags, episode_id, decay_score, confidence, sync_id, status, fsrs_stability, fsrs_difficulty, fsrs_storage_strength, fsrs_retrieval_strength, fsrs_learning_state, fsrs_reps, fsrs_lapses, fsrs_last_review_at, user_id, space_id, recall_hits, recall_misses, adaptive_score FROM memories WHERE id = ?`);
 
 export const getMemoryWithoutEmbedding = db.prepare(
   `SELECT id, user_id, content, category, source, session_id, importance, created_at, updated_at,
@@ -989,6 +1182,10 @@ export function updateDecayScores(userId?: number): number {
         m.importance, m.created_at, m.access_count, m.last_accessed_at,
         !!m.is_static, m.source_count, m.fsrs_stability
       );
+      if (!Number.isFinite(score)) {
+        log.warn({ msg: "decay_score_nan_skipped", id: m.id, importance: m.importance });
+        continue;
+      }
       updateDecay.run(Math.round(score * 1000) / 1000, m.id);
       updated++;
 
@@ -1073,7 +1270,7 @@ export const assignToEpisodeForUser = db.prepare(
 export const updateEpisodeEmbedding = db.prepare(
   `UPDATE episodes SET embedding = ? WHERE id = ?`
 );
-export const updateEpisodeVec = db.prepare(
+export let updateEpisodeVec = db.prepare(
   `UPDATE episodes SET ${VECTOR_COL} = vector(?) WHERE id = ?`
 );
 export const searchEpisodesFTS = db.prepare(
@@ -1460,10 +1657,7 @@ migrate(`
   CREATE INDEX IF NOT EXISTS idx_recon_memory ON reconsolidations(memory_id);
 `);
 
-// Adaptive importance
-migrate("ALTER TABLE memories ADD COLUMN recall_hits INTEGER NOT NULL DEFAULT 0");
-migrate("ALTER TABLE memories ADD COLUMN recall_misses INTEGER NOT NULL DEFAULT 0");
-migrate("ALTER TABLE memories ADD COLUMN adaptive_score REAL");
+// Adaptive importance (migrations moved earlier in file, before prepared statements)
 
 // Temporal patterns
 migrate(`
@@ -1676,3 +1870,216 @@ export const upsertPersonalityProfile = db.prepare(
 export const invalidatePersonalityProfile = db.prepare(
   `UPDATE personality_profiles SET is_stale = 1 WHERE user_id = ?`
 );
+
+// ============================================================================
+// RATE LIMITS TABLE (Phase 1.2)
+// ============================================================================
+
+migrate(`
+  CREATE TABLE IF NOT EXISTS rate_limits (
+    key TEXT PRIMARY KEY,
+    count INTEGER NOT NULL DEFAULT 0,
+    window_start TEXT NOT NULL DEFAULT (datetime('now')),
+    window_seconds INTEGER NOT NULL DEFAULT 60
+  );
+  CREATE INDEX IF NOT EXISTS idx_rate_limits_window ON rate_limits(window_start);
+`);
+
+export const upsertRateLimit = db.prepare(`
+  INSERT INTO rate_limits (key, count, window_start, window_seconds)
+  VALUES (?, 1, datetime('now'), ?)
+  ON CONFLICT(key) DO UPDATE SET
+    count = CASE
+      WHEN datetime(rate_limits.window_start, '+' || rate_limits.window_seconds || ' seconds') < datetime('now')
+      THEN 1
+      ELSE rate_limits.count + 1
+    END,
+    window_start = CASE
+      WHEN datetime(rate_limits.window_start, '+' || rate_limits.window_seconds || ' seconds') < datetime('now')
+      THEN datetime('now')
+      ELSE rate_limits.window_start
+    END
+  RETURNING count, window_start, window_seconds
+`);
+
+export const cleanupRateLimits = db.prepare(`
+  DELETE FROM rate_limits
+  WHERE datetime(window_start, '+' || (window_seconds * 2) || ' seconds') < datetime('now')
+`);
+
+// ============================================================================
+// API KEY EXPIRATION (Phase 1.4)
+// ============================================================================
+
+migrate(`ALTER TABLE api_keys ADD COLUMN expires_at TEXT`);
+migrate(`CREATE INDEX IF NOT EXISTS idx_api_keys_expires ON api_keys(expires_at) WHERE expires_at IS NOT NULL`);
+
+// ============================================================================
+// TENANT QUOTAS (Phase 4.2)
+// ============================================================================
+
+migrate(`
+  CREATE TABLE IF NOT EXISTS tenant_quotas (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    max_memories INTEGER DEFAULT 10000,
+    max_conversations INTEGER DEFAULT 1000,
+    max_api_keys INTEGER DEFAULT 10,
+    max_spaces INTEGER DEFAULT 5,
+    max_memory_size_bytes INTEGER DEFAULT 102400,
+    rate_limit_override INTEGER,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
+export const getQuota = db.prepare(
+  `SELECT * FROM tenant_quotas WHERE user_id = ?`
+);
+
+export const upsertQuota = db.prepare(`
+  INSERT INTO tenant_quotas (user_id, max_memories, max_conversations, max_api_keys, max_spaces, max_memory_size_bytes, rate_limit_override)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(user_id) DO UPDATE SET
+    max_memories = excluded.max_memories,
+    max_conversations = excluded.max_conversations,
+    max_api_keys = excluded.max_api_keys,
+    max_spaces = excluded.max_spaces,
+    max_memory_size_bytes = excluded.max_memory_size_bytes,
+    rate_limit_override = excluded.rate_limit_override,
+    updated_at = datetime('now')
+`);
+
+export const getUserMemoryCount = db.prepare(
+  `SELECT COUNT(*) as count FROM memories WHERE user_id = ? AND is_forgotten = 0`
+);
+
+// ============================================================================
+// USAGE EVENTS (Phase 11.1)
+// ============================================================================
+
+migrate(`
+  CREATE TABLE IF NOT EXISTS usage_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    metadata TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_usage_user_type ON usage_events(user_id, event_type, created_at);
+  CREATE INDEX IF NOT EXISTS idx_usage_created ON usage_events(created_at);
+`);
+
+export const recordUsage = db.prepare(
+  `INSERT INTO usage_events (user_id, event_type, quantity, metadata) VALUES (?, ?, ?, ?)`
+);
+
+export const getUsageSummary = db.prepare(`
+  SELECT event_type, SUM(quantity) as total, COUNT(*) as event_count
+  FROM usage_events
+  WHERE user_id = ? AND created_at > ?
+  GROUP BY event_type
+`);
+
+export const getUsageTimeline = db.prepare(`
+  SELECT date(created_at) as day, event_type, SUM(quantity) as total
+  FROM usage_events
+  WHERE user_id = ? AND created_at > ?
+  GROUP BY day, event_type
+  ORDER BY day DESC
+`);
+
+export const cleanupOldUsage = db.prepare(
+  `DELETE FROM usage_events WHERE created_at < datetime('now', '-' || ? || ' days')`
+);
+
+// ============================================================================
+// SCHEMA UTILITIES (Phase 6.1)
+// ============================================================================
+
+export function getSchemaSnapshot(): Record<string, string> {
+  const tables = db.prepare(
+    `SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`
+  ).all() as Array<{ name: string; sql: string }>;
+  const result: Record<string, string> = {};
+  for (const t of tables) {
+    result[t.name] = t.sql;
+  }
+  return result;
+}
+
+export function getSchemaVersion(): number {
+  try {
+    const row = db.prepare("SELECT MAX(version) as v FROM schema_versions").get() as any;
+    return row?.v || 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function getExpectedTables(): string[] {
+  return [
+    "memories", "memories_fts", "memory_links", "memory_entities",
+    "entities", "entity_relationships", "entity_cooccurrences",
+    "episodes", "episodes_fts", "consolidations",
+    "conversations", "messages", "messages_fts",
+    "projects", "memory_projects", "scratchpad",
+    "users", "api_keys", "spaces", "agents",
+    "structured_facts", "current_state", "user_preferences",
+    "webhooks", "digests", "audit_log",
+    "personality_signals", "personality_profiles",
+    "causal_chains", "causal_links", "reconsolidations", "temporal_patterns",
+    "jobs", "scheduler_leases", "schema_versions",
+    "rate_limits", "tenant_quotas",
+  ];
+}
+
+export function detectSchemaDrift(): { missing: string[]; extra: string[] } {
+  const actual = new Set(Object.keys(getSchemaSnapshot()));
+  const expected = new Set(getExpectedTables());
+  const missing = [...expected].filter(t => !actual.has(t));
+  const extra = [...actual].filter(t => !expected.has(t) && !t.endsWith("_fts") && !t.includes("_config") && !t.includes("_content") && !t.includes("_data") && !t.includes("_idx") && !t.includes("_docsize") && t !== "sqlite_sequence");
+  return { missing, extra };
+}
+
+// ============================================================================
+// WRITE LOCK HELPER (Phase 2.1)
+// ============================================================================
+
+let activeWrites = 0;
+
+export function withWriteLock<T>(label: string, fn: () => T): T {
+  activeWrites++;
+  opsCounters.db_write_queue_depth = Math.max(opsCounters.db_write_queue_depth, activeWrites);
+  if (activeWrites > 1) {
+    opsCounters.db_lock_waits++;
+    log.debug({ msg: "db_write_contention", label, depth: activeWrites });
+  }
+  try {
+    return fn();
+  } catch (e: any) {
+    if (String(e).includes("database is locked") || String(e).includes("SQLITE_BUSY")) {
+      opsCounters.db_lock_timeouts++;
+      log.error({ msg: "db_lock_timeout", label, depth: activeWrites });
+    }
+    throw e;
+  } finally {
+    activeWrites--;
+  }
+}
+
+// ============================================================================
+// CROSS-TENANT LINK TRIGGER (Phase 1.3)
+// ============================================================================
+
+migrate(`
+  CREATE TRIGGER IF NOT EXISTS prevent_cross_tenant_links
+  BEFORE INSERT ON memory_links
+  BEGIN
+    SELECT CASE
+      WHEN (SELECT user_id FROM memories WHERE id = NEW.source_id) !=
+           (SELECT user_id FROM memories WHERE id = NEW.target_id)
+      THEN RAISE(ABORT, 'Cross-tenant memory link rejected')
+    END;
+  END;
+`);

@@ -7,9 +7,12 @@ import {
   EMBEDDING_PROVIDER, EMBEDDING_MODEL, EMBEDDING_DIM, EMBEDDING_MAX_SEQ,
   MODEL_DIR, ONNX_MODEL_FILE, MODEL_URLS,
   GOOGLE_API_KEY, GOOGLE_CLOUD_LOCATION,
+  ANN_PREFILTER_THRESHOLD, ANN_CANDIDATE_MULTIPLIER,
+  COLD_STORAGE_DAYS, COLD_STORAGE_MIN_MEMORIES,
 } from "../config/index.ts";
 import { log, opsCounters } from "../config/logger.ts";
-import { db, writeVec, updateEpisodeVec } from "../db/index.ts";
+import { withSpan } from "../tracing.ts";
+import { db, writeVec, updateEpisodeVec, rebuildVectorIndex } from "../db/index.ts";
 import { getVertexAccessToken, getProjectId } from "../auth/google-auth.ts";
 
 // ============================================================================
@@ -241,15 +244,34 @@ export async function initEmbedder(): Promise<void> {
   } else {
     throw new Error(`Unknown embedding provider: ${EMBEDDING_PROVIDER}`);
   }
+  embedderInitialized = true;
+}
+
+let embedderInitialized = false;
+
+/** True when the embedding model/provider is loaded and ready to serve requests. */
+export function isEmbedderReady(): boolean {
+  if (!embedderInitialized) return false;
+  if (EMBEDDING_PROVIDER === "local") return workerReady;
+  return true; // google/vertex: if initEmbedder() completed, they're ready
 }
 
 export async function embed(text: string): Promise<Float32Array> {
-  switch (EMBEDDING_PROVIDER) {
-    case "local": return localEmbed(text);
-    case "google": return googleEmbed(text);
-    case "vertex": return vertexEmbed(text);
-    default: throw new Error(`Unknown embedding provider: ${EMBEDDING_PROVIDER}`);
-  }
+  return withSpan("engram.embed", { "embed.provider": EMBEDDING_PROVIDER, "embed.text_length": text.length }, async (span) => {
+    const embedStart = performance.now();
+    let result: Float32Array;
+    switch (EMBEDDING_PROVIDER) {
+      case "local": result = await localEmbed(text); break;
+      case "google": result = await googleEmbed(text); break;
+      case "vertex": result = await vertexEmbed(text); break;
+      default: throw new Error(`Unknown embedding provider: ${EMBEDDING_PROVIDER}`);
+    }
+    const embedMs = performance.now() - embedStart;
+    opsCounters.embedding_count++;
+    opsCounters.embedding_latency_sum_ms += embedMs;
+    span.setAttribute("embed.latency_ms", embedMs);
+    return result;
+  });
 }
 
 export function getEmbeddingProviderInfo(): { provider: string; model: string; dim: number } {
@@ -285,9 +307,22 @@ export let episodeCache: CachedEpisode[] = [];
 
 export function refreshEmbeddingCache(): void {
   const t0 = Date.now();
-  const allRows = getAllEmbeddings.all() as Array<any>;
+
+  let queryStr = `SELECT id, user_id, content, category, importance, embedding, is_static, source_count, is_latest, is_forgotten, source, last_accessed_at, created_at FROM memories WHERE embedding IS NOT NULL AND is_forgotten = 0 AND is_archived = 0`;
+  if (COLD_STORAGE_DAYS > 0) {
+    const totalCount = (db.prepare("SELECT COUNT(*) as c FROM memories WHERE is_forgotten = 0").get() as any).c;
+    if (totalCount >= COLD_STORAGE_MIN_MEMORIES) {
+      queryStr += ` AND (last_accessed_at > datetime('now', '-${COLD_STORAGE_DAYS} days') OR (last_accessed_at IS NULL AND created_at > datetime('now', '-${COLD_STORAGE_DAYS} days')))`;
+      log.info({ msg: "cold_storage_active", total: totalCount, threshold_days: COLD_STORAGE_DAYS });
+    }
+  }
+
+  const allRows = db.prepare(queryStr).all() as Array<any>;
   embeddingCache = [];
   embeddingCacheLatest = [];
+  embeddingCacheByUser.clear();
+  embeddingCacheLatestByUser.clear();
+
   for (const row of allRows) {
     if (!row.embedding) continue;
     const mem: CachedMem = {
@@ -299,7 +334,17 @@ export function refreshEmbeddingCache(): void {
     };
     embeddingCache.push(mem);
     if (row.is_latest && !row.is_forgotten) embeddingCacheLatest.push(mem);
+
+    const arr = embeddingCacheByUser.get(row.user_id) || [];
+    arr.push(mem);
+    embeddingCacheByUser.set(row.user_id, arr);
   }
+  for (const mem of embeddingCacheLatest) {
+    const arr = embeddingCacheLatestByUser.get(mem.user_id) || [];
+    arr.push(mem);
+    embeddingCacheLatestByUser.set(mem.user_id, arr);
+  }
+
   // Load episode embeddings
   episodeCache = [];
   try {
@@ -317,14 +362,49 @@ export function refreshEmbeddingCache(): void {
   log.info({ msg: "embedding_cache_refreshed", total: embeddingCache.length, latest: embeddingCacheLatest.length, episodes: episodeCache.length, ms: Date.now() - t0 });
 }
 
+// Partitioned caches for per-user O(1) lookup (Phase 8.4)
+let embeddingCacheByUser = new Map<number, CachedMem[]>();
+let embeddingCacheLatestByUser = new Map<number, CachedMem[]>();
+
 export function getCachedEmbeddings(latestOnly: boolean, userId?: number): CachedMem[] {
-  const rows = latestOnly ? embeddingCacheLatest : embeddingCache;
-  return userId == null ? rows : rows.filter(mem => mem.user_id === userId);
+  if (userId != null) {
+    const map = latestOnly ? embeddingCacheLatestByUser : embeddingCacheByUser;
+    return map.get(userId) || [];
+  }
+  return latestOnly ? embeddingCacheLatest : embeddingCache;
 }
 
 export function addToEmbeddingCache(mem: CachedMem): void {
   embeddingCache.push(mem);
-  if (mem.is_latest && !mem.is_forgotten) embeddingCacheLatest.push(mem);
+  const byUser = embeddingCacheByUser.get(mem.user_id) || [];
+  byUser.push(mem);
+  embeddingCacheByUser.set(mem.user_id, byUser);
+  if (mem.is_latest && !mem.is_forgotten) {
+    embeddingCacheLatest.push(mem);
+    const byUserL = embeddingCacheLatestByUser.get(mem.user_id) || [];
+    byUserL.push(mem);
+    embeddingCacheLatestByUser.set(mem.user_id, byUserL);
+  }
+}
+
+export function removeFromEmbeddingCache(memoryId: number): void {
+  embeddingCache = embeddingCache.filter(m => m.id !== memoryId);
+  embeddingCacheLatest = embeddingCacheLatest.filter(m => m.id !== memoryId);
+  for (const [uid, arr] of embeddingCacheByUser) {
+    embeddingCacheByUser.set(uid, arr.filter(m => m.id !== memoryId));
+  }
+  for (const [uid, arr] of embeddingCacheLatestByUser) {
+    embeddingCacheLatestByUser.set(uid, arr.filter(m => m.id !== memoryId));
+  }
+  embeddingCacheVersion++;
+}
+
+export function demoteFromLatestCache(memoryId: number): void {
+  embeddingCacheLatest = embeddingCacheLatest.filter(m => m.id !== memoryId);
+  for (const [uid, arr] of embeddingCacheLatestByUser) {
+    embeddingCacheLatestByUser.set(uid, arr.filter(m => m.id !== memoryId));
+  }
+  embeddingCacheVersion++;
 }
 
 export function invalidateEmbeddingCache(): void {
@@ -341,6 +421,14 @@ export function bufferToEmbedding(buf: Buffer | Uint8Array | ArrayBuffer): Float
 }
 
 export function embeddingToVectorJSON(emb: Float32Array): string {
+  if (emb.length !== EMBEDDING_DIM) {
+    throw new Error(`Embedding length ${emb.length} !== expected ${EMBEDDING_DIM}`);
+  }
+  for (let i = 0; i < emb.length; i++) {
+    if (!Number.isFinite(emb[i])) {
+      throw new Error(`Invalid embedding value at index ${i}: ${emb[i]}`);
+    }
+  }
   return "[" + Array.from(emb).join(",") + "]";
 }
 
@@ -404,4 +492,76 @@ export async function reembedAll(
   const elapsed = Date.now() - t0;
   log.info({ msg: "reembed_complete", reembedded: done - failed, failed, total, elapsed_ms: elapsed });
   return { reembedded: done - failed, failed, elapsed_ms: elapsed };
+}
+
+// ============================================================================
+// CACHE STATS (Phase 8.1)
+// ============================================================================
+
+export function getEmbeddingCacheStats(): {
+  total: number; latest: number; size_mb: number; episodes: number;
+  avg_search_ms: number; estimated_max_memories: number; cold_count: number; cold_size_mb: number;
+} {
+  const dimBytes = EMBEDDING_DIM * 4;
+  const totalSize = embeddingCache.length * dimBytes;
+  const estimatedMax = Math.floor(50_000 / (EMBEDDING_DIM / 512));
+
+  let coldCount = 0;
+  if (COLD_STORAGE_DAYS > 0) {
+    const result = db.prepare(
+      `SELECT COUNT(*) as c FROM memories
+       WHERE is_forgotten = 0 AND embedding IS NOT NULL
+       AND last_accessed_at < datetime('now', '-' || ? || ' days')`
+    ).get(COLD_STORAGE_DAYS) as any;
+    coldCount = result?.c || 0;
+  }
+
+  return {
+    total: embeddingCache.length,
+    latest: embeddingCacheLatest.length,
+    size_mb: Math.round(totalSize / 1048576 * 100) / 100,
+    episodes: episodeCache.length,
+    avg_search_ms: opsCounters.search_count > 0
+      ? Math.round(opsCounters.search_latency_sum_ms / opsCounters.search_count * 10) / 10
+      : 0,
+    estimated_max_memories: estimatedMax,
+    cold_count: coldCount,
+    cold_size_mb: Math.round(coldCount * dimBytes / 1048576 * 100) / 100,
+  };
+}
+
+// ============================================================================
+// ANN SEARCH (Phase 8.2)
+// ============================================================================
+
+const VECTOR_COL = `embedding_vec_${EMBEDDING_DIM}`;
+
+export function annSearch(queryEmbedding: Float32Array, userId: number, topK: number): number[] {
+  const vecJson = embeddingToVectorJSON(queryEmbedding);
+  const candidates = topK * ANN_CANDIDATE_MULTIPLIER;
+  try {
+    const rows = db.prepare(`
+      SELECT id FROM memories
+      WHERE ${VECTOR_COL} MATCH vector(?)
+        AND k = ?
+        AND user_id = ?
+        AND is_forgotten = 0
+        AND is_latest = 1
+      ORDER BY distance
+    `).all(vecJson, candidates, userId) as Array<{ id: number }>;
+    return rows.map(r => r.id);
+  } catch (e: any) {
+    if (e.code?.includes("CORRUPT") || e.message?.includes("malformed")) {
+      log.error({ msg: "ann_search_corrupt", error: e.message, triggering_rebuild: true });
+      try { rebuildVectorIndex(); } catch {}
+    } else {
+      log.warn({ msg: "ann_search_failed", error: e.message, fallback: "linear_scan" });
+    }
+    return [];
+  }
+}
+
+export function shouldUseANN(userId: number): boolean {
+  const userCount = (embeddingCacheLatestByUser.get(userId) || []).length;
+  return userCount >= ANN_PREFILTER_THRESHOLD;
 }

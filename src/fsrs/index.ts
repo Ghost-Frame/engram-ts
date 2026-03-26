@@ -64,7 +64,7 @@ function fsrsInitialDifficulty(grade: FSRSRating): number {
 }
 
 /** Initial stability: S0(G) = w[G-1] */
-function fsrsInitialStability(grade: FSRSRating): number {
+export function fsrsInitialStability(grade: FSRSRating): number {
   return Math.max(FSRS_MIN_STABILITY, FSRS6_WEIGHTS[grade - 1]);
 }
 
@@ -238,6 +238,7 @@ export function calculateDecayScore(
 
   // FSRS-6 power-law retrievability instead of exponential decay
   const R = fsrsRetrievability(effectiveStability, elapsedDays);
-  return importance * R;
+  const result = importance * R;
+  return Number.isFinite(result) ? result : importance * 0.5; // Guard against NaN/Infinity
 }
 

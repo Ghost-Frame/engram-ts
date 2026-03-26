@@ -17,9 +17,15 @@ import {
   CONSOLIDATION_THRESHOLD, RATE_WINDOW_MS, OPEN_ACCESS_RATE_LIMIT, DEFAULT_RATE_LIMIT,
   GUI_AUTH_MAX_ATTEMPTS, GUI_AUTH_WINDOW_MS, GUI_AUTH_LOCKOUT_MS,
   ENABLE_CAUSAL_CHAINS, ENABLE_PREDICTIVE_RECALL, ENABLE_EMOTIONAL_VALENCE,
-  ENABLE_RECONSOLIDATION, SEARCH_MIN_SCORE,
+  ENABLE_RECONSOLIDATION, SEARCH_MIN_SCORE, WEBHOOK_ALLOWED_HOSTS,
+  COLD_STORAGE_DAYS, COLD_STORAGE_MIN_MEMORIES,
+  ANN_PREFILTER_THRESHOLD, ANN_CANDIDATE_MULTIPLIER,
+  LLM_STRATEGY,
+  maintenanceMode, maintenanceReason, setMaintenanceMode,
+  AUTO_ARCHIVE_ENABLED, AUTO_ARCHIVE_RETRIEVABILITY, AUTO_ARCHIVE_MIN_AGE_DAYS, AUTO_ARCHIVE_MAX_ACCESS,
 } from "../config/index.ts";
 import { log, opsCounters } from "../config/logger.ts";
+import { handleThymusRoutes, handleSomaRoutes, handleChiasmRoutes } from "../services/index.ts";
 
 // Database + prepared statements
 import {
@@ -53,13 +59,19 @@ import {
   deleteScratchSession, deleteScratchSessionKey, purgeExpiredScratchpad,
   getScratchSessionAll,
   updateDecayScores,
+  getQuota, upsertQuota, getUserMemoryCount,
+  recordUsage, getUsageSummary, getUsageTimeline, cleanupOldUsage,
+  getSchemaSnapshot, getSchemaVersion, detectSchemaDrift,
+  withWriteLock,
 } from "../db/index.ts";
 
 // Embeddings
 import {
   embed, cosineSimilarity, getCachedEmbeddings, addToEmbeddingCache,
-  invalidateEmbeddingCache, embeddingToBuffer, bufferToEmbedding, embeddingToVectorJSON,
+  invalidateEmbeddingCache, removeFromEmbeddingCache, demoteFromLatestCache,
+  embeddingToBuffer, bufferToEmbedding, embeddingToVectorJSON,
   graphCache, setGraphCache, episodeCache, refreshEmbeddingCache, embeddingCacheLatest,
+  getEmbeddingCacheStats, isEmbedderReady,
 } from "../embeddings/index.ts";
 
 // Search + linking
@@ -82,7 +94,7 @@ import { callLLM, extractFacts, processExtractionResult, rerank, isLLMAvailable,
 import { crossEncoderRerank, isRerankerReady } from "../reranker/index.ts";
 
 // Jobs
-import { enqueueJob, getJobStats } from "../jobs/index.ts";
+import { enqueueJob, getJobStats, listFailedJobs, countFailedJobs, listPendingJobs, listRunningJobs, retryFailedJob, purgeFailedJobs } from "../jobs/index.ts";
 import { fastExtractFacts } from "../intelligence/extraction.ts";
 import { runConsolidationSweep, consolidateCluster } from "../intelligence/consolidation.ts";
 import { extractPersonalitySignals, synthesizePersonalityProfile, getCachedProfile } from "../intelligence/personality.ts";
@@ -94,6 +106,9 @@ import { buildDigestPayload, sendDigestWebhook, calculateNextSend, processSchedu
 
 // Helpers
 import { securityHeaders, json, errorResponse, safeError, sanitizeFTS, isPrivateHostname } from "../helpers/index.ts";
+
+// OpenAPI spec
+import { getOpenAPISpec } from "../openapi.ts";
 
 // Agent signing
 import { signExecution, verifyExecution, createPassport, verifyPassport, computeTrustScore, generateSigningSecret, signMessage, verifyMessage, NonceTracker, verifyToolManifest } from "../../sign/index.ts";
@@ -107,8 +122,9 @@ import {
 
 // GUI
 import {
-  GUI_PASSWORD, GUI_AUTH_CONFIGURED, GUI_COOKIE_ATTRIBUTES, GUI_COOKIE_MAX_AGE,
+  GUI_PASSWORD, GUI_AUTH_CONFIGURED, guiCookieAttributes, GUI_COOKIE_MAX_AGE,
   guiSignCookie, guiAuthed, getGuiHtml, getLoginHtml, reloadGuiHtml,
+  serveGuiAsset, GUI_SPA_ROUTES,
 } from "../gui/index.ts";
 
 // Bind guiAuthed into getAuthOrDefault so routes can call it with just (req)
@@ -204,8 +220,70 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
+const OPEN_ACCESS_BLOCKED_PATHS = new Set([
+  "/reset", "/bootstrap", "/admin/reembed", "/admin/rebuild-cooccurrences",
+  "/admin/detect-communities", "/admin/backfill-facts",
+  "/users", "/keys", "/backup",
+]);
+
+function isBlockedInOpenAccess(path: string, method: string): boolean {
+  if (!OPEN_ACCESS) return false;
+  if (OPEN_ACCESS_BLOCKED_PATHS.has(path)) return true;
+  if (path.startsWith("/admin/")) return true;
+  return false;
+}
+
+// Per-endpoint rate limits for expensive operations (per user_id, per minute)
+const endpointLimits: Record<string, number> = {
+  "/store": 60,
+  "/search": 120,
+  "/recall": 120,
+  "/context": 60,
+  "/ingest": 20,
+  "/add": 30,
+  "/admin/reembed": 1,
+  "/backup": 5,
+  "/reset": 1,
+  "/bootstrap": 3,
+  "/consolidate": 5,
+  "/reflect": 10,
+};
+
+const endpointRateLimits = new Map<string, { count: number; reset: number }>();
+
+function checkEndpointRateLimit(path: string, userId: number): { allowed: boolean; retryAfter?: number } {
+  const limit = endpointLimits[path];
+  if (!limit) return { allowed: true };
+  const key = `${userId}:${path}`;
+  const now = Date.now();
+  let rl = endpointRateLimits.get(key);
+  if (!rl || now > rl.reset) {
+    rl = { count: 0, reset: now + 60_000 };
+    endpointRateLimits.set(key, rl);
+  }
+  rl.count++;
+  if (rl.count > limit) {
+    return { allowed: false, retryAfter: Math.ceil((rl.reset - now) / 1000) };
+  }
+  return { allowed: true };
+}
+
+// Cleanup stale endpoint rate limit entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, rl] of endpointRateLimits) {
+    if (now > rl.reset) endpointRateLimits.delete(k);
+  }
+}, 5 * 60 * 1000);
+
 // GUI auth rate limiting state
 const guiAuthAttempts = new Map<string, { count: number; first: number; locked_until: number }>();
+
+function parsePagination(url: URL, defaults: { limit: number; maxLimit: number } = { limit: 50, maxLimit: 200 }) {
+  const limit = Math.min(Math.max(1, Number(url.searchParams.get("limit") || defaults.limit)), defaults.maxLimit);
+  const offset = Math.max(0, Number(url.searchParams.get("offset") || 0));
+  return { limit, offset };
+}
 
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
@@ -215,6 +293,7 @@ function validatePublicWebhookUrl(rawUrl: string, label: string): string | null 
   try {
     const parsed = new URL(rawUrl);
     if (!["http:", "https:"].includes(parsed.protocol)) return `${label} must be http or https`;
+    if (WEBHOOK_ALLOWED_HOSTS.length > 0 && WEBHOOK_ALLOWED_HOSTS.includes(parsed.hostname)) return null;
     if (isPrivateHostname(parsed.hostname.toLowerCase())) return `${label} cannot point to private/internal addresses`;
     return null;
   } catch {
@@ -252,6 +331,7 @@ function sweepExpiredMemories(userId?: number): number {
     markForgotten.run(mem.id);
     log.debug({ msg: "auto_forgot", id: mem.id, reason: mem.forget_reason || "expired" });
   }
+  for (const mem of expired) removeFromEmbeddingCache(mem.id);
   return expired.length;
 }
 
@@ -352,6 +432,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
     // ========================================================================
     // REQUEST MIDDLEWARE — ID, IP check, body limit
     // ========================================================================
+    opsCounters.request_count++;
     const requestId = req.headers.get("X-Request-Id") || randomUUID().slice(0, 8);
     const clientIp = socketIp || req.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() || "unknown";
     const requestStart = performance.now();
@@ -412,7 +493,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
           return new Response(JSON.stringify({ ok: true }), {
             headers: securityHeaders({
               "Content-Type": "application/json",
-              "Set-Cookie": `engram_auth=${cookie}; ${GUI_COOKIE_ATTRIBUTES}; Max-Age=${GUI_COOKIE_MAX_AGE}`,
+              "Set-Cookie": `engram_auth=${cookie}; ${guiCookieAttributes(req)}; Max-Age=${GUI_COOKIE_MAX_AGE}`,
             })
           });
         }
@@ -431,20 +512,35 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
         headers: securityHeaders({
           "Content-Type": "text/html; charset=utf-8",
           "Content-Security-Policy": GUI_CONTENT_SECURITY_POLICY,
-          "Set-Cookie": `engram_auth=; ${GUI_COOKIE_ATTRIBUTES}; Max-Age=0`,
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
+          "Set-Cookie": `engram_auth=; ${guiCookieAttributes(req)}; Max-Age=0`,
         })
       });
     }
 
     // ========================================================================
-    // WEB GUI
+    // GUI STATIC ASSETS (SvelteKit build output — /_app/*)
     // ========================================================================
-    if ((url.pathname === "/" || url.pathname === "/gui") && method === "GET") {
+    if (url.pathname.startsWith("/_app/") && method === "GET") {
+      const asset = serveGuiAsset(url.pathname);
+      if (asset) return asset;
+    }
+
+    // ========================================================================
+    // WEB GUI (SPA — serves same HTML for all client-side routes)
+    // ========================================================================
+    const acceptsHtml = (req.headers.get("accept") || "").includes("text/html");
+    if (GUI_SPA_ROUTES.has(url.pathname) && method === "GET" && acceptsHtml) {
       if (OPEN_ACCESS || guiAuthed(req)) {
         return new Response(await getGuiHtml(), {
           headers: securityHeaders({
             "Content-Type": "text/html; charset=utf-8",
             "Content-Security-Policy": GUI_CONTENT_SECURITY_POLICY,
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
           })
         });
       }
@@ -452,6 +548,9 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
         headers: securityHeaders({
           "Content-Type": "text/html; charset=utf-8",
           "Content-Security-Policy": GUI_CONTENT_SECURITY_POLICY,
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
         })
       });
     }
@@ -518,12 +617,34 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
       log.info({ msg: "req", method, path: url.pathname, status: maybeAuth.status, ms: elapsed, ip: clientIp, rid: requestId });
       return json({ error: maybeAuth.error }, maybeAuth.status, { "X-Request-Id": requestId, ...(maybeAuth.headers || {}) });
     }
+    if (isBlockedInOpenAccess(url.pathname, method)) {
+      return errorResponse("Endpoint not available in open access mode", 403, requestId);
+    }
     if (!maybeAuth && url.pathname !== "/health") {
       const elapsed = (performance.now() - requestStart).toFixed(1);
       log.info({ msg: "req", method, path: url.pathname, status: 401, ms: elapsed, ip: clientIp, rid: requestId });
       return json({ error: "Authentication required. Provide Bearer eg_* token." }, 401, { "X-Request-Id": requestId });
     }
     const auth: AuthContext = maybeAuth || { user_id: 1, space_id: null, key_id: null, agent_id: null, scopes: ["read"], is_admin: false };
+
+    const epLimit = checkEndpointRateLimit(url.pathname, auth.user_id);
+    if (!epLimit.allowed) {
+      return json({ error: "Endpoint rate limit exceeded", retry_after: epLimit.retryAfter }, 429, {
+        "Retry-After": String(epLimit.retryAfter),
+        "X-Request-Id": requestId,
+      });
+    }
+
+    // Maintenance mode: reject writes from non-admins (reads still work)
+    if (maintenanceMode && method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+      if (!auth.is_admin) {
+        return json({
+          error: "Server is in maintenance mode" + (maintenanceReason ? `: ${maintenanceReason}` : ""),
+          maintenance: true,
+          retry_after: 300,
+        }, 503, { "Retry-After": "300", "X-Request-Id": requestId });
+      }
+    }
 
     // ========================================================================
     // USER MANAGEMENT (admin only)
@@ -575,10 +696,11 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
         const name = body.name || "default";
         const scopes = body.scopes || "read,write";
         const rateLimit = Math.min(Math.max(Number(body.rate_limit) || DEFAULT_RATE_LIMIT, 10), 10000);
-        db.prepare(
-          "INSERT INTO api_keys (user_id, key_prefix, key_hash, name, scopes, rate_limit) VALUES (?, ?, ?, ?, ?, ?)"
-        ).run(targetUserId, prefix, hash, name, scopes, rateLimit);
-        return json({ key, name, scopes, rate_limit: rateLimit, user_id: targetUserId, message: "Save this key — it cannot be retrieved again." });
+        const expires_at = body.expires_at ? String(body.expires_at) : null;
+        const keyResult = db.prepare(
+          "INSERT INTO api_keys (user_id, key_prefix, key_hash, name, scopes, rate_limit, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id"
+        ).get(targetUserId, prefix, hash, name, scopes, rateLimit, expires_at) as any;
+        return json({ key, id: keyResult.id, name, scopes, rate_limit: rateLimit, user_id: targetUserId, expires_at, message: "Save this key -- it cannot be retrieved again." });
       } catch (e: any) {
         return safeError("Operation", e);
       }
@@ -599,6 +721,36 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
       if (key.user_id !== auth.user_id && !auth.is_admin) return errorResponse("Forbidden", 403);
       db.prepare("UPDATE api_keys SET is_active = 0 WHERE id = ?").run(id);
       return json({ revoked: true, id });
+    }
+
+    if (url.pathname === "/keys/rotate" && method === "POST") {
+      if (!hasScope(auth, "admin")) return errorResponse("Admin required", 403, requestId);
+      const body = await req.json().catch(() => ({})) as any;
+      const oldKeyId = Number(body.key_id);
+      if (!oldKeyId) return errorResponse("key_id is required", 400, requestId);
+
+      const oldKey = db.prepare("SELECT * FROM api_keys WHERE id = ? AND user_id = ?").get(oldKeyId, auth.user_id) as any;
+      if (!oldKey) return errorResponse("Key not found", 404, requestId);
+
+      const { key, prefix, hash } = generateApiKey();
+      const newKeyResult = db.prepare(
+        `INSERT INTO api_keys (user_id, key_prefix, key_hash, name, scopes, rate_limit, agent_id, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         RETURNING id`
+      ).get(auth.user_id, prefix, hash, `${oldKey.name} (rotated)`, oldKey.scopes, oldKey.rate_limit, oldKey.agent_id, body.expires_at || null) as any;
+
+      const graceExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().replace("T", " ").slice(0, 19);
+      db.prepare("UPDATE api_keys SET expires_at = ? WHERE id = ?").run(graceExpiry, oldKeyId);
+
+      audit(auth.user_id, "key.rotated", "api_key", oldKeyId, `new_key_id=${newKeyResult.id}`, clientIp, requestId);
+
+      return json({
+        new_key: key,
+        new_key_id: newKeyResult.id,
+        old_key_id: oldKeyId,
+        old_key_expires: graceExpiry,
+        message: "Old key will expire in 24 hours. Update your clients to use the new key.",
+      });
     }
 
     // ========================================================================
@@ -665,7 +817,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
       ).all(auth.user_id);
 
       const exportData = {
-        version: "engram-v5.8",
+        version: "engram-v5.9",
         exported_at: new Date().toISOString(),
         memories: mems,
         links: memLinks,
@@ -682,6 +834,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
         });
       }
 
+      try { recordUsage.run(auth.user_id, "export.download", 1, JSON.stringify({ memories: mems.length })); } catch {}
       return new Response(JSON.stringify(exportData, null, 2), {
         headers: securityHeaders({
           "Content-Type": "application/json",
@@ -914,10 +1067,179 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
     if (url.pathname === "/ready" && method === "GET") {
       const checks: Record<string, boolean> = {};
       try { db.prepare("SELECT 1").get(); checks.db = true; } catch { checks.db = false; }
-      try { checks.embeddings = embeddingCacheLatest.length > 0; } catch { checks.embeddings = false; }
+      try { checks.embeddings = isEmbedderReady(); } catch { checks.embeddings = false; }
       checks.llm = isLLMAvailable();
       const ready = checks.db && checks.embeddings;
       return json({ status: ready ? "ready" : "degraded", checks }, ready ? 200 : 503);
+    }
+
+    if (url.pathname === "/openapi.json" && method === "GET") {
+      return new Response(JSON.stringify(getOpenAPISpec(), null, 2), {
+        headers: securityHeaders({ "Content-Type": "application/json" }),
+      });
+    }
+
+    if (url.pathname === "/api/examples" && method === "GET") {
+      return json({
+        description: "Example request/response pairs for Engram API endpoints",
+        examples: {
+          "POST /store": {
+            request: {
+              content: "TypeScript is our primary language for all Syntheos products",
+              category: "decision",
+              source: "claude-code",
+              importance: 8,
+              tags: ["tech-stack", "typescript"],
+            },
+            response: {
+              id: 1234,
+              created_at: "2026-03-21T12:00:00Z",
+              job_id: 567,
+            },
+          },
+          "POST /search": {
+            request: {
+              query: "What programming language do we use?",
+              limit: 5,
+            },
+            response: {
+              results: [{
+                id: 1234,
+                content: "TypeScript is our primary language for all Syntheos products",
+                category: "decision",
+                source: "claude-code",
+                importance: 8,
+                score: 0.89,
+                semantic_score: 0.92,
+                fts_score: 0.85,
+                created_at: "2026-03-21T12:00:00Z",
+                tags: ["tech-stack", "typescript"],
+              }],
+              count: 1,
+              question_type: "fact_recall",
+              reranked: true,
+            },
+          },
+          "POST /recall": {
+            request: { query: "our tech stack", budget: 2000 },
+            response: {
+              context: "Based on 3 memories:\n- TypeScript is our primary language...",
+              memories_used: 3,
+              tokens_used: 450,
+              budget: 2000,
+            },
+          },
+          "POST /conversations": {
+            request: {
+              agent: "claude-code",
+              title: "Debugging session",
+              messages: [
+                { role: "user", content: "Why is the build failing?" },
+                { role: "assistant", content: "The TypeScript compiler found 3 errors..." },
+              ],
+            },
+            response: {
+              id: 89,
+              agent: "claude-code",
+              title: "Debugging session",
+              started_at: "2026-03-21T12:00:00Z",
+            },
+          },
+          "Authorization": {
+            header: "Authorization: Bearer eg_a1b2c3d4e5f6...",
+            note: "Get your key from POST /bootstrap (first setup) or POST /keys (admin creates more)",
+          },
+        },
+      });
+    }
+
+    if (url.pathname === "/metrics" && method === "GET") {
+      const stats = getJobStats();
+      const memCount = db.prepare("SELECT COUNT(*) as c FROM memories WHERE is_forgotten = 0").get() as any;
+      const embCount = db.prepare("SELECT COUNT(*) as c FROM memories WHERE embedding IS NOT NULL AND is_forgotten = 0").get() as any;
+      const dbSize = statSync(DB_PATH).size;
+      const cacheStats = getEmbeddingCacheStats();
+
+      const searchP200 = opsCounters.sla_search_total > 0
+        ? Math.round(opsCounters.sla_search_under_200ms / opsCounters.sla_search_total * 10000) / 100
+        : 100;
+      const errorRate = opsCounters.request_count > 0
+        ? Math.round(opsCounters.sla_errors_5xx / opsCounters.request_count * 10000) / 100
+        : 0;
+
+      const lines: string[] = [
+        "# HELP engram_memories_total Total non-forgotten memories",
+        "# TYPE engram_memories_total gauge",
+        `engram_memories_total ${memCount.c}`,
+        "",
+        "# HELP engram_embedded_total Memories with embeddings",
+        "# TYPE engram_embedded_total gauge",
+        `engram_embedded_total ${embCount.c}`,
+        "",
+        "# HELP engram_db_size_bytes Database file size",
+        "# TYPE engram_db_size_bytes gauge",
+        `engram_db_size_bytes ${dbSize}`,
+        "",
+        "# HELP engram_jobs_total Jobs by status",
+        "# TYPE engram_jobs_total gauge",
+        `engram_jobs_total{status="pending"} ${stats.pending || 0}`,
+        `engram_jobs_total{status="running"} ${stats.running || 0}`,
+        `engram_jobs_total{status="completed"} ${stats.completed || 0}`,
+        `engram_jobs_total{status="failed"} ${stats.failed || 0}`,
+        "",
+        "# HELP engram_requests_total Total HTTP requests",
+        "# TYPE engram_requests_total counter",
+        `engram_requests_total ${opsCounters.request_count}`,
+        "",
+        "# HELP engram_request_errors_total Total HTTP 5xx errors",
+        "# TYPE engram_request_errors_total counter",
+        `engram_request_errors_total ${opsCounters.request_errors}`,
+        "",
+        "# HELP engram_embedding_latency_avg_ms Average embedding latency",
+        "# TYPE engram_embedding_latency_avg_ms gauge",
+        `engram_embedding_latency_avg_ms ${opsCounters.embedding_count > 0 ? (opsCounters.embedding_latency_sum_ms / opsCounters.embedding_count).toFixed(1) : 0}`,
+        "",
+        "# HELP engram_search_latency_avg_ms Average search latency",
+        "# TYPE engram_search_latency_avg_ms gauge",
+        `engram_search_latency_avg_ms ${opsCounters.search_count > 0 ? (opsCounters.search_latency_sum_ms / opsCounters.search_count).toFixed(1) : 0}`,
+        "",
+        "# HELP engram_db_lock_waits_total Write lock contention events",
+        "# TYPE engram_db_lock_waits_total counter",
+        `engram_db_lock_waits_total ${opsCounters.db_lock_waits || 0}`,
+        "",
+        "# HELP engram_db_lock_timeouts_total SQLite BUSY timeout events",
+        "# TYPE engram_db_lock_timeouts_total counter",
+        `engram_db_lock_timeouts_total ${opsCounters.db_lock_timeouts || 0}`,
+        "",
+        "# HELP engram_uptime_seconds Server uptime",
+        "# TYPE engram_uptime_seconds gauge",
+        `engram_uptime_seconds ${Math.floor(process.uptime())}`,
+        "",
+        "# HELP engram_embedding_cache_count Vectors in embedding cache",
+        "# TYPE engram_embedding_cache_count gauge",
+        `engram_embedding_cache_count ${cacheStats.total}`,
+        "",
+        "# HELP engram_embedding_cache_bytes Embedding cache memory usage",
+        "# TYPE engram_embedding_cache_bytes gauge",
+        `engram_embedding_cache_bytes ${cacheStats.total * EMBEDDING_DIM * 4}`,
+        "",
+        "# HELP engram_search_p50_ms Estimated search latency (average as proxy)",
+        "# TYPE engram_search_p50_ms gauge",
+        `engram_search_p50_ms ${cacheStats.avg_search_ms}`,
+        "",
+        "# HELP engram_sla_search_p200_pct Percentage of searches under 200ms",
+        "# TYPE engram_sla_search_p200_pct gauge",
+        `engram_sla_search_p200_pct ${searchP200}`,
+        "",
+        "# HELP engram_sla_error_rate_pct 5xx error rate percentage",
+        "# TYPE engram_sla_error_rate_pct gauge",
+        `engram_sla_error_rate_pct ${errorRate}`,
+        "",
+      ];
+
+      return new Response(lines.join("\n") + "\n", {
+        headers: { "Content-Type": "text/plain; version=0.0.4; charset=utf-8" },
+      });
     }
 
     if (url.pathname === "/health" && method === "GET") {
@@ -1043,8 +1365,19 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
           if (opsCounters.vec_write_failures > 0) w.push(`${opsCounters.vec_write_failures} vector column write failures since startup`);
           if (opsCounters.extraction_failures > 0) w.push(`${opsCounters.extraction_failures} LLM extraction failures since startup`);
           if (opsCounters.fts_rebuild_failures > 0) w.push(`${opsCounters.fts_rebuild_failures} FTS rebuild failures since startup`);
+          const cacheStats = getEmbeddingCacheStats();
+          if (cacheStats.total > 50000) {
+            w.push(`Embedding cache contains ${cacheStats.total} vectors (${cacheStats.size_mb}MB). Linear scan will degrade. Enable tiered search (Phase 8.2) or external vector DB.`);
+          } else if (cacheStats.total > 10000) {
+            w.push(`Embedding cache: ${cacheStats.total} vectors (${cacheStats.size_mb}MB). Approaching linear scan limits. Monitor search latency via /metrics.`);
+          }
+          if (cacheStats.avg_search_ms > 200) {
+            w.push(`Average search latency is ${cacheStats.avg_search_ms}ms. Consider enabling ANN index or reducing candidate pool.`);
+          }
           return w.length > 0 ? w : undefined;
         })(),
+        embedding_cache: getEmbeddingCacheStats(),
+        ...(maintenanceMode ? { maintenance: { active: true, reason: maintenanceReason } } : {}),
         ops_counters: isAdmin ? opsCounters : undefined,
         ...(isAdmin ? { db_size_mb: Math.round(dbSize / 1048576 * 100) / 100 } : {}),
       });
@@ -2308,7 +2641,7 @@ Only include pairs that are actual contradictions.`;
 
         // Cross-encoder rerank: reorder semantic results so best matches get budget priority
         // Use smaller batch (8) for /context since other phases provide diversity
-        if (isRerankerReady() && semanticResults.length > 3) {
+        if (RERANKER_ENABLED && isRerankerReady() && semanticResults.length > 3) {
           const tRerank = Date.now();
           semanticResults = await crossEncoderRerank(query, semanticResults, 8);
           timing.rerank_ms = Date.now() - tRerank;
@@ -2893,12 +3226,24 @@ Return JSON:
       if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
       try {
         const body = await req.json() as any;
-        const { content, category, source, session_id, importance, tags, episode, model } = body;
+        const { content, category, source, session_id, importance, tags, episode, model, skip_processing } = body;
         if (!content || typeof content !== "string" || content.trim().length === 0) {
           return errorResponse("content is required and must be a non-empty string");
         }
         if (content.length > MAX_CONTENT_SIZE) {
           return errorResponse(`Content too large (${content.length} bytes). Max: ${MAX_CONTENT_SIZE}`, 413);
+        }
+
+        // Check tenant quota (optional -- no quota row means unlimited)
+        const quota = getQuota.get(auth.user_id) as any;
+        if (quota) {
+          const currentCount = (getUserMemoryCount.get(auth.user_id) as any).count;
+          if (currentCount >= quota.max_memories) {
+            return errorResponse(`Memory quota exceeded (${currentCount}/${quota.max_memories}). Contact admin to increase limit.`, 429, requestId);
+          }
+          if (content.length > quota.max_memory_size_bytes) {
+            return errorResponse(`Content too large for your quota (${content.length}/${quota.max_memory_size_bytes} bytes)`, 413, requestId);
+          }
         }
 
         const imp = Math.max(1, Math.min(10, Number(importance) || DEFAULT_IMPORTANCE));
@@ -3012,9 +3357,34 @@ Return JSON:
         }, auth.user_id);
 
         // Synchronous fast extraction (regex-based, no LLM, instant)
-        fastExtractFacts(content.trim(), result.id, auth.user_id, episodeId);
+        // Skip extraction for agent task logs, compactions, and bot conversations
+        // to prevent garbage preferences/state from non-user content
+        const extractionCategory = (category || "general").toLowerCase();
+        const skipExtraction = skip_processing === true
+          || ["task", "issue", "plan"].includes(extractionCategory)
+          || (content.trim().startsWith("Session compaction summary"))
+          || (content.trim().startsWith("[Consolidated:"))
+          || (content.trim().startsWith("[auto-captured]"));
+        if (!skipExtraction) {
+          fastExtractFacts(content.trim(), result.id, auth.user_id, episodeId);
+        }
+
+        // Eagerly add to in-memory embedding cache so searches see this memory immediately
+        // (without waiting for the async job worker to process it)
+        if (embArray) {
+          addToEmbeddingCache({
+            id: result.id, user_id: auth.user_id, content: content.trim(),
+            category: category || "general", importance: imp, embedding: embArray,
+            is_static: !!isStatic, source_count: 1, is_latest: true, is_forgotten: false,
+          });
+        }
 
         // Return response IMMEDIATELY — vector indexing + autoLink + fact extraction happen async
+        const _storeElapsed = performance.now() - requestStart;
+        opsCounters.sla_store_total++;
+        if (_storeElapsed < 500) opsCounters.sla_store_under_500ms++;
+        try { recordUsage.run(auth.user_id, "memory.store", 1, null); } catch {}
+
         const response = json({
           stored: true,
           id: result.id,
@@ -3028,7 +3398,7 @@ Return JSON:
           fact_extraction: isLLMAvailable() ? "queued" : "disabled",
           status: memStatus,
           model: (model && typeof model === "string") ? model.trim() : null,
-        });
+        }, 201);
 
         audit(auth.user_id, "memory.store", "memory", result.id, (category || "general"), clientIp, requestId);
 
@@ -3044,11 +3414,13 @@ Return JSON:
             userId: auth.user_id,
             importance: imp,
             embeddingBase64: embBase64,
+            lightweight: !!skip_processing,
           });
         }
 
         return response;
       } catch (e: any) {
+        opsCounters.sla_errors_5xx++;
         return safeError("store", e);
       }
     }
@@ -3521,7 +3893,7 @@ Return JSON:
         // Cross-encoder: auto-on when loaded (disable per-request with rerank: false)
         // LLM reranker: opt-in fallback (rerank: true when cross-encoder unavailable)
         const explicitOff = body.rerank === false;
-        if (!explicitOff && isRerankerReady() && results.length > 3) {
+        if (!explicitOff && RERANKER_ENABLED && isRerankerReady() && results.length > 3) {
           results = await crossEncoderRerank(query, results) as typeof results;
           results = results.slice(0, Math.min(limit || 10, 50));
         } else if (body.rerank === true && results.length > 3) {
@@ -3587,6 +3959,7 @@ Return JSON:
           if (r.decay_score != null) explain.decay = Math.round(r.decay_score * 100) / 100;
           if (r.temporal_boost != null) explain.temporal_boost = r.temporal_boost;
           if (r.is_static) explain.static = true;
+          if (r._pagerank_score > 0) explain.pagerank = Math.round(r._pagerank_score * 1000) / 1000;
           if (r.source_count && r.source_count > 1) explain.corroborated = r.source_count;
           if (r.question_type) explain.question_type = r.question_type;
           if (r._channels && r._channels.length > 0) explain.channels = r._channels;
@@ -3600,13 +3973,19 @@ Return JSON:
           if (explain.temporal_boost != null) reasons.push("temporal proximity boost");
           if (explain.reranker && explain.reranker > 0.9) reasons.push("high reranker confidence");
           if (explain.static) reasons.push("permanent fact");
+          if (explain.pagerank && explain.pagerank > 0.5) reasons.push("structurally important (hub memory)");
           if (explain.corroborated) reasons.push(`corroborated ${explain.corroborated}x`);
           if (r.importance >= 8) reasons.push("high importance");
           explain.reasons = reasons;
           // Strip internal fields from result before returning
-          const { _channels, fts_score, graph_score, temporal_boost, ...rest } = r;
+          const { _channels, _pagerank_score, fts_score, graph_score, temporal_boost, ...rest } = r;
           return { ...rest, explain };
         }) : (abstained ? [] : results);
+
+        const _searchElapsed = _searchT3 - _searchT0;
+        opsCounters.sla_search_total++;
+        if (_searchElapsed < 200) opsCounters.sla_search_under_200ms++;
+        try { recordUsage.run(auth.user_id, "memory.search", 1, null); } catch {}
 
         return json({
           results: explainResults,
@@ -3616,6 +3995,7 @@ Return JSON:
           ...(body.mode ? { mode: body.mode } : {}),
         });
       } catch (e: any) {
+        opsCounters.sla_errors_5xx++;
         return safeError("Search", e);
       }
     }
@@ -3661,7 +4041,7 @@ Return JSON:
         db.prepare("UPDATE memories SET forget_reason = ? WHERE id = ?").run(body.reason, id);
       }
       audit(auth.user_id, "memory.forget", "memory", id, body.reason || "manual", clientIp, requestId);
-      invalidateEmbeddingCache();
+      removeFromEmbeddingCache(id);
       return json({ forgotten: true, id });
     }
 
@@ -3677,7 +4057,7 @@ Return JSON:
       if (mem.user_id !== auth.user_id && !auth.is_admin) return errorResponse("Forbidden", 403);
       markArchived.run(id);
       audit(auth.user_id, "memory.archive", "memory", id, null, clientIp, requestId);
-      invalidateEmbeddingCache();
+      removeFromEmbeddingCache(id);
       return json({ archived: true, id });
     }
 
@@ -3768,6 +4148,7 @@ Return JSON:
         }
 
         log.info({ msg: "memory_version_created", old_id: id, new_id: result.id, version: newVersion, root: rootId });
+        demoteFromLatestCache(id);
 
         return json({
           updated: true,
@@ -4014,6 +4395,8 @@ Return JSON:
           workingMemory = buildWorkingMemoryBlock(scratchRows);
         } catch {}
 
+        try { recordUsage.run(auth.user_id, "memory.recall", 1, null); } catch {}
+
         return json({
           // Standard Engram format
           memories: sorted.map(s => ({
@@ -4098,7 +4481,7 @@ Return JSON:
       if (mem.user_id !== auth.user_id && !auth.is_admin) return errorResponse("Forbidden", 403);
       deleteMemory(id);
       audit(auth.user_id, "memory.delete", "memory", id, null, clientIp, requestId);
-      invalidateEmbeddingCache();
+      removeFromEmbeddingCache(id);
       return json({ deleted: true, id });
     }
 
@@ -4222,7 +4605,8 @@ Return JSON:
           metadata ? JSON.stringify(metadata) : null,
           auth.user_id
         ) as { id: number; started_at: string };
-        return json({ id: result.id, started_at: result.started_at });
+        try { recordUsage.run(auth.user_id, "conversation.create", 1, null); } catch {}
+        return json({ id: result.id, started_at: result.started_at }, 201);
       } catch (e: any) {
         return safeError("create conversation", e);
       }
@@ -5795,7 +6179,7 @@ If no meaningful inferences, return {"derived": []}`;
           const rows = db.prepare(
             `SELECT id, content, category, source, importance, confidence, created_at,
                     is_static, is_forgotten, is_archived, parent_memory_id, source_count,
-                    version, forget_after, community_id, pagerank_score
+                    version, forget_after, pagerank_score
              FROM memories WHERE id IN (${ph}) AND user_id = ? AND is_forgotten = 0`
           ).all(...chunk, auth.user_id) as any[];
           allMems.push(...rows);
@@ -5806,14 +6190,13 @@ If no meaningful inferences, return {"derived": []}`;
             id: `m${mem.id}`,
             label: mem.content.substring(0, 60) + (mem.content.length > 60 ? "\u2026" : ""),
             type: "memory", category: mem.category, importance: mem.importance,
-            confidence: mem.confidence, group: mem.community_id ?? mem.category,
-            community_id: mem.community_id, pagerank_score: mem.pagerank_score,
-            size: Math.max(3, (mem.importance || 5) * 1.5 + (mem.pagerank_score || 0) * 3),
+            confidence: mem.confidence, group: mem.category,
+            size: Math.max(3, (mem.importance || 5) * 1.5 + (mem.pagerank_score || 0) * 5),
             source: mem.source, created_at: mem.created_at, is_static: mem.is_static,
             is_forgotten: mem.is_forgotten, is_archived: mem.is_archived,
             parent_memory_id: mem.parent_memory_id, source_count: mem.source_count,
             content: mem.content, version: mem.version,
-            forget_after: mem.forget_after,
+            forget_after: mem.forget_after, pagerank_score: mem.pagerank_score || 0,
           });
         }
 
@@ -5897,52 +6280,26 @@ If no meaningful inferences, return {"derived": []}`;
           }
         }
 
+        // Phase 6: Prune orphan memory nodes (no edges) to avoid floating dots
+        if (!center) {
+          const connectedIds = new Set<string>();
+          for (const e of edges) {
+            connectedIds.add(String(e.source));
+            connectedIds.add(String(e.target));
+          }
+          for (const [id] of nodes) {
+            if (id.startsWith("m") && !connectedIds.has(id)) {
+              nodes.delete(id);
+            }
+          }
+        }
+
         const result = { nodes: [...nodes.values()], edges, links: edges.slice(), node_count: nodes.size, edge_count: edges.length };
         setGraphCache({ key: cacheKey, data: result, ts: Date.now() });
         log.info({ msg: "graph_served", nodes: nodes.size, edges: edges.length, cached: false, rid: requestId });
         return json(result);
       } catch (e: any) {
         return safeError("Graph", e);
-      }
-    }
-
-
-    // Temporal graph evolution: weekly aggregates of graph growth
-    if (url.pathname === "/graph/timeline" && method === "GET") {
-      try {
-        const weeks = db.prepare(`
-          SELECT strftime('%Y-%W', created_at) as week,
-                 MIN(created_at) as week_start,
-                 COUNT(*) as new_memories
-          FROM memories
-          WHERE user_id = ? AND is_forgotten = 0 AND is_archived = 0 AND is_latest = 1
-          GROUP BY week ORDER BY week ASC
-        `).all(auth.user_id) as any[];
-
-        const edgeWeeks = db.prepare(`
-          SELECT strftime('%Y-%W', ml.created_at) as week, COUNT(*) as new_links
-          FROM memory_links ml
-          JOIN memories m ON m.id = ml.source_id
-          WHERE m.user_id = ?
-          GROUP BY week ORDER BY week ASC
-        `).all(auth.user_id) as any[];
-
-        const edgeMap: Record<string, number> = {};
-        let edgeTotal = 0;
-        for (const w of edgeWeeks) { edgeTotal += w.new_links; edgeMap[w.week] = edgeTotal; }
-
-        let memTotal = 0;
-        const timeline = weeks.map((w: any) => {
-          memTotal += w.new_memories;
-          return {
-            week: w.week, week_start: w.week_start,
-            new_memories: w.new_memories, total_memories: memTotal,
-            total_links: edgeMap[w.week] || 0,
-          };
-        });
-        return json({ timeline, total_memories: memTotal, total_links: edgeTotal });
-      } catch (e: any) {
-        return safeError("Timeline", e);
       }
     }
 
@@ -6303,6 +6660,57 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
+    // JOB QUEUE MANAGEMENT
+    // ========================================================================
+    if (url.pathname === "/jobs" && method === "GET") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      const status = url.searchParams.get("status") || "failed";
+      const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
+      const offset = Number(url.searchParams.get("offset") || 0);
+
+      let jobs: any[];
+      let total: number;
+      if (status === "failed") {
+        jobs = listFailedJobs(limit, offset);
+        total = countFailedJobs();
+      } else if (status === "pending") {
+        jobs = listPendingJobs(limit, offset);
+        total = jobs.length;
+      } else if (status === "running") {
+        jobs = listRunningJobs();
+        total = jobs.length;
+      } else {
+        return errorResponse("Invalid status. Use: failed, pending, running", 400, requestId);
+      }
+
+      for (const j of jobs) {
+        try { j.payload = JSON.parse(j.payload); } catch {}
+      }
+
+      return json({ jobs, total, limit, offset, status });
+    }
+
+    if (url.pathname === "/jobs/retry" && method === "POST") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      const body = await req.json().catch(() => ({})) as any;
+      const id = Number(body.id);
+      if (!id) return errorResponse("id is required", 400, requestId);
+      const retried = retryFailedJob(id);
+      if (!retried) return errorResponse("Job not found or not in failed state", 404, requestId);
+      audit(auth.user_id, "job.retry", "job", id, null, clientIp, requestId);
+      return json({ retried: true, id });
+    }
+
+    if (url.pathname === "/jobs/purge" && method === "POST") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      const body = await req.json().catch(() => ({})) as any;
+      const days = Number(body.older_than_days || 7);
+      const purged = purgeFailedJobs(days);
+      audit(auth.user_id, "job.purge", null, null, `purged=${purged} older_than=${days}d`, clientIp, requestId);
+      return json({ purged, older_than_days: days });
+    }
+
+    // ========================================================================
     // RE-EMBED ALL MEMORIES -- migrate between embedding providers/models
     // ========================================================================
     if (url.pathname === "/admin/reembed" && method === "POST") {
@@ -6422,6 +6830,26 @@ If no meaningful inferences, return {"derived": []}`;
       }
     }
 
+    // DELETE /state — delete state entries by key pattern or purge all
+    if (url.pathname === "/state" && method === "DELETE") {
+      try {
+        const body = await req.json() as any;
+        const key = body.key as string | undefined;
+        const purge_all = body.purge_all === true;
+        let result;
+        if (purge_all) {
+          result = db.prepare("DELETE FROM current_state WHERE user_id = ?").run(auth.user_id);
+        } else if (key) {
+          result = db.prepare("DELETE FROM current_state WHERE user_id = ? AND key LIKE ?").run(auth.user_id, `%${key}%`);
+        } else {
+          return errorResponse("key (string) or purge_all (true) required");
+        }
+        return json({ ok: true, deleted: result.changes });
+      } catch (e: any) {
+        return safeError("State delete", e);
+      }
+    }
+
     // ========================================================================
     // USER PREFERENCES — query extracted preferences
     // ========================================================================
@@ -6441,6 +6869,26 @@ If no meaningful inferences, return {"derived": []}`;
         return json({ preferences: rows, count: (rows as any[]).length });
       } catch (e: any) {
         return safeError("Preferences query", e);
+      }
+    }
+
+    // DELETE /preferences — delete preferences by domain or purge all
+    if (url.pathname === "/preferences" && method === "DELETE") {
+      try {
+        const body = await req.json() as any;
+        const domain = body.domain as string | undefined;
+        const purge_all = body.purge_all === true;
+        let result;
+        if (purge_all) {
+          result = db.prepare("DELETE FROM user_preferences WHERE user_id = ?").run(auth.user_id);
+        } else if (domain) {
+          result = db.prepare("DELETE FROM user_preferences WHERE user_id = ? AND domain = ?").run(auth.user_id, domain);
+        } else {
+          return errorResponse("domain (string) or purge_all (true) required");
+        }
+        return json({ ok: true, deleted: result.changes });
+      } catch (e: any) {
+        return safeError("Preferences delete", e);
       }
     }
 
@@ -6665,19 +7113,633 @@ If no meaningful inferences, return {"derived": []}`;
         db.exec(`VACUUM INTO '${backupPath.replace(/'/g, "''")}'`);
         const fileStat = statSync(backupPath);
         const fileBuffer = readFileSync(backupPath);
+        try { unlinkSync(backupPath); } catch {}
         audit(auth.user_id, "backup", null, null, `${fileStat.size} bytes`, clientIp, requestId);
         log.info({ msg: "backup_created", size: fileStat.size, method: "VACUUM_INTO", rid: requestId });
-        const resp = new Response(fileBuffer, {
+        return new Response(fileBuffer, {
           headers: securityHeaders({
             "Content-Type": "application/x-sqlite3",
             "Content-Disposition": `attachment; filename="engram-${new Date().toISOString().slice(0,10)}.db"`,
           }),
         });
-        setTimeout(() => { try { unlinkSync(backupPath); } catch {} }, 30_000);
-        return resp;
       } catch (e: any) {
         return safeError("Backup", e, 500, requestId);
       }
+    }
+
+    // ========================================================================
+    // BACKUP VERIFY ENDPOINT
+    // ========================================================================
+    if (url.pathname === "/backup/verify" && method === "POST") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      try {
+        const integrity = db.prepare("PRAGMA integrity_check").get() as any;
+        const fkCheck = db.prepare("PRAGMA foreign_key_check").all();
+        const walPages = db.prepare("PRAGMA wal_checkpoint(PASSIVE)").get() as any;
+        const memCount = db.prepare("SELECT COUNT(*) as count FROM memories").get() as { count: number };
+        const tableCount = db.prepare("SELECT COUNT(*) as count FROM sqlite_master WHERE type='table'").get() as { count: number };
+
+        return json({
+          integrity: integrity?.integrity_check || "unknown",
+          foreign_key_violations: fkCheck.length,
+          foreign_key_details: fkCheck.length > 0 ? fkCheck.slice(0, 10) : undefined,
+          wal_pages: walPages,
+          memories: memCount.count,
+          tables: tableCount.count,
+          db_size_mb: Math.round(statSync(DB_PATH).size / 1048576 * 100) / 100,
+        });
+      } catch (e: any) {
+        return safeError("Backup verify", e, 500, requestId);
+      }
+    }
+
+    // ========================================================================
+    // PHASE 4: MULTI-TENANT (tenant provisioning, quotas, admin tooling)
+    // ========================================================================
+
+    if (url.pathname === "/tenants/provision" && method === "POST") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      const body = await req.json().catch(() => ({})) as any;
+      const { username, email, role } = body;
+      if (!username) return errorResponse("username is required", 400, requestId);
+      try {
+        const userResult = db.prepare(
+          "INSERT INTO users (username, email, role, is_admin) VALUES (?, ?, ?, ?) RETURNING id"
+        ).get(username, email || null, role || "writer", role === "admin" ? 1 : 0) as any;
+        const userId = userResult.id;
+        db.prepare(
+          "INSERT INTO spaces (user_id, name, description) VALUES (?, ?, ?)"
+        ).run(userId, "default", "Default memory space");
+        const { key, prefix, hash } = generateApiKey();
+        const keyResult = db.prepare(
+          "INSERT INTO api_keys (user_id, key_prefix, key_hash, name, scopes, rate_limit) VALUES (?, ?, ?, ?, ?, ?) RETURNING id"
+        ).get(userId, prefix, hash, "initial", role === "admin" ? "read,write,admin" : "read,write", DEFAULT_RATE_LIMIT) as any;
+        audit(auth.user_id, "tenant.provision", "user", userId, `key_id=${keyResult.id}`, clientIp, requestId);
+        return json({ user_id: userId, username, api_key: key, api_key_id: keyResult.id, space: "default" }, 201);
+      } catch (e: any) {
+        if (String(e).includes("UNIQUE constraint")) {
+          return errorResponse(`Username '${username}' already exists`, 409, requestId);
+        }
+        return safeError("Tenant provision", e, 500, requestId);
+      }
+    }
+
+    if (url.pathname === "/tenants/deprovision" && method === "POST") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      const body = await req.json().catch(() => ({})) as any;
+      const userId = Number(body.user_id);
+      const confirm = body.confirm;
+      if (!userId) return errorResponse("user_id is required", 400, requestId);
+      if (userId === 1) return errorResponse("Cannot deprovision the primary user", 400, requestId);
+      if (confirm !== `delete-user-${userId}`) {
+        return errorResponse(`Set confirm to 'delete-user-${userId}' to proceed`, 400, requestId);
+      }
+      const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
+      if (!user) return errorResponse("User not found", 404, requestId);
+      const memCount = db.prepare("SELECT COUNT(*) as c FROM memories WHERE user_id = ?").get(userId) as any;
+      const convCount = db.prepare("SELECT COUNT(*) as c FROM conversations WHERE user_id = ?").get(userId) as any;
+      const tables = [
+        "scratchpad", "personality_signals", "personality_profiles",
+        "structured_facts", "memory_entities", "memory_links", "memory_projects",
+        "consolidations", "reflections", "temporal_patterns", "reconsolidations",
+        "causal_links", "causal_chains", "current_state", "user_preferences",
+        "webhooks", "digests", "episodes", "messages", "conversations",
+        "entity_relationships", "entity_cooccurrences", "entities",
+        "projects", "spaces", "api_keys", "agents",
+      ];
+      let totalDeleted = 0;
+      for (const table of tables) {
+        try {
+          const result = db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(userId);
+          totalDeleted += (result as any).changes || 0;
+        } catch {}
+      }
+      const memResult = db.prepare("DELETE FROM memories WHERE user_id = ?").run(userId);
+      totalDeleted += (memResult as any).changes || 0;
+      db.prepare("DELETE FROM users WHERE id = ?").run(userId);
+      refreshEmbeddingCache();
+      audit(auth.user_id, "tenant.deprovision", "user", userId,
+        `memories=${memCount.c} conversations=${convCount.c} total_rows=${totalDeleted}`,
+        clientIp, requestId);
+      return json({ deprovisioned: true, user_id: userId, username: user.username, rows_deleted: totalDeleted });
+    }
+
+    if (url.pathname === "/admin/quotas" && method === "GET") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      const userId = Number(url.searchParams.get("user_id"));
+      if (userId) {
+        const quota = getQuota.get(userId);
+        return json({ quota: quota || null });
+      }
+      const all = db.prepare("SELECT tq.*, u.username FROM tenant_quotas tq JOIN users u ON tq.user_id = u.id").all();
+      return json({ quotas: all });
+    }
+
+    if (url.pathname === "/admin/quotas" && method === "PUT") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      const body = await req.json().catch(() => ({})) as any;
+      const userId = Number(body.user_id);
+      if (!userId) return errorResponse("user_id is required", 400, requestId);
+      upsertQuota.run(
+        userId,
+        body.max_memories ?? 10000,
+        body.max_conversations ?? 1000,
+        body.max_api_keys ?? 10,
+        body.max_spaces ?? 5,
+        body.max_memory_size_bytes ?? 102400,
+        body.rate_limit_override ?? null,
+      );
+      audit(auth.user_id, "quota.update", "user", userId, JSON.stringify(body), clientIp, requestId);
+      return json({ updated: true, user_id: userId });
+    }
+
+    if (url.pathname === "/admin/tenants" && method === "GET") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      const tenants = db.prepare(`
+        SELECT
+          u.id as user_id,
+          u.username,
+          u.role,
+          u.created_at,
+          (SELECT COUNT(*) FROM memories WHERE user_id = u.id AND is_forgotten = 0) as memory_count,
+          (SELECT COUNT(*) FROM conversations WHERE user_id = u.id) as conversation_count,
+          (SELECT COUNT(*) FROM api_keys WHERE user_id = u.id AND is_active = 1) as active_keys,
+          (SELECT COUNT(*) FROM spaces WHERE user_id = u.id) as space_count,
+          (SELECT MAX(ak.last_used_at) FROM api_keys ak WHERE ak.user_id = u.id) as last_active,
+          tq.max_memories
+        FROM users u
+        LEFT JOIN tenant_quotas tq ON tq.user_id = u.id
+        ORDER BY u.id
+      `).all();
+      return json({ tenants });
+    }
+
+    if (url.pathname === "/admin/providers" && method === "GET") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      const providers = LLM_PROVIDERS.map((p, i) => ({
+        index: i,
+        name: p.name,
+        model: p.model,
+        url: p.url.replace(/\/\/.*@/, "//***@"),
+        has_key: !!p.key,
+        available: isProviderAvailable(p),
+      }));
+      return json({
+        embedding: { provider: EMBEDDING_PROVIDER, model: EMBEDDING_MODEL, dimension: EMBEDDING_DIM },
+        llm_providers: providers,
+        llm_strategy: LLM_STRATEGY,
+        reranker: { enabled: RERANKER_ENABLED, cross_encoder: isRerankerReady(), top_k: RERANKER_TOP_K },
+      });
+    }
+
+    // ========================================================================
+    // PHASE 5: DATA PORTABILITY (/import/json)
+    // ========================================================================
+
+    if (url.pathname === "/import/json" && method === "POST") {
+      if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403, requestId);
+      const body = await req.json().catch(() => null) as any;
+      if (!body || !body.version) return errorResponse("Invalid export format: missing version field", 400, requestId);
+      if (!body.memories || !Array.isArray(body.memories)) return errorResponse("Invalid export format: missing memories array", 400, requestId);
+      let imported = { memories: 0, conversations: 0, entities: 0, skipped: 0 };
+      const insertImported = db.prepare(`
+        INSERT INTO memories (content, category, source, session_id, importance, tags, confidence, is_static, user_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        RETURNING id
+      `);
+      for (const m of body.memories) {
+        if (!m.content || typeof m.content !== "string") { imported.skipped++; continue; }
+        try {
+          const tags = Array.isArray(m.tags) ? JSON.stringify(m.tags) : m.tags || null;
+          const result = insertImported.get(
+            m.content, m.category || "general", m.source || "import", m.session_id || null,
+            m.importance || DEFAULT_IMPORTANCE, tags, m.confidence || 1.0, m.is_static ? 1 : 0,
+            auth.user_id, m.created_at || new Date().toISOString(), m.updated_at || new Date().toISOString()
+          ) as any;
+          enqueueJob("post_store", { memory_id: result.id, user_id: auth.user_id }, 3);
+          imported.memories++;
+        } catch (e: any) {
+          log.warn({ msg: "import_memory_failed", error: e.message });
+          imported.skipped++;
+        }
+      }
+      if (body.conversations && Array.isArray(body.conversations)) {
+        for (const c of body.conversations) {
+          try {
+            const msgs = Array.isArray(c.messages) ? c.messages : [];
+            bulkInsertConvo(
+              c.agent || "import", c.session_id || null, c.title || null,
+              c.metadata ? JSON.stringify(c.metadata) : null,
+              auth.user_id, msgs
+            );
+            imported.conversations++;
+          } catch (e: any) {
+            log.warn({ msg: "import_conversation_failed", error: e.message });
+          }
+        }
+      }
+      audit(auth.user_id, "import.json", null, null,
+        `memories=${imported.memories} conversations=${imported.conversations} skipped=${imported.skipped}`,
+        clientIp, requestId);
+      return json({ imported });
+    }
+
+    // ========================================================================
+    // PHASE 6: MIGRATION TOOLING (/admin/schema)
+    // ========================================================================
+
+    if (url.pathname === "/admin/schema" && method === "GET") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      const snapshot = getSchemaSnapshot();
+      const drift = detectSchemaDrift();
+      const version = getSchemaVersion();
+      const indexes = db.prepare(
+        `SELECT name, tbl_name, sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL ORDER BY tbl_name, name`
+      ).all();
+      let migrations: any[] = [];
+      try { migrations = db.prepare("SELECT * FROM schema_versions ORDER BY version DESC LIMIT 20").all(); } catch {}
+      return json({
+        schema_version: version,
+        tables: Object.keys(snapshot).length,
+        indexes: indexes.length,
+        drift: {
+          has_drift: drift.missing.length > 0 || drift.extra.length > 0,
+          missing_tables: drift.missing,
+          unexpected_tables: drift.extra,
+        },
+        table_details: snapshot,
+        migrations,
+      });
+    }
+
+    // ========================================================================
+    // PHASE 8: SCALE (/admin/scale-report, /admin/cold-storage)
+    // ========================================================================
+
+    if (url.pathname === "/admin/scale-report" && method === "GET") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      const cacheStats = getEmbeddingCacheStats();
+      const total = (db.prepare("SELECT COUNT(*) as c FROM memories WHERE is_forgotten = 0").get() as any).c;
+      const tier = total < 1000 ? "micro" : total < 10000 ? "small" : total < 50000 ? "medium" : total < 200000 ? "large" : "xlarge";
+      const recommendations: string[] = [];
+      if (total > 50000 && COLD_STORAGE_DAYS === 0) {
+        recommendations.push("Enable cold storage: set ENGRAM_COLD_STORAGE_DAYS=180 to exclude rarely-accessed memories from hot cache");
+      }
+      if (cacheStats.avg_search_ms > 100) {
+        recommendations.push(`Average search latency is ${cacheStats.avg_search_ms}ms. Consider enabling ANN index via ENGRAM_ANN_THRESHOLD.`);
+      }
+      if (total > 10000 && cacheStats.cold_count === 0) {
+        recommendations.push("Consider enabling cold storage to reduce embedding cache memory usage");
+      }
+      return json({
+        tier,
+        total_memories: total,
+        embedding_cache: cacheStats,
+        ann_prefilter: {
+          enabled: total >= ANN_PREFILTER_THRESHOLD,
+          threshold: ANN_PREFILTER_THRESHOLD,
+          candidate_multiplier: ANN_CANDIDATE_MULTIPLIER,
+        },
+        cold_storage: {
+          enabled: COLD_STORAGE_DAYS > 0,
+          days: COLD_STORAGE_DAYS,
+          min_memories: COLD_STORAGE_MIN_MEMORIES,
+          active: COLD_STORAGE_DAYS > 0 && total >= COLD_STORAGE_MIN_MEMORIES,
+        },
+        recommendations,
+      });
+    }
+
+    if (url.pathname === "/admin/cold-storage" && method === "GET") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      const total = db.prepare("SELECT COUNT(*) as c FROM memories WHERE is_forgotten = 0").get() as any;
+      const withEmbedding = db.prepare("SELECT COUNT(*) as c FROM memories WHERE is_forgotten = 0 AND embedding IS NOT NULL").get() as any;
+      const distribution = db.prepare(`
+        SELECT
+          CASE
+            WHEN last_accessed_at IS NULL AND created_at < datetime('now', '-90 days') THEN 'never_accessed_90d+'
+            WHEN last_accessed_at IS NULL AND created_at < datetime('now', '-30 days') THEN 'never_accessed_30d+'
+            WHEN last_accessed_at IS NULL THEN 'never_accessed_recent'
+            WHEN last_accessed_at < datetime('now', '-365 days') THEN 'cold_365d+'
+            WHEN last_accessed_at < datetime('now', '-90 days') THEN 'cold_90d+'
+            WHEN last_accessed_at < datetime('now', '-30 days') THEN 'cool_30d+'
+            ELSE 'hot'
+          END as tier,
+          COUNT(*) as count
+        FROM memories WHERE is_forgotten = 0
+        GROUP BY tier ORDER BY count DESC
+      `).all();
+      const cacheStats = getEmbeddingCacheStats();
+      return json({
+        config: {
+          cold_storage_days: COLD_STORAGE_DAYS,
+          cold_min_memories: COLD_STORAGE_MIN_MEMORIES,
+          enabled: COLD_STORAGE_DAYS > 0 && total.c >= COLD_STORAGE_MIN_MEMORIES,
+        },
+        totals: {
+          all_memories: total.c,
+          with_embedding: withEmbedding.c,
+          in_hot_cache: cacheStats.total,
+          in_cold_storage: cacheStats.cold_count,
+        },
+        distribution,
+        recommendation: total.c > 10000 && COLD_STORAGE_DAYS === 0
+          ? "Consider setting ENGRAM_COLD_STORAGE_DAYS=180 to reduce cache size by ~" +
+            Math.round((((distribution as any[]).find((d: any) => d.tier.includes("90d"))?.count) || 0) / total.c * 100) + "%"
+          : null,
+      });
+    }
+
+    // ========================================================================
+    // PHASE 10: ADMIN MAINTENANCE TOOLING
+    // ========================================================================
+
+    if (url.pathname === "/admin/maintenance" && method === "POST") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      const body = await req.json().catch(() => ({})) as any;
+      const enabled = !!body.enabled;
+      const reason = String(body.reason || "").trim();
+      setMaintenanceMode(enabled, reason);
+      audit(auth.user_id, enabled ? "maintenance.start" : "maintenance.end", null, null, reason, clientIp, requestId);
+      log.info({ msg: enabled ? "maintenance_mode_on" : "maintenance_mode_off", reason });
+      return json({ maintenance: enabled, reason });
+    }
+
+    if (url.pathname === "/admin/maintenance" && method === "GET") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      return json({ maintenance: maintenanceMode, reason: maintenanceReason });
+    }
+
+    if (url.pathname === "/admin/rebuild-fts" && method === "POST") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      try {
+        const startMs = performance.now();
+        db.exec("DROP TABLE IF EXISTS memories_fts");
+        db.exec(`
+          CREATE VIRTUAL TABLE memories_fts USING fts5(
+            content, category, source,
+            content_rowid='id', tokenize='porter unicode61'
+          )
+        `);
+        db.exec(`
+          CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+            INSERT INTO memories_fts(rowid, content, category, source) VALUES (NEW.id, NEW.content, NEW.category, NEW.source);
+          END
+        `);
+        db.exec(`
+          CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+            INSERT INTO memories_fts(memories_fts, rowid, content, category, source) VALUES('delete', OLD.id, OLD.content, OLD.category, OLD.source);
+          END
+        `);
+        db.exec(`
+          CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+            INSERT INTO memories_fts(memories_fts, rowid, content, category, source) VALUES('delete', OLD.id, OLD.content, OLD.category, OLD.source);
+            INSERT INTO memories_fts(rowid, content, category, source) VALUES (NEW.id, NEW.content, NEW.category, NEW.source);
+          END
+        `);
+        db.exec("INSERT INTO memories_fts(rowid, content, category, source) SELECT id, content, category, source FROM memories WHERE is_forgotten = 0");
+        const elapsedMs = Math.round(performance.now() - startMs);
+        const count = (db.prepare("SELECT COUNT(*) as c FROM memories_fts").get() as any).c;
+        audit(auth.user_id, "admin.rebuild_fts", null, null, `${count} rows in ${elapsedMs}ms`, clientIp, requestId);
+        return json({ rebuilt: true, rows: count, elapsed_ms: elapsedMs });
+      } catch (e: any) {
+        return safeError("Rebuild FTS", e, 500, requestId);
+      }
+    }
+
+    if (url.pathname === "/admin/refresh-cache" && method === "POST") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      const startMs = performance.now();
+      refreshEmbeddingCache();
+      const stats = getEmbeddingCacheStats();
+      const elapsedMs = Math.round(performance.now() - startMs);
+      audit(auth.user_id, "admin.refresh_cache", null, null, `${stats.total} vectors in ${elapsedMs}ms`, clientIp, requestId);
+      return json({ refreshed: true, ...stats, elapsed_ms: elapsedMs });
+    }
+
+    if (url.pathname === "/admin/compact" && method === "POST") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      try {
+        const beforeSize = statSync(DB_PATH).size;
+        const startMs = performance.now();
+        db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+        db.exec("VACUUM");
+        db.exec("ANALYZE");
+        const afterSize = statSync(DB_PATH).size;
+        const elapsedMs = Math.round(performance.now() - startMs);
+        const savedBytes = beforeSize - afterSize;
+        audit(auth.user_id, "admin.compact", null, null,
+          `before=${beforeSize} after=${afterSize} saved=${savedBytes} ms=${elapsedMs}`, clientIp, requestId);
+        return json({
+          compacted: true,
+          before_size_mb: Math.round(beforeSize / 1048576 * 100) / 100,
+          after_size_mb: Math.round(afterSize / 1048576 * 100) / 100,
+          saved_mb: Math.round(savedBytes / 1048576 * 100) / 100,
+          elapsed_ms: elapsedMs,
+        });
+      } catch (e: any) {
+        return safeError("Compact", e, 500, requestId);
+      }
+    }
+
+    if (url.pathname === "/admin/tasks" && method === "GET") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      return json({
+        available_tasks: [
+          { endpoint: "POST /admin/reembed", description: "Re-embed all memories with current provider", destructive: false, slow: true },
+          { endpoint: "POST /admin/rebuild-fts", description: "Drop and rebuild full-text search index", destructive: false, slow: true },
+          { endpoint: "POST /admin/rebuild-cooccurrences", description: "Rebuild entity co-occurrence graph", destructive: false, slow: true },
+          { endpoint: "POST /admin/detect-communities", description: "Run Louvain community detection on entity graph", destructive: false, slow: true },
+          { endpoint: "POST /admin/backfill-facts", description: "Extract facts from memories missing structured facts", destructive: false, slow: true },
+          { endpoint: "POST /admin/refresh-cache", description: "Force reload embedding cache from DB", destructive: false, slow: false },
+          { endpoint: "POST /admin/compact", description: "VACUUM + ANALYZE the database to reclaim space", destructive: false, slow: true },
+          { endpoint: "POST /admin/maintenance", description: "Toggle maintenance mode (rejects writes from non-admins)", destructive: false, slow: false },
+          { endpoint: "GET /admin/schema", description: "View schema, migrations, and drift detection", destructive: false, slow: false },
+          { endpoint: "GET /admin/scale-report", description: "Scale tier assessment with recommendations", destructive: false, slow: false },
+          { endpoint: "GET /admin/cold-storage", description: "View memory access distribution and cold storage config", destructive: false, slow: false },
+          { endpoint: "GET /admin/tenants", description: "View all tenants with usage statistics", destructive: false, slow: false },
+          { endpoint: "GET /admin/providers", description: "View LLM/embedding provider configuration", destructive: false, slow: false },
+          { endpoint: "GET /admin/quotas", description: "View tenant quotas", destructive: false, slow: false },
+          { endpoint: "GET /jobs?status=failed", description: "View failed background jobs", destructive: false, slow: false },
+          { endpoint: "POST /jobs/retry", description: "Retry a failed background job", destructive: false, slow: false },
+          { endpoint: "POST /jobs/purge", description: "Delete old failed jobs", destructive: true, slow: false },
+          { endpoint: "GET /backup", description: "Download full database backup", destructive: false, slow: true },
+          { endpoint: "POST /backup/verify", description: "Run integrity checks on live database", destructive: false, slow: false },
+          { endpoint: "POST /tenants/provision", description: "Create new tenant with user, space, and API key", destructive: false, slow: false },
+          { endpoint: "POST /tenants/deprovision", description: "Delete all tenant data permanently", destructive: true, slow: true },
+        ],
+        maintenance_mode: { active: maintenanceMode, reason: maintenanceReason },
+      });
+    }
+
+    if (url.pathname === "/admin/gc" && method === "POST") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      const body = await req.json().catch(() => ({})) as any;
+      const dryRun = body.dry_run !== false;
+      const results: Record<string, number> = {};
+      const forgottenStale = db.prepare(
+        `SELECT COUNT(*) as c FROM memories WHERE is_forgotten = 1 AND updated_at < datetime('now', '-30 days')`
+      ).get() as any;
+      results.forgotten_stale = forgottenStale.c;
+      const orphanedLinks = db.prepare(
+        `SELECT COUNT(*) as c FROM memory_links ml
+         WHERE NOT EXISTS (SELECT 1 FROM memories m WHERE m.id = ml.source_id AND m.is_forgotten = 0)
+            OR NOT EXISTS (SELECT 1 FROM memories m WHERE m.id = ml.target_id AND m.is_forgotten = 0)`
+      ).get() as any;
+      results.orphaned_links = orphanedLinks.c;
+      const expiredScratch = db.prepare(
+        `SELECT COUNT(*) as c FROM scratchpad WHERE expires_at IS NOT NULL AND expires_at < datetime('now')`
+      ).get() as any;
+      results.expired_scratchpad = expiredScratch.c;
+      const oldAudit = db.prepare(
+        `SELECT COUNT(*) as c FROM audit_log WHERE created_at < datetime('now', '-90 days')`
+      ).get() as any;
+      results.old_audit_entries = oldAudit.c;
+      const oldJobs = db.prepare(
+        `SELECT COUNT(*) as c FROM jobs WHERE status IN ('completed', 'failed') AND completed_at < datetime('now', '-7 days')`
+      ).get() as any;
+      results.old_jobs = oldJobs.c;
+      const orphanedSignals = db.prepare(
+        `SELECT COUNT(*) as c FROM personality_signals ps
+         WHERE NOT EXISTS (SELECT 1 FROM memories m WHERE m.id = ps.memory_id)`
+      ).get() as any;
+      results.orphaned_signals = orphanedSignals.c;
+      const totalReclaimable = Object.values(results).reduce((a, b) => a + b, 0);
+      if (!dryRun) {
+        db.exec(`DELETE FROM memories WHERE is_forgotten = 1 AND updated_at < datetime('now', '-30 days')`);
+        db.exec(`DELETE FROM memory_links WHERE NOT EXISTS (SELECT 1 FROM memories m WHERE m.id = memory_links.source_id AND m.is_forgotten = 0) OR NOT EXISTS (SELECT 1 FROM memories m WHERE m.id = memory_links.target_id AND m.is_forgotten = 0)`);
+        db.exec(`DELETE FROM scratchpad WHERE expires_at IS NOT NULL AND expires_at < datetime('now')`);
+        db.exec(`DELETE FROM audit_log WHERE created_at < datetime('now', '-90 days')`);
+        db.exec(`DELETE FROM jobs WHERE status IN ('completed', 'failed') AND completed_at < datetime('now', '-7 days')`);
+        db.exec(`DELETE FROM personality_signals WHERE NOT EXISTS (SELECT 1 FROM memories m WHERE m.id = personality_signals.memory_id)`);
+        try { cleanupOldUsage.run(180); } catch {}
+        refreshEmbeddingCache();
+        audit(auth.user_id, "admin.gc", null, null, `deleted=${totalReclaimable}`, clientIp, requestId);
+      }
+      return json({
+        dry_run: dryRun,
+        reclaimable_rows: totalReclaimable,
+        breakdown: results,
+        message: dryRun ? "Run with { dry_run: false } to execute cleanup" : `Deleted ${totalReclaimable} rows`,
+      });
+    }
+
+    // ========================================================================
+    // PHASE 11: COMMERCIAL PATH (usage metering, SLA, onboarding)
+    // ========================================================================
+
+    if (url.pathname === "/usage" && method === "GET") {
+      const targetUserId = auth.is_admin && url.searchParams.get("user_id")
+        ? Number(url.searchParams.get("user_id"))
+        : auth.user_id;
+      const since = url.searchParams.get("since") || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const summary = getUsageSummary.all(targetUserId, since);
+      const timeline = getUsageTimeline.all(targetUserId, since);
+      const timelineByDay: Record<string, Record<string, number>> = {};
+      for (const row of timeline as any[]) {
+        if (!timelineByDay[row.day]) timelineByDay[row.day] = {};
+        timelineByDay[row.day][row.event_type] = row.total;
+      }
+      return json({ user_id: targetUserId, period_start: since, summary, timeline: timelineByDay });
+    }
+
+    if (url.pathname === "/admin/usage" && method === "GET") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      const since = url.searchParams.get("since") || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const byUser = db.prepare(`
+        SELECT u.username, ue.user_id, ue.event_type, SUM(ue.quantity) as total
+        FROM usage_events ue
+        JOIN users u ON u.id = ue.user_id
+        WHERE ue.created_at > ?
+        GROUP BY ue.user_id, ue.event_type
+        ORDER BY total DESC
+      `).all(since);
+      const totals = db.prepare(`
+        SELECT event_type, SUM(quantity) as total, COUNT(DISTINCT user_id) as unique_users
+        FROM usage_events WHERE created_at > ?
+        GROUP BY event_type ORDER BY total DESC
+      `).all(since);
+      return json({ period_start: since, totals, by_user: byUser });
+    }
+
+    if (url.pathname === "/admin/sla" && method === "GET") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      const uptimeMs = Date.now() - opsCounters.sla_period_start;
+      const uptimeHours = Math.round(uptimeMs / 3600000 * 10) / 10;
+      const searchP200 = opsCounters.sla_search_total > 0
+        ? Math.round(opsCounters.sla_search_under_200ms / opsCounters.sla_search_total * 10000) / 100
+        : 100;
+      const storeP500 = opsCounters.sla_store_total > 0
+        ? Math.round(opsCounters.sla_store_under_500ms / opsCounters.sla_store_total * 10000) / 100
+        : 100;
+      const errorRate = opsCounters.request_count > 0
+        ? Math.round(opsCounters.sla_errors_5xx / opsCounters.request_count * 10000) / 100
+        : 0;
+      return json({
+        period: { start: new Date(opsCounters.sla_period_start).toISOString(), duration_hours: uptimeHours },
+        targets: {
+          search_p95_under_200ms: { target: 95, actual: searchP200, met: searchP200 >= 95 },
+          store_p95_under_500ms: { target: 95, actual: storeP500, met: storeP500 >= 95 },
+          error_rate_under_1pct: { target: 1, actual: errorRate, met: errorRate < 1 },
+        },
+        raw: {
+          total_requests: opsCounters.request_count,
+          total_errors_5xx: opsCounters.sla_errors_5xx,
+          search_total: opsCounters.sla_search_total,
+          search_under_200ms: opsCounters.sla_search_under_200ms,
+          store_total: opsCounters.sla_store_total,
+          store_under_500ms: opsCounters.sla_store_under_500ms,
+        },
+        overall_health: searchP200 >= 95 && storeP500 >= 95 && errorRate < 1 ? "healthy" : "degraded",
+      });
+    }
+
+    if (url.pathname === "/admin/sla/reset" && method === "POST") {
+      if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
+      opsCounters.sla_search_under_200ms = 0;
+      opsCounters.sla_search_total = 0;
+      opsCounters.sla_store_under_500ms = 0;
+      opsCounters.sla_store_total = 0;
+      opsCounters.sla_errors_5xx = 0;
+      opsCounters.sla_period_start = Date.now();
+      return json({ reset: true, new_period_start: new Date().toISOString() });
+    }
+
+    if (url.pathname === "/onboard" && method === "POST") {
+      if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403, requestId);
+      const checks: Record<string, { passed: boolean; detail: string }> = {};
+      try {
+        const testMem = db.prepare(
+          `INSERT INTO memories (content, category, source, user_id) VALUES (?, ?, ?, ?) RETURNING id`
+        ).get("Engram onboarding test memory -- safe to delete", "system", "onboarding", auth.user_id) as any;
+        checks.store = { passed: true, detail: `Created test memory id=${testMem.id}` };
+        try {
+          const results = await hybridSearch("onboarding test", 1, false, false, true, auth.user_id);
+          checks.search = { passed: true, detail: `Search returned ${results.length} results` };
+        } catch (e: any) {
+          checks.search = { passed: false, detail: e.message };
+        }
+        db.prepare("DELETE FROM memories WHERE id = ?").run(testMem.id);
+        checks.cleanup = { passed: true, detail: "Test memory deleted" };
+      } catch (e: any) {
+        checks.store = { passed: false, detail: e.message };
+      }
+      const embeddingReady = true;
+      checks.embedding = { passed: embeddingReady, detail: "Embedding worker ready" };
+      const spaces = db.prepare("SELECT COUNT(*) as c FROM spaces WHERE user_id = ?").get(auth.user_id) as any;
+      checks.spaces = { passed: spaces.c > 0, detail: `${spaces.c} space(s) configured` };
+      const allPassed = Object.values(checks).every(c => c.passed);
+      return json({
+        status: allPassed ? "ready" : "issues_found",
+        checks,
+        next_steps: allPassed ? [
+          "Store your first real memory: POST /store { content: '...' }",
+          "Search for it: POST /search { query: '...' }",
+          "Set up a webhook for events: POST /webhooks { url: '...', events: ['*'] }",
+        ] : [
+          "Fix the failed checks above, then run POST /onboard again",
+        ],
+      });
     }
 
     // ========================================================================
@@ -6713,6 +7775,285 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
+    // FETCH — Retrieve web content as plain text
+    // ========================================================================
+    if (url.pathname === "/fetch" && method === "POST") {
+      if (!hasScope(auth, "read")) return errorResponse("Read scope required", 403);
+      const body = await req.json().catch(() => ({})) as any;
+      const { url: fetchUrl, cache = false } = body;
+      if (!fetchUrl || typeof fetchUrl !== "string") return errorResponse("'url' is required", 400);
+      let parsed: URL;
+      try { parsed = new URL(fetchUrl); } catch { return errorResponse("Invalid URL", 400); }
+      if (!["http:", "https:"].includes(parsed.protocol)) return errorResponse("Only http/https URLs allowed", 400);
+      const hn = parsed.hostname.toLowerCase();
+      if (hn === "localhost" || hn === "127.0.0.1" || hn === "::1" || hn === "0.0.0.0" ||
+          hn.startsWith("10.") || hn.startsWith("192.168.") || hn.startsWith("172.16.") ||
+          hn.startsWith("172.17.") || hn.startsWith("172.18.") || hn.startsWith("172.19.") ||
+          hn.startsWith("172.2") || hn.startsWith("172.30.") || hn.startsWith("172.31.") ||
+          hn.endsWith(".local") || hn.endsWith(".internal") || hn.startsWith("100.64.") ||
+          hn.startsWith("169.254.") || hn.startsWith("fc") || hn.startsWith("fd")) {
+        return errorResponse("URL cannot point to private/internal addresses", 400);
+      }
+      let content = "";
+      let title = parsed.hostname;
+      try {
+        const resp = await fetch(fetchUrl, {
+          headers: { "User-Agent": "Engram/5.8 (fetch)" },
+          redirect: "follow",
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!resp.ok) return errorResponse(`Fetch failed: ${resp.status} ${resp.statusText}`, 502);
+        const raw = await resp.text();
+        const ct = resp.headers.get("content-type") || "";
+        if (ct.includes("html")) {
+          const titleMatch = raw.match(/<title[^>]*>([^<]+)<\/title>/i);
+          if (titleMatch) title = titleMatch[1].trim();
+          content = htmlToText(raw, {
+            wordwrap: false,
+            selectors: [
+              { selector: "script", format: "skip" },
+              { selector: "style", format: "skip" },
+              { selector: "nav", format: "skip" },
+              { selector: "footer", format: "skip" },
+              { selector: "header", format: "skip" },
+              { selector: "aside", format: "skip" },
+            ],
+          }).replace(/\n{3,}/g, "\n\n").replace(/ {2,}/g, " ").trim();
+        } else {
+          content = raw.trim();
+        }
+      } catch (e: any) {
+        return errorResponse(`Fetch error: ${e.message}`, 502);
+      }
+      let cachedId: number | null = null;
+      if (cache && content && hasScope(auth, "write")) {
+        try {
+          const syncId = randomUUID();
+          const res = insertMemory.get(
+            content.slice(0, MAX_CONTENT_SIZE), "reference", "fetch",
+            null, 3, null, 1, 1, null, null, 1, 0, 0, null, null, 0, null, auth.user_id, auth.space_id || null
+          ) as { id: number };
+          db.prepare("UPDATE memories SET tags = ?, sync_id = ?, confidence = 1.0, status = 'approved' WHERE id = ?")
+            .run(JSON.stringify([`url:${fetchUrl.slice(0, 200)}`]), syncId, res.id);
+          embed(content.slice(0, 8000)).then(emb => { if (emb) updateMemoryEmbedding.run(embeddingToBuffer(emb), res.id); }).catch(() => {});
+          cachedId = res.id;
+        } catch { /* cache failure is non-fatal */ }
+      }
+      log.info({ msg: "req", method, path: url.pathname, status: 200, ms: (performance.now() - requestStart).toFixed(1), ip: clientIp, rid: requestId });
+      return json({ content, title, url: fetchUrl, length: content.length, cached_id: cachedId });
+    }
+
+    // ========================================================================
+    // DOCS — Resolve library documentation from npm / GitHub / PyPI
+    // ========================================================================
+    if (url.pathname === "/docs/resolve" && method === "POST") {
+      if (!hasScope(auth, "read")) return errorResponse("Read scope required", 403);
+      const body = await req.json().catch(() => ({})) as any;
+      const { library, version, force_refresh = false } = body;
+      if (!library || typeof library !== "string") return errorResponse("'library' is required", 400);
+      const libKey = library.trim().toLowerCase();
+      const cacheTag = `docs:${libKey.replace(/[^a-z0-9@/._-]/g, "")}`;
+      const twentyFourHoursAgo = new Date(Date.now() - 86400000).toISOString();
+
+      if (!force_refresh) {
+        const cached = db.prepare(
+          "SELECT id, content, created_at FROM memories WHERE user_id = ? AND category = 'docs' AND tags LIKE ? AND status = 'approved' AND created_at > ? ORDER BY created_at DESC LIMIT 1"
+        ).get(auth.user_id, `%${cacheTag}%`, twentyFourHoursAgo) as any;
+        if (cached) {
+          log.info({ msg: "docs_cache_hit", library: libKey, id: cached.id, rid: requestId });
+          return json({ content: cached.content, library: libKey, cached: true, cached_at: cached.created_at, memory_id: cached.id });
+        }
+      }
+
+      let content = "";
+      let resolvedFrom = "";
+
+      // 1. Try npm (use /latest endpoint to avoid 800KB+ full registry documents)
+      try {
+        const npmResp = await fetch(`https://registry.npmjs.org/${encodeURIComponent(library)}/latest`, {
+          headers: { "Accept": "application/json" },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (npmResp.ok) {
+          const pkgInfo = await npmResp.json() as any;
+          const latest = pkgInfo.version || "unknown";
+          let readme = pkgInfo.readme || "";
+          const repoUrl = pkgInfo.repository?.url || "";
+          const ghMatch = repoUrl.match(/github\.com[/:]([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/|$)/i);
+          if (ghMatch) {
+            const [, owner, repo] = ghMatch;
+            let ghDone = false;
+            for (const branch of ["main", "master"]) {
+              if (ghDone) break;
+              for (const filename of ["README.md", "Readme.md", "readme.md"]) {
+                if (ghDone) break;
+                try {
+                  const rawResp = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filename}`, {
+                    signal: AbortSignal.timeout(10000),
+                  });
+                  if (rawResp.ok) {
+                    let text = await rawResp.text();
+                    // Handle monorepo pointer files (e.g. "packages/foo/README.md")
+                    if (text.length < 200 && /^[\w./-]+\.md$/m.test(text.trim())) {
+                      const ptr = text.trim();
+                      const ptrResp = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${ptr}`, { signal: AbortSignal.timeout(10000) }).catch(() => null);
+                      if (ptrResp?.ok) text = await ptrResp.text();
+                    }
+                    if (text.length > 100) { readme = text; resolvedFrom = `github:${owner}/${repo}`; ghDone = true; }
+                  }
+                } catch { /* try next */ }
+              }
+            }
+          }
+          if (!resolvedFrom && readme) resolvedFrom = `npm:${library}`;
+          if (readme) content = `# ${library}\n\n**Version**: ${latest}\n**Source**: ${resolvedFrom || `npm:${library}`}\n\n${readme}`.slice(0, MAX_CONTENT_SIZE);
+        }
+      } catch { /* fall through */ }
+
+      // 2. Try PyPI
+      if (!content) {
+        try {
+          const pypiResp = await fetch(`https://pypi.org/pypi/${encodeURIComponent(library)}/json`, {
+            signal: AbortSignal.timeout(10000),
+          });
+          if (pypiResp.ok) {
+            const pypiData = await pypiResp.json() as any;
+            const info = pypiData.info || {};
+            const readme = info.description || "";
+            if (readme) {
+              resolvedFrom = `pypi:${library}`;
+              content = `# ${library}\n\n**Version**: ${info.version || "unknown"}\n**Source**: pypi\n\n${readme}`.slice(0, MAX_CONTENT_SIZE);
+            }
+          }
+        } catch { /* fall through */ }
+      }
+
+      // 3. Try GitHub directly (owner/repo format)
+      if (!content && library.includes("/")) {
+        const [owner, repo] = library.split("/");
+        let ghDirectDone = false;
+        for (const branch of ["main", "master"]) {
+          if (ghDirectDone) break;
+          for (const filename of ["README.md", "Readme.md", "readme.md"]) {
+            if (ghDirectDone) break;
+            try {
+              const rawResp = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filename}`, { signal: AbortSignal.timeout(10000) });
+              if (rawResp.ok) {
+                let text = await rawResp.text();
+                if (text.length < 200 && /^[\w./-]+\.md$/m.test(text.trim())) {
+                  const ptrResp = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${text.trim()}`, { signal: AbortSignal.timeout(10000) }).catch(() => null);
+                  if (ptrResp?.ok) text = await ptrResp.text();
+                }
+                if (text.length > 100) { resolvedFrom = `github:${owner}/${repo}`; content = text.slice(0, MAX_CONTENT_SIZE); ghDirectDone = true; }
+              }
+            } catch { /* try next */ }
+          }
+        }
+      }
+
+      if (!content) return errorResponse(`Could not resolve docs for '${library}'`, 404);
+
+      let memoryId: number | null = null;
+      if (hasScope(auth, "write")) {
+        try {
+          const syncId = randomUUID();
+          const res = insertMemory.get(
+            content, "docs", "docs-resolver",
+            null, 3, null, 1, 1, null, null, 1, 1, 0, null, null, 0, null, auth.user_id, auth.space_id || null
+          ) as { id: number };
+          const tagsArr = [cacheTag, `source:${resolvedFrom}`, ...(version ? [`version:${version}`] : [])];
+          db.prepare("UPDATE memories SET tags = ?, sync_id = ?, confidence = 1.0, status = 'approved' WHERE id = ?")
+            .run(JSON.stringify(tagsArr), syncId, res.id);
+          embed(content.slice(0, 8000)).then(emb => { if (emb) updateMemoryEmbedding.run(embeddingToBuffer(emb), res.id); }).catch(() => {});
+          memoryId = res.id;
+          log.info({ msg: "docs_cached", library: libKey, id: res.id, source: resolvedFrom, rid: requestId });
+        } catch { /* cache failure non-fatal */ }
+      }
+      return json({ content, library: libKey, cached: false, source: resolvedFrom, memory_id: memoryId });
+    }
+
+    // ========================================================================
+    // ERRORS — Structured error tracking across agents
+    // ========================================================================
+    if (url.pathname === "/errors" && method === "POST") {
+      if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
+      const body = await req.json().catch(() => ({})) as any;
+      const { type, message, stack, source: errSource, severity = "error", context } = body;
+      if (!message || typeof message !== "string") return errorResponse("'message' is required", 400);
+      const errType = (type || "Error").trim();
+      const errSeverity = ["fatal", "error", "warning", "info"].includes(severity) ? severity : "error";
+      const importance = errSeverity === "fatal" ? 9 : errSeverity === "error" ? 7 : errSeverity === "warning" ? 5 : 3;
+      const content = [
+        `[${errSeverity.toUpperCase()}] ${errType}: ${message}`,
+        stack ? `\nStack:\n${String(stack).slice(0, 2000)}` : "",
+        context ? `\nContext: ${typeof context === "string" ? context : JSON.stringify(context).slice(0, 500)}` : "",
+      ].filter(Boolean).join("");
+      const tags = [`error-type:${errType}`, `severity:${errSeverity}`, `agent:${errSource || "unknown"}`];
+      const simhashResult = checkSimHashDuplicate(content, auth.user_id);
+      if (simhashResult.isDuplicate && simhashResult.existingId) {
+        boostDuplicate(simhashResult.existingId);
+        return json({ stored: false, duplicate: true, existing_id: simhashResult.existingId, boosted: true });
+      }
+      const syncId = randomUUID();
+      const res = insertMemory.get(
+        content, "error", errSource || "unknown",
+        null, importance, null, 1, 1, null, null, 1, 0, 0, null, null, 0, null, auth.user_id, auth.space_id || null
+      ) as { id: number };
+      db.prepare("UPDATE memories SET tags = ?, sync_id = ?, confidence = 1.0, status = 'approved' WHERE id = ?")
+        .run(JSON.stringify(tags), syncId, res.id);
+      if (simhashResult.simhash) storeSimHash(res.id, simhashResult.simhash);
+      embed(content).then(emb => { if (emb) updateMemoryEmbedding.run(embeddingToBuffer(emb), res.id); }).catch(() => {});
+      log.info({ msg: "error_stored", type: errType, severity: errSeverity, id: res.id, rid: requestId });
+      return json({ stored: true, id: res.id, type: errType, severity: errSeverity });
+    }
+
+    if (url.pathname === "/errors" && method === "GET") {
+      if (!hasScope(auth, "read")) return errorResponse("Read scope required", 403);
+      const windowParam = url.searchParams.get("window") || "24h";
+      const agentParam = url.searchParams.get("agent");
+      const typeParam = url.searchParams.get("type");
+      const limitParam = Math.min(Number(url.searchParams.get("limit") || "100"), 500);
+      const windowMs: Record<string, number> = { "1h": 3600000, "6h": 21600000, "24h": 86400000, "7d": 604800000, "30d": 2592000000 };
+      const ms = windowMs[windowParam] || 86400000;
+      const since = new Date(Date.now() - ms).toISOString();
+      let query = "SELECT id, content, tags, created_at, source FROM memories WHERE user_id = ? AND category = 'error' AND status = 'approved' AND created_at > ?";
+      const params: any[] = [auth.user_id, since];
+      if (agentParam) { query += " AND (tags LIKE ? OR source = ?)"; params.push(`%agent:${agentParam}%`, agentParam); }
+      if (typeParam) { query += " AND tags LIKE ?"; params.push(`%error-type:${typeParam}%`); }
+      query += " ORDER BY created_at DESC LIMIT ?";
+      params.push(limitParam);
+      const errors = db.prepare(query).all(...params) as any[];
+      const grouped: Record<string, { type: string; count: number; severity: string; last_seen: string; first_seen: string; examples: any[] }> = {};
+      for (const e of errors) {
+        const eTags = JSON.parse(e.tags || "[]") as string[];
+        const errType = eTags.find(t => t.startsWith("error-type:"))?.replace("error-type:", "") || "Unknown";
+        const sev = eTags.find(t => t.startsWith("severity:"))?.replace("severity:", "") || "error";
+        if (!grouped[errType]) grouped[errType] = { type: errType, count: 0, severity: sev, last_seen: e.created_at, first_seen: e.created_at, examples: [] };
+        grouped[errType].count++;
+        if (e.created_at > grouped[errType].last_seen) grouped[errType].last_seen = e.created_at;
+        if (e.created_at < grouped[errType].first_seen) grouped[errType].first_seen = e.created_at;
+        if (grouped[errType].examples.length < 3) grouped[errType].examples.push({ id: e.id, message: e.content.split("\n")[0], created_at: e.created_at, source: e.source });
+      }
+      const issues = Object.values(grouped).sort((a, b) => b.count - a.count);
+      return json({ issues, total: errors.length, window: windowParam, since });
+    }
+
+    // ========================================================================
+    // CONSOLIDATED SERVICE ROUTES (Thymus, Soma, Chiasm)
+    // ========================================================================
+    {
+      const serviceRes =
+        await handleThymusRoutes(method, url, req, requestId) ??
+        await handleSomaRoutes(method, url, req, requestId) ??
+        await handleChiasmRoutes(method, url, req, requestId);
+      if (serviceRes) {
+        const elapsed = (performance.now() - requestStart).toFixed(1);
+        log.info({ msg: "req", method, path: url.pathname, status: serviceRes.status, ms: elapsed, ip: clientIp, user: auth.user_id, rid: requestId });
+        return serviceRes;
+      }
+    }
+
+    // ========================================================================
     // CATCH-ALL 404 with request log
     // ========================================================================
     {
@@ -6723,3 +8064,106 @@ If no meaningful inferences, return {"derived": []}`;
 }
 
 export { fetchHandler };
+
+// ============================================================================
+// BACKGROUND JOBS — Periodic maintenance
+// ============================================================================
+
+// --- Decay score refresh (every 6 hours) ---
+function refreshDecayScores(): void {
+  try {
+    const users = db.prepare("SELECT DISTINCT id FROM users").all() as Array<{ id: number }>;
+    let totalRefreshed = 0;
+
+    for (const user of users) {
+      const memories = db.prepare(`
+        SELECT id, importance, created_at, access_count, last_accessed_at,
+               is_static, source_count, fsrs_stability
+        FROM memories
+        WHERE is_forgotten = 0 AND is_archived = 0 AND is_latest = 1 AND user_id = ?
+      `).all(user.id) as Array<{
+        id: number; importance: number; created_at: string; access_count: number;
+        last_accessed_at: string | null; is_static: number; source_count: number;
+        fsrs_stability: number | null;
+      }>;
+
+      const updateStmt = db.prepare("UPDATE memories SET decay_score = ? WHERE id = ?");
+      const batch = db.transaction(() => {
+        for (const m of memories) {
+          const score = fsrsCalculateDecayScore(
+            m.importance, m.created_at, m.access_count || 0,
+            m.last_accessed_at, !!m.is_static, m.source_count || 1,
+            m.fsrs_stability ?? undefined
+          );
+          updateStmt.run(Math.round(score * 1000) / 1000, m.id);
+        }
+      });
+      batch();
+      totalRefreshed += memories.length;
+    }
+
+    log.info({ msg: "decay_scores_refreshed", count: totalRefreshed });
+  } catch (e: any) {
+    log.warn({ msg: "decay_refresh_failed", error: e.message });
+  }
+}
+
+// --- Auto-archive dead memories (daily) ---
+function autoArchiveDeadMemories(): void {
+  if (!AUTO_ARCHIVE_ENABLED) return;
+
+  try {
+    const users = db.prepare("SELECT DISTINCT id FROM users").all() as Array<{ id: number }>;
+    let totalArchived = 0;
+
+    for (const user of users) {
+      const candidates = db.prepare(`
+        SELECT id, importance, created_at, access_count, last_accessed_at,
+               fsrs_stability, source_count
+        FROM memories
+        WHERE user_id = ? AND is_static = 0 AND is_forgotten = 0 AND is_archived = 0
+          AND is_latest = 1
+          AND created_at < datetime('now', '-' || ? || ' days')
+          AND (access_count IS NULL OR access_count < ?)
+      `).all(user.id, AUTO_ARCHIVE_MIN_AGE_DAYS, AUTO_ARCHIVE_MAX_ACCESS) as Array<{
+        id: number; importance: number; created_at: string; access_count: number;
+        last_accessed_at: string | null; fsrs_stability: number | null; source_count: number;
+      }>;
+
+      const archiveStmt = db.prepare("UPDATE memories SET is_archived = 1 WHERE id = ?");
+      const batch = db.transaction(() => {
+        for (const m of candidates) {
+          // Calculate live retrievability
+          const stability = (m.fsrs_stability && m.fsrs_stability > 0)
+            ? m.fsrs_stability
+            : 2.3065; // fsrsInitialStability(Good)
+          const refStr = m.last_accessed_at || m.created_at;
+          let elapsed = 0;
+          if (refStr) {
+            const refTime = new Date(refStr + (refStr.includes("Z") ? "" : "Z")).getTime();
+            if (!isNaN(refTime)) elapsed = Math.max(0, (Date.now() - refTime) / 86400000);
+          }
+          const R = fsrsRetrievability(stability, elapsed);
+
+          if (R < AUTO_ARCHIVE_RETRIEVABILITY) {
+            archiveStmt.run(m.id);
+            totalArchived++;
+          }
+        }
+      });
+      batch();
+    }
+
+    if (totalArchived > 0) {
+      log.info({ msg: "auto_archive_complete", archived: totalArchived });
+    }
+  } catch (e: any) {
+    log.warn({ msg: "auto_archive_failed", error: e.message });
+  }
+}
+
+// Schedule background jobs
+// NOTE: Decay refresh runs in server-split.ts (15min, lease-protected). Do NOT duplicate here.
+
+// Auto-archive: every 24 hours
+setInterval(() => { autoArchiveDeadMemories(); }, 24 * 60 * 60 * 1000);

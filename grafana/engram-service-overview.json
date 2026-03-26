@@ -1,0 +1,238 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "engram-service-overview",
+    "title": "Engram Service Overview",
+    "tags": ["engram", "otel", "traces"],
+    "timezone": "browser",
+    "schemaVersion": 39,
+    "refresh": "30s",
+    "time": { "from": "now-1h", "to": "now" },
+    "templating": {
+      "list": [
+        {
+          "name": "tempo_ds",
+          "type": "datasource",
+          "query": "tempo",
+          "current": { "text": "Tempo", "value": "Tempo" }
+        },
+        {
+          "name": "prom_ds",
+          "type": "datasource",
+          "query": "prometheus",
+          "current": { "text": "Prometheus", "value": "Prometheus" }
+        }
+      ]
+    },
+    "panels": [
+      {
+        "title": "Request Rate (req/s)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+        "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+        "targets": [
+          {
+            "expr": "rate(traces_spanmetrics_calls_total{service_name=\"engram\"}[5m])",
+            "legendFormat": "{{span_name}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "custom": { "drawStyle": "line", "fillOpacity": 10 }
+          }
+        }
+      },
+      {
+        "title": "Request Latency p95",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+        "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(traces_spanmetrics_duration_seconds_bucket{service_name=\"engram\"}[5m])) by (le, span_name))",
+            "legendFormat": "{{span_name}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "custom": { "drawStyle": "line", "fillOpacity": 10 }
+          }
+        }
+      },
+      {
+        "title": "Error Rate",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+        "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+        "targets": [
+          {
+            "expr": "rate(traces_spanmetrics_calls_total{service_name=\"engram\", status_code=\"STATUS_CODE_ERROR\"}[5m])",
+            "legendFormat": "{{span_name}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "custom": { "drawStyle": "line", "fillOpacity": 10 },
+            "color": { "mode": "fixed", "fixedColor": "red" }
+          }
+        }
+      },
+      {
+        "title": "Search Operations",
+        "type": "row",
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 8 },
+        "collapsed": false
+      },
+      {
+        "title": "hybridSearch Latency",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+        "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.5, sum(rate(traces_spanmetrics_duration_seconds_bucket{service_name=\"engram\", span_name=\"engram.hybridSearch\"}[5m])) by (le))",
+            "legendFormat": "p50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(traces_spanmetrics_duration_seconds_bucket{service_name=\"engram\", span_name=\"engram.hybridSearch\"}[5m])) by (le))",
+            "legendFormat": "p95",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(traces_spanmetrics_duration_seconds_bucket{service_name=\"engram\", span_name=\"engram.hybridSearch\"}[5m])) by (le))",
+            "legendFormat": "p99",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "custom": { "drawStyle": "line", "fillOpacity": 10 }
+          }
+        }
+      },
+      {
+        "title": "Search Throughput",
+        "type": "stat",
+        "gridPos": { "h": 8, "w": 6, "x": 12, "y": 9 },
+        "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+        "targets": [
+          {
+            "expr": "sum(rate(traces_spanmetrics_calls_total{service_name=\"engram\", span_name=\"engram.hybridSearch\"}[5m]))",
+            "legendFormat": "searches/s",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "reqps" }
+        }
+      },
+      {
+        "title": "Recent Search Traces",
+        "type": "table",
+        "gridPos": { "h": 8, "w": 6, "x": 18, "y": 9 },
+        "datasource": { "type": "tempo", "uid": "${tempo_ds}" },
+        "targets": [
+          {
+            "queryType": "traceqlSearch",
+            "query": "{ resource.service.name = \"engram\" && name = \"engram.hybridSearch\" }",
+            "limit": 20,
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "title": "Embedding & LLM",
+        "type": "row",
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+        "collapsed": false
+      },
+      {
+        "title": "Embedding Latency",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 8, "x": 0, "y": 18 },
+        "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(traces_spanmetrics_duration_seconds_bucket{service_name=\"engram\", span_name=\"engram.embed\"}[5m])) by (le))",
+            "legendFormat": "p95",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "custom": { "drawStyle": "line", "fillOpacity": 10 }
+          }
+        }
+      },
+      {
+        "title": "LLM Call Latency",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 8, "x": 8, "y": 18 },
+        "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(traces_spanmetrics_duration_seconds_bucket{service_name=\"engram\", span_name=\"engram.callLLM\"}[5m])) by (le))",
+            "legendFormat": "p95",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "custom": { "drawStyle": "line", "fillOpacity": 10 }
+          }
+        }
+      },
+      {
+        "title": "LLM Provider Failures",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 8, "x": 16, "y": 18 },
+        "datasource": { "type": "prometheus", "uid": "${prom_ds}" },
+        "targets": [
+          {
+            "expr": "rate(traces_spanmetrics_calls_total{service_name=\"engram\", span_name=\"engram.callLLM\", status_code=\"STATUS_CODE_ERROR\"}[5m])",
+            "legendFormat": "errors/s",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "color": { "mode": "fixed", "fixedColor": "red" },
+            "custom": { "drawStyle": "line", "fillOpacity": 10 }
+          }
+        }
+      },
+      {
+        "title": "Trace Explorer",
+        "type": "row",
+        "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 },
+        "collapsed": false
+      },
+      {
+        "title": "Recent Traces",
+        "type": "table",
+        "gridPos": { "h": 10, "w": 24, "x": 0, "y": 27 },
+        "datasource": { "type": "tempo", "uid": "${tempo_ds}" },
+        "targets": [
+          {
+            "queryType": "traceqlSearch",
+            "query": "{ resource.service.name = \"engram\" }",
+            "limit": 50,
+            "refId": "A"
+          }
+        ]
+      }
+    ]
+  },
+  "overwrite": true
+}

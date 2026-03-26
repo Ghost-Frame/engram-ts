@@ -45,7 +45,11 @@ src/
 ├── memory/        core memory CRUD + versioning, hybrid vector+FTS search, profile generation
 ├── platform/      webhooks, digests, sync, import/export
 ├── reranker/      ONNX cross-encoder (BGE-reranker-base) with SentencePiece tokenizer
-├── routes/        HTTP route definitions (monolithic, split planned)
+├── routes/        HTTP route definitions
+├── services/      consolidated microservices (Thymus, Soma, Chiasm)
+│   ├── thymus/    rubric-based quality evaluation and scoring
+│   ├── soma/      agent registry, heartbeat, groups, logs
+│   └── chiasm/    task tracking and agent coordination
 └── tier4/         causal chains, predictive recall, valence scoring
 
 engram-gui.html    WebGL galaxy visualization (standalone HTML)
@@ -70,6 +74,8 @@ landing.html       marketing landing page
 7. **Episodic memory**: Conversations are stored as episodes with narrative summaries, embedded for semantic search, and linked to extracted facts. This enables temporal queries ("what did I work on last week?") and contextual recall ("why was this decision made?").
 
 8. **Abstention**: Search returns an `abstained` flag when top result confidence is below a configurable threshold. This prevents false positives - the system knows when it doesn't have relevant information.
+
+9. **Service consolidation pattern**: Satellite services (Thymus, Soma, Chiasm) are absorbed into the monolith under `src/services/<name>/`. Each service follows a consistent `db.ts` (schema + prepared statements) / business-logic / `routes.ts` pattern. Tables are prefixed (e.g., `soma_agents`, `chiasm_tasks`) to avoid collisions. Route handlers return `Response | null` and are mounted as prefix checks in `fetchHandler`. Events publish via the shared Axon stub.
 
 ## Code Style
 
@@ -107,29 +113,31 @@ We always need more coverage:
 4. Update CHANGELOG.md under `[Unreleased]`
 5. Submit a PR with a clear description of what changed and why
 
-## Recent Changes (v5.8.3)
+## Recent Changes (v5.10)
 
-**Source filtering** - `/search`, `/context`, and `/recall` now accept a `source` parameter for server-side memory filtering. The filter propagates into `hybridSearch()` at both vector scan and FTS5 stages. This enables agent-specific memory isolation and benchmark runs against production data.
+**Syntheos Phase 1: Service Consolidation** - Three standalone microservices (Thymus, Soma, Chiasm) absorbed into the Engram monolith as native modules under `src/services/`. Each service follows the same `db.ts` / business-logic / `routes.ts` pattern. All use parameterized SQL, share the main database, and reuse Engram auth. See `src/services/index.ts` for the barrel export and `src/routes/index.ts` fetchHandler for route wiring.
 
-**Worker thread embeddings** - ONNX inference moved to a dedicated `Worker` thread (see `src/embeddings/embedding-worker.ts` and `src/embeddings/index.ts`). The main thread sends text via `postMessage`, the worker returns Float32Array.
+**Thymus** - Rubric-based quality evaluation. Define weighted criteria, score agent outputs, track metrics over time. See `src/services/thymus/`.
 
-**Batch link queries** - `getLinksForUserBatch()` in `src/db/index.ts` replaces N+1 individual link queries during search relationship expansion.
+**Soma** - Agent registry with heartbeat tracking, capability search, group management, and structured logging. See `src/services/soma/`.
+
+**Chiasm** - Task tracking and coordination. Agents create tasks, update status, read each other's work via a feed endpoint. See `src/services/chiasm/`.
 
 These areas may benefit from additional test coverage:
 
 | Feature | Location |
 |---------|----------|
-| Source filtering in search | `src/memory/search.ts` `hybridSearch()`, `src/routes/index.ts` |
-| Worker thread embedding | `src/embeddings/index.ts`, `src/embeddings/embedding-worker.ts` |
-| Batch link queries | `src/db/index.ts` `getLinksForUserBatch()` |
+| Thymus rubric CRUD and scoring | `src/services/thymus/routes.ts`, `scoring.ts` |
+| Soma agent lifecycle | `src/services/soma/routes.ts`, `registry.ts` |
+| Chiasm task coordination | `src/services/chiasm/routes.ts`, `engine.ts` |
+| PageRank in search scoring | `src/memory/search.ts`, `src/graph/pagerank.ts` |
+| CLI commands | `src/cli/index.ts` |
+| Source filtering in search | `src/memory/search.ts` `hybridSearch()` |
 | Memory health diagnostics | `GET /memory-health` |
-| Retrieval feedback loop | `POST /feedback`, `GET /feedback/stats` |
 
 ## Roadmap (Not Yet Shipped)
 
 - **OpenAPI Spec**: Exists in `sdk/` but not yet served at `/docs` via Swagger UI
-- **CLI**: Standalone command-line client
-- **Metrics endpoint**: `/metrics` for request counts, latency, background job stats (partial coverage via `/memory-health` and per-phase timing in `/context`)
 
 ## Areas Where Help Is Needed (shipped features that need improvement)
 

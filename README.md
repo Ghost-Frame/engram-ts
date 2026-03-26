@@ -8,9 +8,9 @@ Store, search, recall, and link memories with automatic embeddings,
 fact extraction, versioning, deduplication, and graph visualization.
 
 [![License: Elastic-2.0](https://img.shields.io/badge/License-Elastic--2.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-5.8.3-gold.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-5.10.0-gold.svg)](CHANGELOG.md)
 
-[Quick Start](#quick-start) · [API Reference](#api-reference) · [SDKs](#sdks) · [MCP Server](#mcp-server) · [CLI](#cli) · [Self-Host](#self-hosting) · [GUI](#gui)
+[Quick Start](#quick-start) · [API Reference](#api-reference) · [SDKs](#sdks) · [MCP Server](#mcp-server) · [CLI](#cli) · [Self-Host](#self-hosting)
 
 </div>
 
@@ -44,7 +44,9 @@ curl -X POST http://localhost:4200/recall \
 - 🧹 **SimHash deduplication** - 64-bit locality-sensitive hashing detects near-duplicates before embedding, saving compute
 - 🕐 **Bi-temporal fact tracking** - structured facts carry temporal validity windows with automatic contradiction-based invalidation
 - 🧩 **Entity cooccurrence graph** - entities that appear together build weighted relationships automatically
-- 🏘️ **Community detection** - label propagation groups related memories into discoverable clusters
+- 🏘️ **Community detection** - label propagation groups related memories into discoverable clusters, auto-runs on store
+- 📈 **PageRank** - iterative weighted PageRank ranks memories by structural importance, not just connection count
+- 📊 **Graph timeline** - `GET /graph/timeline` shows how your knowledge graph grew week by week
 - 🔬 **Cross-encoder reranker** - BGE-reranker-base (quantized INT8) reranks search results for semantic precision
 - 🎭 **Personality engine** - extracts preferences, values, motivations, decisions, emotions, and identity signals from memories
 - 📊 **Graph visualization** - explore your memory space in a WebGL galaxy
@@ -72,7 +74,7 @@ curl -X POST http://localhost:4200/recall \
 - 🔄 **Sync & import** - cross-instance sync, import from Mem0 / Supermemory
 - 📥 **URL ingest** - extract facts from web pages or text blobs
 - 🛠️ **MCP server** - JSON-RPC 2.0 stdio transport for Claude Desktop, Cursor, Windsurf
-- ⌨️ **CLI** - full-featured command-line interface (`engram store`, `engram search`, etc.)
+- ⌨️ **CLI** - full-featured command-line interface (`engram-cli store`, `engram-cli search`, etc.)
 - 📥 **Review queue / inbox** - auto-detected memories land in review; explicit stores bypass
 - 🔒 **Security hardening** - auth required by default, body/content limits, IP allowlists, timing-safe auth
 - 📋 **Audit trail** - every mutation logged (who, what, when, from where)
@@ -82,19 +84,79 @@ curl -X POST http://localhost:4200/recall \
 
 ---
 
-## What's New in v5.8.3
+## What's New
 
-### Server-Side Source Filtering
-`/search`, `/context`, and `/recall` now accept a `source` parameter for server-side memory filtering. The filter propagates into the hybrid search pipeline, filtering at both the vector scan and FTS5 stages before scoring. This enables proper agent isolation (each agent searches only its own memories) and benchmark isolation against production data.
+### Syntheos Phase 1: Service Consolidation (v5.10.0)
 
-### Worker Thread Embeddings
-ONNX embedding inference moved from the main thread to a dedicated `Worker` thread. Embedding calls no longer block the HTTP event loop, improving request latency under concurrent load.
+Three standalone microservices absorbed into the Engram monolith as native modules. No new dependencies, no new processes. Same database, same auth.
 
-### Batch Link Queries
-Relationship expansion in search replaced N+1 individual link queries with a single batch query via `getLinksForUserBatch()`. Reduces search latency for queries with relationship expansion enabled.
+**Thymus** (quality evaluation) - Rubric-based scoring engine for agent output quality. Define evaluation criteria with weighted scales, run evaluations, track agent scores over time. Stores quality metrics alongside memories.
 
-### TypeScript Zero Errors
-Fixed all pre-existing compilation errors: SharedArrayBuffer transfer cast in embedding worker, null-vs-undefined on link source fields in graph expansion. The codebase now compiles cleanly with zero TypeScript errors.
+- `POST /thymus/rubrics` - Create evaluation rubrics with weighted criteria
+- `GET /thymus/rubrics` - List rubrics
+- `POST /thymus/evaluations` - Score agent output against a rubric
+- `GET /thymus/evaluations` - List evaluations with agent/rubric filtering
+- `GET /thymus/agents/:agent/scores` - Aggregate scores per agent
+- `POST /thymus/metrics` - Record arbitrary quality metrics
+- `GET /thymus/metrics` - Query metrics with time range and agent filtering
+- `GET /thymus/stats` - Rubric, evaluation, and metric counts
+
+**Soma** (agent registry) - Agent lifecycle management. Register agents with capabilities, track heartbeats, organize into groups, collect structured logs.
+
+- `POST /soma/agents` - Register an agent
+- `GET /soma/agents` - List agents with type/status/capability filtering
+- `PATCH /soma/agents/:id` - Update agent metadata
+- `DELETE /soma/agents/:id` - Deregister (atomic cascade delete)
+- `POST /soma/agents/:id/heartbeat` - Heartbeat with optional status update
+- `GET /soma/agents/stale` - Find agents that missed heartbeats
+- `POST /soma/agents/:id/logs` - Submit structured log entries
+- `GET /soma/agents/:id/logs` - Read agent logs
+- `POST /soma/groups` - Create agent groups
+- `GET /soma/groups` - List groups
+- `POST /soma/groups/:id/members` - Add agent to group
+- `DELETE /soma/groups/:id/members/:agentId` - Remove from group
+- `GET /soma/agents/capability/:name` - Find agents by capability
+- `GET /soma/stats` - Registry statistics
+
+**Chiasm** (task tracking) - Lightweight task coordination for multi-agent systems. Agents create tasks, update status, and read each other's active work via a feed endpoint.
+
+- `POST /tasks` - Create a task
+- `GET /tasks` - List tasks with status/agent/project filtering
+- `GET /tasks/:id` - Get task with full audit trail
+- `PATCH /tasks/:id` - Update status/summary (creates audit entry)
+- `DELETE /tasks/:id` - Delete task
+- `GET /tasks/stats` - Task counts by status
+- `GET /feed` - Activity feed of recent task updates
+
+All three services share the main Engram database, reuse auth middleware, and publish events via the existing Axon event bus stub.
+
+<details>
+<summary><strong>v5.9.x</strong></summary>
+
+**PageRank for Memory Graphs** - Full iterative PageRank algorithm with type-aware edge weighting. Memories linked to by important memories score higher, not just memories with lots of connections. Scores are normalized 0-1 and stored per memory. Runs automatically every 25th store alongside community detection.
+
+**Search Ranking from Graph Structure** - Search results now get a 0-15% boost based on their PageRank score. Structurally important memories surface higher in `/search` and `/context` results. This works on top of the existing RRF scoring, decay, and temporal signals.
+
+**Auto Graph Analysis on Store** - Every 25th memory stored triggers background community detection and PageRank recomputation via the durable job queue. No impact on store latency.
+
+**Temporal Graph Evolution** - New `GET /graph/timeline` endpoint returns weekly aggregates of graph growth.
+
+**Enriched Graph Endpoint** - `/graph` now returns `pagerank_score` per node. Node sizes are boosted by PageRank.
+
+</details>
+
+<details>
+<summary><strong>v5.8.3</strong></summary>
+
+**Server-Side Source Filtering** - `/search`, `/context`, and `/recall` accept a `source` parameter. Filter propagates into hybrid search at both vector and FTS5 stages.
+
+**Worker Thread Embeddings** - ONNX inference moved to a dedicated Worker thread. No more event loop blocking.
+
+**Batch Link Queries** - Relationship expansion uses single batch query instead of N+1.
+
+**TypeScript Zero Errors** - Clean compilation with zero TS errors.
+
+</details>
 
 <details>
 <summary><strong>Previous releases</strong></summary>
@@ -175,43 +237,6 @@ In-memory storage, basic embedding search.
 
 </details>
 
-<details>
-<summary><strong>Previous releases</strong></summary>
-
-#### v5.7 - BGE-large, Episodic Memory, Multi-Tenant Isolation
-
-**BGE-large 1024-dim Embeddings** - Replaced MiniLM-L6-v2 (384-dim) with BGE-large-en-v1.5 (1024-dim) using raw `onnxruntime-node` and a hand-written BERT WordPiece tokenizer. 1024 dimensions, 512-token context, quantized INT8 (337MB, sub-200ms on CPU). Auto-migration re-embeds existing vectors on first startup.
-
-**Episodic Memory** - Conversation episodes as first-class embedded, searchable objects. BGE-large embeddings, FTS5 search, temporal date-range queries, semantic search, `POST /episodes/:id/finalize` for narrative summaries, FSRS decay, and automatic `/context` injection.
-
-**Multi-Tenant Data Isolation** - Complete security audit of all cross-tenant boundaries. User-scoped embedding cache, ownership checks on all endpoints, conversation isolation, write scope enforcement, user-scoped stats, and user-filtered graph BFS.
-
-**Guardrails** - `POST /guard` checks proposed actions against stored rules. Returns `allow`, `warn`, or `block` with matched rule context.
-
-**Benchmark Features** - Abstention (`ENGRAM_SEARCH_MIN_SCORE`), assistant recall (LLM + regex extraction of AI actions), temporal sort, 2-hop graph traversal, implicit connection inference in `/context`.
-
-#### v5.6 - Node.js 22, Graph Intelligence
-- Node.js 22+ as primary runtime (`--experimental-strip-types`), Bun maintained for compatibility
-- Optimized MCP server (529 to 168 lines), vitest framework (76+ tests)
-- Graphology knowledge graph: centrality, shortest paths, community detection, relationship inference
-
-#### v5.5 - Intelligence Layer
-- LLM fact extraction, auto-tagging, relationship classification
-- Conversation extraction, URL ingest, reflections, derived memories, auto-consolidation
-- MCP server improvements: error handling, streaming, tool introspection
-
-#### v5.3 - Security Hardening
-- Auth required by default, rate limit fix, body size limits
-- GUI auth rate limiting, timing-safe password comparison
-- Security headers, CORS origin pinning, IP allowlisting
-- Audit trail, structured JSON logging
-
-#### v5.0 - FSRS-6 Spaced Repetition
-- 21-parameter power-law forgetting curve (ported from open-spaced-repetition/fsrs4anki)
-- Dual-strength model (Bjork & Bjork 1992): storage strength + retrieval strength
-- Formula: `R = (1 + factor * t/S)^(-w20)`
-
-</details>
 
 ---
 
@@ -282,10 +307,6 @@ curl -X POST http://localhost:4200/guard \
 # Returns: { "verdict": "warn", "reasons": ["Never deploy on Fridays..."] }
 ```
 
-### 6. Open the GUI
-
-Visit `http://localhost:4200` in your browser. Log in with the `ENGRAM_GUI_PASSWORD` you set. Explore the memory graph, search, and review the inbox.
-
 ---
 
 ## Decision Memory
@@ -321,7 +342,7 @@ curl -X POST http://localhost:4200/inbox/42/approve -H "Authorization: Bearer $K
 curl -X POST http://localhost:4200/inbox/42/reject -H "Authorization: Bearer $KEY"
 ```
 
-The GUI also shows an inbox badge with the pending count. Memories you store directly via `/store` bypass the inbox and are approved immediately.
+Memories you store directly via `/store` bypass the inbox and are approved immediately.
 
 ---
 
@@ -416,6 +437,25 @@ Add to `claude_desktop_config.json`:
 | `memory_context` | Token-budget-aware context packing for LLM injection |
 | `memory_list` | List recent memories, optionally filtered by category |
 | `memory_delete` | Delete a memory by ID |
+| `memory_guard` | Check a proposed action against stored rules (allow/warn/block) |
+| `memory_inbox` | Review pending memories awaiting triage (approve/reject) |
+| `memory_search_preset` | Search with opinionated presets: fact, timeline, preference, decision, recent |
+| `memory_entities` | List or search tracked entities (people, servers, tools, services) |
+| `memory_projects` | List or search tracked projects |
+| `memory_episodes` | List conversation episodes (sessions of related work) |
+| `memory_scratch` | Read/write scratchpad (short-term working memory, 30min TTL) |
+| `structural_analyze` | Analyze a system in EN syntax -- topology (Pipeline/Tree/DAG/Cycle), node roles, bridges |
+| `structural_detail` | Deep analysis -- concurrency metrics, critical path, flow depth, resilience |
+| `structural_between` | Betweenness centrality for a node (0-1 score) |
+| `structural_distance` | Shortest path between two nodes with subsystem annotations |
+| `structural_trace` | Follow directed flow from A to B along yields->needs edges |
+| `structural_impact` | Blast radius -- what disconnects if a node is removed |
+| `structural_diff` | Structural diff between two systems -- topology changes, role changes, bridges |
+| `structural_evolve` | Dry-run architectural changes and preview the structural delta |
+| `structural_categorize` | Auto-discover subsystem boundaries via Louvain community detection |
+| `structural_extract` | Extract a named subsystem as standalone EN source |
+| `structural_compose` | Merge two EN graphs with entity linking |
+| `structural_memory_graph` | Analyze Engram's own memory link graph structurally |
 
 > **Note:** The MCP server connects to a running Engram instance via HTTP. All tools support signed tool manifests for integrity verification when `ENGRAM_SIGNING_SECRET` is set.
 
@@ -423,7 +463,37 @@ Add to `claude_desktop_config.json`:
 
 ## CLI
 
-> **Roadmap:** A dedicated CLI is planned. For now, use `curl` or any HTTP client directly against the API.
+Engram ships a full CLI that wraps the HTTP API. Zero external dependencies -- uses Node.js 22 built-in `util.parseArgs`.
+
+```bash
+# Install globally (or use npx)
+npm install -g @zanfiel/engram
+
+# Configure
+export ENGRAM_URL=http://localhost:4200
+export ENGRAM_API_KEY=eg_your_key
+
+# Store
+engram-cli store "Deployed auth migration to production" --category state --importance 9
+
+# Search
+engram-cli search "deployment history" --limit 5 --explain
+
+# Context (RAG)
+engram-cli context "current infrastructure state" --budget 4000
+
+# Recall
+engram-cli recall --context "what changed recently"
+
+# Other commands
+engram-cli list --limit 20
+engram-cli forget 42 --reason "outdated"
+engram-cli delete 42
+engram-cli health
+engram-cli stats
+```
+
+All commands support `--json` for raw API output and `--quiet` for minimal output (IDs and counts only). Config can also be set in `~/.engram/config.json`.
 
 ---
 
@@ -483,7 +553,9 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 | `POST` | `/timetravel` | Query memory state at a past time |
 | `GET` | `/facts` | Query structured facts with filtering |
 | `GET` | `/preferences` | Get stored user preferences |
+| `DELETE` | `/preferences` | Delete preference entries (surgical cleanup) |
 | `GET` | `/state` | Get current user state |
+| `DELETE` | `/state` | Delete state entries (surgical cleanup) |
 | `POST` | `/profile/synthesize` | Synthesize personality profile from signals |
 | `GET` | `/memory-health` | Diagnostic report: stale, duplicates, unlinked, contradiction hints |
 | `POST` | `/feedback` | Submit retrieval feedback (used/ignored/corrected/irrelevant/helpful) |
@@ -553,6 +625,7 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 | `POST` | `/keys` | Create API key |
 | `GET` | `/keys` | List API keys |
 | `DELETE` | `/keys/:id` | Revoke key |
+| `POST` | `/keys/rotate` | Rotate an API key (atomically replace, preserving scopes) |
 | `POST` | `/spaces` | Create space |
 | `GET` | `/spaces` | List spaces |
 | `DELETE` | `/spaces/:id` | Delete space |
@@ -567,15 +640,90 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 | `POST` | `/inbox/:id/edit` | Edit content + auto-approve |
 | `POST` | `/inbox/bulk` | Bulk approve/reject |
 
+### Thymus (Quality Evaluation)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/thymus/rubrics` | Create evaluation rubric with weighted criteria |
+| `GET` | `/thymus/rubrics` | List rubrics |
+| `GET` | `/thymus/rubrics/:id` | Get rubric by ID |
+| `POST` | `/thymus/evaluations` | Score agent output against a rubric |
+| `GET` | `/thymus/evaluations` | List evaluations (filter by agent, rubric) |
+| `GET` | `/thymus/agents/:agent/scores` | Aggregate score stats for an agent |
+| `POST` | `/thymus/metrics` | Record a quality metric |
+| `GET` | `/thymus/metrics` | Query metrics (filter by agent, metric, time range) |
+| `GET` | `/thymus/stats` | Rubric, evaluation, and metric counts |
+
+### Soma (Agent Registry)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/soma/agents` | Register a new agent |
+| `GET` | `/soma/agents` | List agents (filter by type, status, capability) |
+| `GET` | `/soma/agents/:id` | Get agent by ID |
+| `PATCH` | `/soma/agents/:id` | Update agent metadata |
+| `DELETE` | `/soma/agents/:id` | Deregister agent (cascade deletes logs and group memberships) |
+| `POST` | `/soma/agents/:id/heartbeat` | Send heartbeat with optional status |
+| `GET` | `/soma/agents/stale` | Find agents that missed heartbeats |
+| `POST` | `/soma/agents/:id/logs` | Submit structured log entry |
+| `GET` | `/soma/agents/:id/logs` | Read agent logs |
+| `POST` | `/soma/groups` | Create agent group |
+| `GET` | `/soma/groups` | List groups |
+| `GET` | `/soma/groups/:id` | Get group with member list |
+| `DELETE` | `/soma/groups/:id` | Delete group |
+| `POST` | `/soma/groups/:id/members` | Add agent to group |
+| `DELETE` | `/soma/groups/:id/members/:agentId` | Remove agent from group |
+| `GET` | `/soma/agents/capability/:name` | Find agents by capability |
+| `GET` | `/soma/stats` | Registry statistics |
+
+### Chiasm (Task Tracking)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/tasks` | Create a task |
+| `GET` | `/tasks` | List tasks (filter by status, agent, project) |
+| `GET` | `/tasks/:id` | Get task with audit trail |
+| `PATCH` | `/tasks/:id` | Update task status/summary |
+| `DELETE` | `/tasks/:id` | Delete task |
+| `GET` | `/tasks/stats` | Task counts by status |
+| `GET` | `/feed` | Activity feed of recent task updates |
+
 ### System
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/health` | Health check (30+ feature flags) |
 | `GET` | `/stats` | Detailed statistics |
+| `GET` | `/metrics` | Prometheus-format metrics (admin) |
+| `GET` | `/openapi.json` | OpenAPI 3.1 spec |
 | `GET` | `/audit` | Query audit log (admin) |
 | `POST` | `/checkpoint` | Manual WAL checkpoint (admin) |
 | `GET` | `/backup` | Download SQLite database (admin) |
+| `POST` | `/backup/verify` | Verify backup integrity (admin) |
+
+### Admin
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/admin/tasks` | List all available admin operations |
+| `GET` | `/admin/quotas` | View per-tenant memory quotas |
+| `PUT` | `/admin/quotas` | Update tenant quota |
+| `GET` | `/admin/tenants` | List all tenants with usage statistics |
+| `POST` | `/tenants/provision` | Provision a new tenant |
+| `POST` | `/tenants/deprovision` | Deprovision a tenant |
+| `GET` | `/admin/providers` | View configured embedding and LLM providers |
+| `GET` | `/admin/schema` | Schema info, migration history, drift detection |
+| `GET` | `/admin/scale-report` | Scale tier assessment with recommendations |
+| `GET` | `/admin/cold-storage` | Memory access distribution and cold storage config |
+| `POST` | `/admin/maintenance` | Toggle maintenance mode (rejects non-admin writes) |
+| `GET` | `/admin/maintenance` | Check maintenance mode status |
+| `POST` | `/admin/reembed` | Re-embed all memories with current provider |
+| `POST` | `/admin/rebuild-fts` | Drop and rebuild full-text search index |
+| `POST` | `/admin/rebuild-cooccurrences` | Rebuild entity cooccurrence graph |
+| `POST` | `/admin/detect-communities` | Run Louvain community detection |
+| `POST` | `/admin/backfill-facts` | Extract facts from memories missing structured data |
+| `POST` | `/admin/refresh-cache` | Force reload embedding cache from DB |
+| `POST` | `/admin/compact` | VACUUM + ANALYZE database to reclaim space |
 
 ---
 
@@ -585,7 +733,7 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 
 1. **Store** - Memory content is checked for near-duplicates via SimHash (Hamming distance <= 3). If unique, it is embedded using BGE-large-en-v1.5 (1024-dim vectors, runs locally via ONNX) and stored in libsql with FTS5 full-text indexing.
 
-2. **Auto-link** - New memories are compared against existing ones via in-memory cosine similarity. Memories above 0.7 similarity are linked with typed relationships (similarity, updates, extends, contradicts, caused_by, prerequisite_for).
+2. **Auto-link** - New memories are compared against existing ones via in-memory cosine similarity. Memories above 0.55 cosine similarity are linked with typed relationships (similarity, updates, extends, contradicts, caused_by, prerequisite_for).
 
 3. **FSRS-6 initialization** - Each new memory gets initial FSRS state: stability, difficulty, storage strength, retrieval strength. The power-law forgetting curve starts tracking retrievability.
 
@@ -634,6 +782,11 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 │  │ SimHash  │  │Personality│  │ Temporal │           │
 │  │  Dedup   │  │  Engine   │  │  Facts   │           │
 │  └──────────┘  └──────────┘  └──────────┘           │
+│                                                       │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
+│  │ Thymus   │  │  Soma    │  │ Chiasm   │           │
+│  │ (Quality)│  │(Registry)│  │ (Tasks)  │           │
+│  └──────────┘  └──────────┘  └──────────┘           │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -647,7 +800,7 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 
 ### Supported LLM Providers
 
-Engram works with any OpenAI-compatible provider via `LLM_URL`, `LLM_API_KEY`, and `LLM_MODEL`. Automatic failover across up to 3 providers.
+Engram works with any OpenAI-compatible provider via `LLM_URL`, `LLM_API_KEY`, and `LLM_MODEL`. Supports up to 10 providers with automatic failover or round-robin rotation.
 
 | Provider | Example URL | Example Model |
 |----------|-------------|---------------|
@@ -659,21 +812,6 @@ Engram works with any OpenAI-compatible provider via `LLM_URL`, `LLM_API_KEY`, a
 | **Anthropic** | `https://api.anthropic.com/v1/messages` | `claude-sonnet-4-20250514` |
 | **Ollama** | `http://127.0.0.1:11434/v1/chat/completions` | `llama3` |
 | **LiteLLM** | `http://127.0.0.1:4000/v1/chat/completions` | Any routed model |
-
----
-
-## GUI
-
-Engram includes a WebGL graph visualization at `/gui`. Login with your `ENGRAM_GUI_PASSWORD`.
-
-**Features:**
-- Interactive galaxy-style memory graph
-- Click memories to view details
-- Create, edit, archive, and delete memories
-- Semantic search with hybrid client/API matching
-- Category filters and sorting
-- Keyboard shortcuts (L=list, N=new, Z=fit, C=center, arrows=navigate)
-- Export data
 
 ---
 
@@ -689,6 +827,7 @@ Engram includes a WebGL graph visualization at `/gui`. Login with your `ENGRAM_G
 | `ENGRAM_GUI_PASSWORD` | required | GUI login password unless `ENGRAM_OPEN_ACCESS=1` |
 | `ENGRAM_OPEN_ACCESS` | `0` | Set `1` for unauthenticated single-user mode |
 | `ENGRAM_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error`, `none` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | unset | Enable OpenTelemetry tracing (e.g. `http://localhost:4318`) |
 | `ENGRAM_CORS_ORIGIN` | unset | Optional allowed browser origin for cross-origin access |
 | `ENGRAM_MAX_BODY_SIZE` | `1048576` | Max request body (bytes) |
 | `ENGRAM_MAX_CONTENT_SIZE` | `102400` | Max memory content (bytes) |
@@ -696,7 +835,7 @@ Engram includes a WebGL graph visualization at `/gui`. Login with your `ENGRAM_G
 | `ENGRAM_EMBEDDING_PROVIDER` | `local` | Embedding provider: `local`, `google`, `vertex` |
 | `ENGRAM_EMBEDDING_DIM` | auto | Embedding dimension (1024 for local, 768 for google/vertex) |
 | `ENGRAM_CROSS_ENCODER` | `1` | Set `0` to disable the ONNX cross-encoder reranker |
-| `ENGRAM_RERANKER` | `1` | Set `0` to disable LLM-based reranking |
+| `ENGRAM_RERANKER` | `1` | Set `0` to disable all reranking in search results |
 | `ENGRAM_RERANKER_TOP_K` | `12` | Rerank top K candidates |
 | `ENGRAM_RERANKER_FP32` | `0` | Set `1` for full-precision reranker instead of quantized INT8 |
 | `GOOGLE_API_KEY` | - | Google AI Studio API key (for `google` embedding provider) |
@@ -711,6 +850,8 @@ Engram includes a WebGL graph visualization at `/gui`. Login with your `ENGRAM_G
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `ENGRAM_DECAY_FLOOR` | `0.3` | Minimum decay multiplier (0-1). Lower values penalize stale memories harder |
+| `ENGRAM_PAGERANK_WEIGHT` | `0.15` | PageRank boost weight in search scoring (0-15% boost for hub memories) |
 | `ENGRAM_SEARCH_MIN_SCORE` | `0.58` | Min overall score for search results |
 | `ENGRAM_SEARCH_FACT_VECTOR_FLOOR` | `0.22` | Min vector score for fact_recall queries |
 | `ENGRAM_SEARCH_PREFERENCE_VECTOR_FLOOR` | `0.12` | Min vector score for preference queries |
@@ -726,6 +867,49 @@ All data lives in a single libsql database (`data/memory.db`). Embedding BLOBs a
 **Backup:** `GET /backup` returns a consistent SQLite snapshot via `VACUUM INTO` (admin required). Safe to call under write load. WAL checkpoints every 5 minutes and on graceful shutdown. Manual checkpoint via `POST /checkpoint`.
 
 **Audit:** `GET /audit` shows all mutations - who stored, deleted, archived, or modified memories, from which IP, with request IDs.
+
+
+### Safe Deployment
+
+Production source files are locked immutable (`chattr +i`). Direct writes -- including SCP, git checkout, and editor saves -- are blocked at the kernel level.
+
+To make changes:
+
+1. **Start staging** -- copies production into an unlocked staging directory and launches on port 4201:
+   ```bash
+   /opt/engram/start-staging.sh
+   ```
+
+2. **Edit and test** -- modify files in `/opt/engram/staging/`, then verify:
+   ```bash
+   curl http://localhost:4201/health
+   ```
+
+3. **Promote or discard:**
+   - **Promote** -- unlocks production, copies staged files over, re-locks, and restarts:
+     ```bash
+     /opt/engram/promote.sh
+     ```
+   - **Discard** -- throws away staging, production untouched:
+     ```bash
+     /opt/engram/stop-staging.sh
+     ```
+
+Staging runs on-demand only. Production source is re-locked automatically after every promote.
+
+### Observability
+
+Engram ships Grafana dashboard provisioning JSON in `grafana/`:
+
+| Dashboard | Contents |
+|-----------|----------|
+| `engram-service-overview.json` | Request rate, p95 latency, error rate, search throughput, embedding/LLM latency, recent traces |
+| `chiasm-service-overview.json` | Chiasm task coordination metrics |
+| `service-map.json` | Inter-service dependency map |
+
+To enable tracing, set `OTEL_EXPORTER_OTLP_ENDPOINT` (e.g. `http://localhost:4318`). The server instruments `embed()`, `callLLM()`, and `hybridSearch()` with spans exported via OTLP HTTP. Metrics are available at `GET /metrics` in Prometheus format.
+
+Import the dashboards via Grafana's provisioning API or the UI (Dashboards > Import > Upload JSON).
 
 ### Reverse Proxy
 

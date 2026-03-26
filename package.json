@@ -1,6 +1,6 @@
 {
   "name": "@zanfiel/engram",
-  "version": "5.8.3",
+  "version": "5.10.0",
   "type": "module",
   "repository": {
     "type": "git",
@@ -30,7 +30,8 @@
   ],
   "bin": {
     "engram": "./server-split.ts",
-    "engram-mcp": "./mcp-server.ts"
+    "engram-mcp": "./mcp-server.ts",
+    "engram-cli": "./src/cli/index.ts"
   },
   "scripts": {
     "start": "node --experimental-strip-types --env-file=.env server-split.ts",
@@ -42,7 +43,14 @@
     "backup-drill": "bash scripts/backup-restore-drill.sh"
   },
   "dependencies": {
+    "@libsql/linux-x64-gnu": "^0.5.28",
     "@modelcontextprotocol/sdk": "^1.27.1",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.213.0",
+    "@opentelemetry/instrumentation-http": "^0.213.0",
+    "@opentelemetry/resources": "^2.6.0",
+    "@opentelemetry/sdk-node": "^0.213.0",
+    "@opentelemetry/semantic-conventions": "^1.40.0",
     "graphology": "^0.26.0",
     "graphology-communities-louvain": "^2.0.2",
     "graphology-metrics": "^2.4.0",

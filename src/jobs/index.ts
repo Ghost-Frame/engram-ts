@@ -136,3 +136,62 @@ export function cleanupCompletedJobs(): number {
 export function recoverStuckJobs(): number {
   return (recoverStmt.run() as any).changes || 0;
 }
+
+// ── Job visibility for Phase 2.2 ────────────────────────────────────────────
+
+const listFailedStmt = db.prepare(
+  `SELECT id, type, payload, attempts, max_attempts, error, created_at, completed_at
+   FROM jobs WHERE status = 'failed'
+   ORDER BY completed_at DESC LIMIT ? OFFSET ?`
+);
+
+const countFailedStmt = db.prepare(
+  `SELECT COUNT(*) as count FROM jobs WHERE status = 'failed'`
+);
+
+const listPendingJobsStmt = db.prepare(
+  `SELECT id, type, payload, attempts, created_at, next_retry_at
+   FROM jobs WHERE status = 'pending'
+   ORDER BY created_at ASC LIMIT ? OFFSET ?`
+);
+
+const listRunningJobsStmt = db.prepare(
+  `SELECT id, type, payload, attempts, claimed_at
+   FROM jobs WHERE status = 'running'
+   ORDER BY claimed_at ASC`
+);
+
+const retryFailedStmt = db.prepare(
+  `UPDATE jobs SET status = 'pending', error = NULL, attempts = 0, next_retry_at = NULL
+   WHERE id = ? AND status = 'failed'
+   RETURNING id`
+);
+
+const purgeFailedStmt = db.prepare(
+  `DELETE FROM jobs WHERE status = 'failed' AND completed_at < datetime('now', '-' || ? || ' days')`
+);
+
+export function listFailedJobs(limit: number = 50, offset: number = 0) {
+  return listFailedStmt.all(limit, offset);
+}
+
+export function countFailedJobs(): number {
+  return (countFailedStmt.get() as { count: number }).count;
+}
+
+export function listPendingJobs(limit: number = 50, offset: number = 0) {
+  return listPendingJobsStmt.all(limit, offset);
+}
+
+export function listRunningJobs() {
+  return listRunningJobsStmt.all();
+}
+
+export function retryFailedJob(id: number): boolean {
+  const result = retryFailedStmt.get(id) as any;
+  return !!result;
+}
+
+export function purgeFailedJobs(olderThanDays: number = 7): number {
+  return (purgeFailedStmt.run(olderThanDays) as any).changes || 0;
+}

@@ -3,8 +3,8 @@
 // ============================================================================
 
 import { createHash, randomUUID, timingSafeEqual } from "crypto";
-import { readFileSync, writeFileSync } from "fs";
-import { resolve, dirname } from "path";
+import { readFileSync, writeFileSync, existsSync } from "fs";
+import { resolve, dirname, extname } from "path";
 import { fileURLToPath } from "url";
 import { DATA_DIR, GUI_AUTH_MAX_ATTEMPTS, GUI_AUTH_WINDOW_MS, GUI_AUTH_LOCKOUT_MS } from "../config/index.ts";
 import { log } from "../config/logger.ts";
@@ -24,7 +24,16 @@ export const GUI_PASSWORD = (() => {
 })();
 
 export const GUI_AUTH_CONFIGURED = GUI_PASSWORD !== null;
-export const GUI_COOKIE_ATTRIBUTES = "Path=/; HttpOnly; Secure; SameSite=Strict";
+// Returns cookie attributes; omits Secure when the request arrives over plain HTTP
+// so that local/LAN access (http://) works without the cookie being silently discarded.
+export function guiCookieAttributes(req?: Request): string {
+  const isHttps = req
+    ? (req.url.startsWith("https://") || req.headers.get("x-forwarded-proto") === "https")
+    : false;
+  return isHttps
+    ? "Path=/; HttpOnly; Secure; SameSite=Strict"
+    : "Path=/; HttpOnly; SameSite=Lax";
+}
 
 // HMAC secret for cookie signing (top-level await)
 const GUI_HMAC_SECRET = await (async () => {
@@ -70,13 +79,24 @@ export function guiAuthed(req: Request): boolean {
   return guiVerifyCookie(ck.split("=").slice(1).join("="));
 }
 
-// HTML serving
-let GUI_HTML = readFileSync(resolve(SERVER_DIR, "engram-gui.html"), "utf-8");
+// HTML serving — prefer SvelteKit build, fall back to legacy single HTML
+const GUI_BUILD_DIR = resolve(SERVER_DIR, "gui/build");
+const USE_SVELTE_BUILD = existsSync(resolve(GUI_BUILD_DIR, "index.html"));
+
+function readGuiHtml(): string {
+  return USE_SVELTE_BUILD
+    ? readFileSync(resolve(GUI_BUILD_DIR, "index.html"), "utf-8")
+    : readFileSync(resolve(SERVER_DIR, "engram-gui.html"), "utf-8");
+}
+
+let GUI_HTML = readGuiHtml();
 let LOGIN_HTML = readFileSync(resolve(SERVER_DIR, "engram-login.html"), "utf-8");
 const GUI_HOT_RELOAD = process.env.ENGRAM_HOT_RELOAD === "1";
 
+if (USE_SVELTE_BUILD) log.info({ msg: "gui_mode", mode: "sveltekit", build: GUI_BUILD_DIR });
+
 export function getGuiHtml(): string {
-  if (GUI_HOT_RELOAD) return readFileSync(resolve(SERVER_DIR, "engram-gui.html"), "utf-8");
+  if (GUI_HOT_RELOAD) return readGuiHtml();
   return GUI_HTML;
 }
 
@@ -86,7 +106,41 @@ export function getLoginHtml(): string {
 }
 
 export function reloadGuiHtml(): void {
-  GUI_HTML = readFileSync(resolve(SERVER_DIR, "engram-gui.html"), "utf-8");
+  GUI_HTML = readGuiHtml();
   LOGIN_HTML = readFileSync(resolve(SERVER_DIR, "engram-login.html"), "utf-8");
   log.info({ msg: "gui_reloaded", trigger: "SIGHUP" });
 }
+
+// Static asset serving for SvelteKit build output
+const MIME_TYPES: Record<string, string> = {
+  ".js": "application/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".wasm": "application/wasm",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".webp": "image/webp",
+  ".ico": "image/x-icon",
+};
+
+export function serveGuiAsset(pathname: string): Response | null {
+  if (!USE_SVELTE_BUILD) return null;
+  const filePath = resolve(GUI_BUILD_DIR, pathname.slice(1));
+  if (!filePath.startsWith(GUI_BUILD_DIR)) return null;
+  try {
+    const content = readFileSync(filePath);
+    const ext = extname(filePath);
+    return new Response(content, {
+      headers: {
+        "Content-Type": MIME_TYPES[ext] || "application/octet-stream",
+        "Cache-Control": pathname.includes("/immutable/") ? "public, max-age=31536000, immutable" : "no-cache",
+      },
+    });
+  } catch {
+    return null;
+  }
+}
+
+// SvelteKit uses client-side routing; these paths all serve the same index.html
+export const GUI_SPA_ROUTES = new Set(["/", "/gui", "/graph", "/search", "/inbox", "/timeline", "/entities", "/projects"]);

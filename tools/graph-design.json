@@ -1,0 +1,85 @@
+{
+  "$schema": "Graph visual design parameters - edit this, then run graph-preview.mjs to see results",
+
+  "colors": {
+    "categories": {
+      "task":      "#7b8fff",
+      "discovery": "#22d89a",
+      "decision":  "#ffc830",
+      "state":     "#b28dff",
+      "issue":     "#f87171",
+      "general":   "#94a3b8",
+      "entity":    "#2dd4bf",
+      "project":   "#fb923c",
+      "reference": "#60a5fa"
+    },
+    "background": {
+      "gradient_top":    "#0a0e2e",
+      "gradient_bottom": "#1a0a3e",
+      "gradient_accent": "#0d1547"
+    },
+    "edges": {
+      "same_community": "rgba(255,255,255,0.06)",
+      "cross_community": "rgba(255,255,255,0.25)",
+      "highlighted": "rgba(255,255,255,0.9)"
+    }
+  },
+
+  "nodes": {
+    "base_radius": 4,
+    "importance_scale": 8,
+    "source_count_scale": 0.3,
+    "entity_min_radius": 8,
+    "project_min_radius": 10,
+    "max_radius": 20,
+    "glow_size_multiplier": 3.0,
+    "glow_alpha": 0.25
+  },
+
+  "shader": {
+    "neuron_wobble_amplitude": [0.14, 0.09, 0.05],
+    "neuron_wobble_frequencies": [3, 5, 8],
+    "neuron_cell_radius": 0.52,
+    "nucleus_radius_ratio": 0.45,
+    "membrane_edge_width": 0.08,
+    "nucleus_brightness": 0.9,
+    "membrane_brightness": 0.8,
+    "cytoplasm_brightness": 0.15,
+    "selection_ring_radius": 0.8,
+    "selection_ring_width": 0.08
+  },
+
+  "force": {
+    "alpha_initial": 1,
+    "alpha_decay": 0.015,
+    "alpha_min": 0.001,
+    "link_distance_base": 30,
+    "link_distance_weight_scale": 80,
+    "link_strength_base": 0.15,
+    "link_strength_weight_scale": 0.35,
+    "charge_base": -180,
+    "charge_importance_scale": -100,
+    "charge_distance_max": 1000,
+    "collision_strength": 0.7,
+    "center_strength": 0.012,
+    "cluster_strength": 0.08
+  },
+
+  "edges_visual": {
+    "same_community_alpha_base": 0.06,
+    "same_community_alpha_weight": 0.15,
+    "cross_community_alpha_base": 0.25,
+    "cross_community_alpha_weight": 0.5,
+    "dim_multiplier": 0.85,
+    "highlight_multiplier": 2.5,
+    "highlight_max": 0.9
+  },
+
+  "labels": {
+    "font_size": 10,
+    "font_family": "Inter",
+    "color": "rgba(255,255,255,0.6)",
+    "min_zoom_to_show": 0.8,
+    "max_chars": 30
+  }
+}

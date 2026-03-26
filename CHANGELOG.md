@@ -5,6 +5,49 @@ All notable changes to Engram will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.0] - 2026-03-26
+
+### Added
+- **Syntheos Phase 1: Service Consolidation** - Three standalone microservices absorbed into the Engram monolith as native modules under `src/services/`. Zero new dependencies, zero new processes. All services share the main database, auth middleware, and event bus.
+- **Thymus** (`src/services/thymus/`): Rubric-based quality evaluation engine. Create rubrics with weighted criteria, score agent outputs, aggregate per-agent stats, and record arbitrary quality metrics. Endpoints under `/thymus/*`.
+- **Soma** (`src/services/soma/`): Agent lifecycle registry. Register agents with capabilities, track heartbeats, detect stale agents, organize into groups, collect structured logs. Endpoints under `/soma/*`.
+- **Chiasm** (`src/services/chiasm/`): Task tracking and coordination. Agents create tasks, update status with audit trail, read each other's active work via a feed endpoint. Endpoints under `/tasks/*` and `/feed`.
+- **Shared service infrastructure** (`src/services/`): Common types, helpers (`parseJsonFields`, `parseJsonFieldsAll`), Axon event bus stub for cross-service pub/sub, bounded integer validation.
+- **Service design spec** (`docs/superpowers/plans/2026-03-26-service-consolidation-design.md`): Architecture document for the consolidation approach.
+
+### Fixed
+- Division by zero in Thymus scoring normalization when `scale_max === scale_min`
+- Soma heartbeat endpoint now validates status against allowed values before passing to engine
+- Soma `deregisterAgent` wrapped in transaction for atomic cascade deletes
+- Added `ON DELETE CASCADE` to Soma foreign key references (agent_groups, agent_logs)
+- Added `CHECK` constraint on Chiasm task status column
+
+## [5.9.5] - 2026-03-25
+
+### Fixed
+- `/ready` probe returned 503 on empty databases: was checking embedding cache size instead of model readiness. Fresh or cleaned-up DBs with zero memories were incorrectly marked "degraded" even though the embedding model was fully loaded.
+
+## [5.9.4] - 2026-03-25
+
+### Fixed
+- Fresh-database crash: `recall_hits` migration ran after prepared statements that referenced it, causing "no such column" on first startup
+- `/graph` GET returned GUI HTML to API clients instead of JSON (now checks Accept header)
+- Documentation accuracy: removed false `/graph` community_id claim, fixed auto-link threshold (0.7 to 0.55), fixed LLM provider count (3 to 10), fixed CLI command names
+- Replaced nonexistent Python SDK with CLI examples on landing page
+- Fixed MCP server config in landing page (mcp-server.mjs to mcp-server.ts)
+- Fixed SDK package name on landing page (@engram/sdk to @zanfiel/engram/sdk)
+- Updated CONTRIBUTING.md to reflect v5.9 changes, removed shipped items from roadmap
+
+## [5.9.0] - 2026-03-22
+
+### Added
+- **PageRank algorithm** (`src/graph/pagerank.ts`): iterative weighted PageRank with type-aware edge weights (caused_by/causes 2.0x, updates/corrects 1.5x, extends 1.3x). Normalizes scores to 0-1 and stores in `pagerank_score` column. Converges in ~25 iterations for typical graphs.
+- **Search centrality boost**: search scoring now applies a 0-15% multiplicative boost from PageRank scores. Structurally important memories surface higher in `/search`, `/context`, and `/recall` results.
+- **Auto graph analysis on store**: every 25th memory stored triggers community detection and PageRank recomputation via the post-store durable job pipeline. No impact on store latency.
+- **`GET /graph/timeline` endpoint**: returns weekly aggregates of graph growth (new memories, running totals, link counts per week). Enables temporal evolution analysis.
+- **Enriched `/graph` response**: nodes now include `pagerank_score` field. Node `size` boosted by PageRank.
+- **`pagerank_score` column**: auto-created on memories table via `ensurePageRankColumn()`.
+
 ## [5.8.3] - 2026-03-20
 
 ### Added

@@ -1,0 +1,9 @@
+name: "Engram CodeQL config"
+
+paths-ignore:
+  - "**/*.svelte"
+  - "gui/.svelte-kit"
+  - "gui/build"
+  - ".worktrees"
+  - "backup-*"
+  - "src.old"

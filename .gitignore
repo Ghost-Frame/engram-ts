@@ -54,3 +54,6 @@ SPRINT-SESSION-*.md
 COMMIT_INSTRUCTIONS.txt
 UsersZan*
 *.bak*
+
+# Worktrees
+.worktrees/

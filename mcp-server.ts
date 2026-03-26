@@ -35,7 +35,7 @@ async function engram(path: string, method = "GET", body?: unknown) {
 }
 
 const server = new Server(
-  { name: "engram", version: "5.8.3" },
+  { name: "engram", version: "5.10.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -195,6 +195,147 @@ const TOOLS: ToolDefinition[] = [
         ttl: { type: "number", description: "TTL in minutes (default: 30, max: 1440)" },
       },
       required: ["action"],
+    },
+  },
+  // ---- Structural Analysis Tools ----
+  {
+    name: "structural_analyze",
+    description: "Structural analysis of a system described in EN syntax. Returns topology classification (Pipeline, Tree, Fork-Join, DAG, Cycle, Disconnected), node roles (SOURCE, SINK, FORK, JOIN, HUB, PIPELINE), and bridges (single points of failure). EN syntax: Subject do: action needs: inputs yields: outputs.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        source: { type: "string", description: "EN source code describing the system" },
+      },
+      required: ["source"],
+    },
+  },
+  {
+    name: "structural_detail",
+    description: "Deep structural analysis -- concurrency metrics, critical path, flow depth levels, resilience analysis with bridge implications.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        source: { type: "string", description: "EN source code describing the system" },
+      },
+      required: ["source"],
+    },
+  },
+  {
+    name: "structural_between",
+    description: "Betweenness centrality for a node -- what fraction of all shortest paths flow through it. Score 0-1.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        source: { type: "string", description: "EN source code describing the system" },
+        node: { type: "string", description: "Node name to compute centrality for" },
+      },
+      required: ["source", "node"],
+    },
+  },
+  {
+    name: "structural_distance",
+    description: "Shortest path between two nodes with subsystem crossing annotations.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        source: { type: "string", description: "EN source code describing the system" },
+        from: { type: "string", description: "Starting node name" },
+        to: { type: "string", description: "Target node name" },
+      },
+      required: ["source", "from", "to"],
+    },
+  },
+  {
+    name: "structural_trace",
+    description: "Follow directed flow from node A to node B respecting yields->needs direction. Falls back to undirected and flags reverse edges.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        source: { type: "string", description: "EN source code describing the system" },
+        from: { type: "string", description: "Starting node name" },
+        to: { type: "string", description: "Target node name" },
+      },
+      required: ["source", "from", "to"],
+    },
+  },
+  {
+    name: "structural_impact",
+    description: "Blast radius -- remove a node and see what disconnects. Works for any domain: infra, org charts, compliance flows.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        source: { type: "string", description: "EN source code describing the system" },
+        node: { type: "string", description: "Node to remove for impact analysis" },
+      },
+      required: ["source", "node"],
+    },
+  },
+  {
+    name: "structural_diff",
+    description: "Structural diff between two systems. Reports topology changes, role changes, nodes added/removed, bridge count changes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        source_a: { type: "string", description: "EN source for the first system" },
+        source_b: { type: "string", description: "EN source for the second system" },
+      },
+      required: ["source_a", "source_b"],
+    },
+  },
+  {
+    name: "structural_evolve",
+    description: "Dry-run architectural changes. Apply a patch and see the structural delta plus new/eliminated bridges.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        source: { type: "string", description: "EN source for the current system" },
+        patch: { type: "string", description: "EN source patch to apply" },
+      },
+      required: ["source", "patch"],
+    },
+  },
+  {
+    name: "structural_categorize",
+    description: "Auto-discover subsystem boundaries from dependency structure using Louvain community detection.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        source: { type: "string", description: "EN source code describing the system" },
+      },
+      required: ["source"],
+    },
+  },
+  {
+    name: "structural_extract",
+    description: "Extract a named subsystem as standalone EN source. Reports boundary inputs, outputs, and internal entities.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        source: { type: "string", description: "EN source code describing the system" },
+        subsystem: { type: "string", description: "Name of the subsystem to extract" },
+      },
+      required: ["source", "subsystem"],
+    },
+  },
+  {
+    name: "structural_compose",
+    description: "Merge two EN graphs into one with entity linking.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        source_a: { type: "string", description: "EN source for the first system" },
+        source_b: { type: "string", description: "EN source for the second system" },
+        links: { type: "string", description: "Entity links: 'a.node1=b.node2, a.node3=b.node4'" },
+      },
+      required: ["source_a", "source_b"],
+    },
+  },
+  {
+    name: "structural_memory_graph",
+    description: "Analyze Engram's own memory link graph structurally. Returns topology, node roles, bridges, and metrics.",
+    inputSchema: {
+      type: "object",
+      properties: {},
     },
   },
 ];
@@ -367,6 +508,68 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         if (entries.length === 0) return { content: [{ type: "text", text: "Scratchpad empty." }] };
         const text = entries.map((e: any) => `[${e.agent}/${e.session?.slice(0, 8)}] ${e.key}: ${e.value || "(empty)"}`).join("\n");
         return { content: [{ type: "text", text }] };
+      }
+
+      // ---- Structural Analysis Tools ----
+
+      case "structural_analyze": {
+        const result = await engram("/structural/analyze", "POST", { source: args!.source });
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      }
+
+      case "structural_detail": {
+        const result = await engram("/structural/detail", "POST", { source: args!.source });
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      }
+
+      case "structural_between": {
+        const result = await engram("/structural/between", "POST", { source: args!.source, node: args!.node });
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      }
+
+      case "structural_distance": {
+        const result = await engram("/structural/distance", "POST", { source: args!.source, from: args!.from, to: args!.to });
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      }
+
+      case "structural_trace": {
+        const result = await engram("/structural/trace", "POST", { source: args!.source, from: args!.from, to: args!.to });
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      }
+
+      case "structural_impact": {
+        const result = await engram("/structural/impact", "POST", { source: args!.source, node: args!.node });
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      }
+
+      case "structural_diff": {
+        const result = await engram("/structural/diff", "POST", { source_a: args!.source_a, source_b: args!.source_b });
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      }
+
+      case "structural_evolve": {
+        const result = await engram("/structural/evolve", "POST", { source: args!.source, patch: args!.patch });
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      }
+
+      case "structural_categorize": {
+        const result = await engram("/structural/categorize", "POST", { source: args!.source });
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      }
+
+      case "structural_extract": {
+        const result = await engram("/structural/extract", "POST", { source: args!.source, subsystem: args!.subsystem });
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      }
+
+      case "structural_compose": {
+        const result = await engram("/structural/compose", "POST", { source_a: args!.source_a, source_b: args!.source_b, links: args!.links ?? "" });
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      }
+
+      case "structural_memory_graph": {
+        const result = await engram("/structural/memory-graph");
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       }
 
       default:
