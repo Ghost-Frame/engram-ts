@@ -46,10 +46,13 @@ src/
 ├── platform/      webhooks, digests, sync, import/export
 ├── reranker/      ONNX cross-encoder (BGE-reranker-base) with SentencePiece tokenizer
 ├── routes/        HTTP route definitions
-├── services/      consolidated microservices (Thymus, Soma, Chiasm)
+├── services/      consolidated Syntheos microservices
 │   ├── thymus/    rubric-based quality evaluation and scoring
 │   ├── soma/      agent registry, heartbeat, groups, logs
-│   └── chiasm/    task tracking and agent coordination
+│   ├── chiasm/    task tracking and agent coordination
+│   ├── axon/      event bus with pub/sub, SSE streaming, webhook fan-out
+│   ├── loom/      workflow orchestration with step executors
+│   └── broca/     action logging, template narration, NL query
 └── tier4/         causal chains, predictive recall, valence scoring
 
 engram-gui.html    WebGL galaxy visualization (standalone HTML)

@@ -5,6 +5,24 @@ All notable changes to Engram will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.11.0] - 2026-03-26
+
+### Added
+- **Syntheos Phase 2: Axon, Loom, Broca consolidation** -- Three more standalone microservices absorbed into the Engram monolith under `src/services/`. All six Syntheos services now run as native modules.
+- **Axon** (`src/services/axon/`): Real-time event bus with pub/sub channels, SSE streaming via Web ReadableStream, webhook fan-out with SSRF validation, and cursor-based polling. Replaces the Phase 1 no-op stub. Endpoints under `/axon/*`.
+- **Loom** (`src/services/loom/`): Workflow orchestration engine with dependency-based step execution. Supports webhook, LLM, and transform step types with retry logic. Endpoints under `/loom/*`.
+- **Broca** (`src/services/broca/`): Agent action logger with 30+ template-based narratives and LLM fallback. Natural language query gateway (`POST /broca/ask`) routes questions to internal services via direct function calls. Endpoints under `/broca/*`.
+- Hourly Axon event pruning timer for expired events
+
+### Fixed
+- Replaced Axon no-op stub with real event bus (Phase 1 services now emit real events)
+- Fixed Axon `getEvent()` bug (`r.payload` to `row.payload` from standalone source)
+- Moved `publish()` calls outside transaction callbacks in Chiasm engine
+- Added SSRF validation on Axon webhook URLs and Loom step executor URLs
+- Added `ON DELETE CASCADE` on all Loom foreign keys
+- Added `CHECK` constraints on Loom run status, step status, and step type columns
+- Broke recursive `advanceRun` chain in Loom with `setImmediate()` to prevent stack overflow
+
 ## [5.10.0] - 2026-03-26
 
 ### Added
