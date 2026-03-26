@@ -660,7 +660,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       }
       case "skill_execute": {
         const { task, skill_dirs, search_scope = "all" } = args;
-        const result = await engramWithTimeout("/skills/execute", "POST", { task, skill_dirs, search_scope }, 120_000);
+        const result = await engramWithTimeout("/skills/execute", "POST", { task, skill_dirs, search_scope }, 120_000) as any;
         const skills = (result.skills_used ?? []).join(", ");
         return { content: [{ type: "text", text: `${result.response}\n\n---\nSkills used: ${skills || "none"}` }] };
       }

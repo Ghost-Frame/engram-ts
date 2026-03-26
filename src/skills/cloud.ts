@@ -5,7 +5,7 @@ import type { CloudSkillCandidate, UploadMeta } from "./types.ts";
 
 const TIMEOUT = 10_000;
 
-function cloudHeaders(): HeadersInit {
+function cloudHeaders(): Record<string, string> {
   return {
     "Content-Type": "application/json",
     "Authorization": `Bearer ${OPENSPACE_API_KEY}`,
