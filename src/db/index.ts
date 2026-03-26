@@ -2134,7 +2134,7 @@ export function getExpectedTables(): string[] {
     "causal_chains", "causal_links", "reconsolidations", "temporal_patterns",
     "jobs", "scheduler_leases", "schema_versions",
     "rate_limits", "tenant_quotas",
-    "skill_records", "skill_lineage_parents", "skill_tags",
+    "skill_records", "skill_lineage_parents", "skill_tags", "skills_fts",
   ];
 }
 

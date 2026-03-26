@@ -8108,9 +8108,20 @@ If no meaningful inferences, return {"derived": []}`;
       const task = String(body?.task || "").trim();
       if (!task) return errorResponse("task is required", 400, requestId);
       const extraDirs: string[] = Array.isArray(body?.skill_dirs) ? body.skill_dirs.map(String) : [];
+      const searchScope = body?.search_scope ?? "all";
       if (extraDirs.length) await syncSkills(extraDirs);
-      const localResults = await searchSkillsLocal(task, 5);
-      const topSkills = localResults.slice(0, 3).map(r => {
+      let searchResults = await searchSkillsLocal(task, 5);
+      if (searchScope === "all" && searchResults.length < 3) {
+        const cloudResults = await searchSkillsCloud(task, 5);
+        const seen = new Set(searchResults.map(r => r.skill_id));
+        const cloudMapped = cloudResults.filter(c => !seen.has(c.skill_id)).map(c => ({
+          skill_id: c.skill_id, name: c.name, description: c.description,
+          path: "", category: c.category, origin: c.origin,
+          score: 0.5, source: "cloud" as const,
+        }));
+        searchResults = [...searchResults, ...cloudMapped].slice(0, 5);
+      }
+      const topSkills = searchResults.slice(0, 3).map(r => {
         const row = getSkillById.get(r.skill_id) as any;
         if (row) incrementSkillSelectionsStmt.run(r.skill_id);
         return row ? { name: row.name, content: row.content } : null;

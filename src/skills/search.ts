@@ -1,6 +1,6 @@
 import { embed } from "../embeddings/index.ts";
 import { sanitizeFTS } from "../helpers/index.ts";
-import { searchSkillsFTSStmt, getAllSkillEmbeddingsStmt } from "../db/index.ts";
+import { searchSkillsFTSStmt, getAllSkillEmbeddingsStmt, getSkillById } from "../db/index.ts";
 import { log } from "../config/logger.ts";
 import type { SkillSearchResult } from "./types.ts";
 
@@ -65,10 +65,10 @@ export async function searchSkillsLocal(query: string, limit = 20): Promise<Skil
     score: 1 / (RRF_K + (ftsMap.get(id) ?? maxRank)) + 1 / (RRF_K + (vecMap.get(id) ?? maxRank)),
   })).sort((a, b) => b.score - a.score).slice(0, limit);
 
-  // Hydrate with full metadata from FTS results (all candidates are already queried)
+  // Hydrate with metadata: prefer FTS row, fall back to DB lookup for vector-only matches
   const ftsById = new Map(ftsRows.map(r => [r.skill_id, r]));
   return fused.map(({ skill_id, score }) => {
-    const row = ftsById.get(skill_id);
+    const row = ftsById.get(skill_id) ?? (getSkillById.get(skill_id) as any);
     return {
       skill_id,
       name: row?.name ?? skill_id,
