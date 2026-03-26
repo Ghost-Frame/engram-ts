@@ -1944,6 +1944,81 @@ export const cleanupOldUsage = db.prepare(
   `DELETE FROM usage_events WHERE created_at < datetime('now', '-' || ? || ' days')`
 );
 
+// ============================================================================
+// v6.0 -- Skills registry (OpenSpace native integration)
+// ============================================================================
+
+migrate(`
+  CREATE TABLE IF NOT EXISTS skill_records (
+    skill_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    path TEXT NOT NULL,
+    content TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT 'workflow',
+    origin TEXT NOT NULL DEFAULT 'imported',
+    generation INTEGER NOT NULL DEFAULT 0,
+    lineage_change_summary TEXT,
+    creator_id TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    total_selections INTEGER NOT NULL DEFAULT 0,
+    total_applied INTEGER NOT NULL DEFAULT 0,
+    total_completions INTEGER NOT NULL DEFAULT 0,
+    embedding BLOB,
+    first_seen TEXT NOT NULL DEFAULT (datetime('now')),
+    last_updated TEXT NOT NULL DEFAULT (datetime('now'))
+  )
+`);
+
+migrate(`ALTER TABLE skill_records ADD COLUMN ${VECTOR_COL} FLOAT32(${EMBEDDING_DIM})`);
+migrate(`CREATE INDEX IF NOT EXISTS idx_skill_records_vec ON skill_records(libsql_vector_idx(${VECTOR_COL}))`);
+migrate(`CREATE INDEX IF NOT EXISTS idx_skill_records_name ON skill_records(name)`);
+migrate(`CREATE INDEX IF NOT EXISTS idx_skill_records_category ON skill_records(category)`);
+migrate(`CREATE INDEX IF NOT EXISTS idx_skill_records_active ON skill_records(is_active) WHERE is_active = 1`);
+
+migrate(`
+  CREATE TABLE IF NOT EXISTS skill_lineage_parents (
+    skill_id TEXT NOT NULL REFERENCES skill_records(skill_id) ON DELETE CASCADE,
+    parent_skill_id TEXT NOT NULL,
+    PRIMARY KEY (skill_id, parent_skill_id)
+  )
+`);
+
+migrate(`
+  CREATE TABLE IF NOT EXISTS skill_tags (
+    skill_id TEXT NOT NULL REFERENCES skill_records(skill_id) ON DELETE CASCADE,
+    tag TEXT NOT NULL,
+    PRIMARY KEY (skill_id, tag)
+  )
+`);
+migrate(`CREATE INDEX IF NOT EXISTS idx_skill_tags_tag ON skill_tags(tag)`);
+
+migrate(`
+  CREATE VIRTUAL TABLE IF NOT EXISTS skills_fts USING fts5(
+    name, description, content,
+    content='skill_records',
+    content_rowid='rowid',
+    tokenize='porter unicode61'
+  )
+`);
+
+migrate(`CREATE TRIGGER IF NOT EXISTS skills_fts_ai AFTER INSERT ON skill_records BEGIN
+  INSERT INTO skills_fts(rowid, name, description, content)
+  VALUES (new.rowid, new.name, new.description, new.content);
+END`);
+
+migrate(`CREATE TRIGGER IF NOT EXISTS skills_fts_ad AFTER DELETE ON skill_records BEGIN
+  INSERT INTO skills_fts(skills_fts, rowid, name, description, content)
+  VALUES ('delete', old.rowid, old.name, old.description, old.content);
+END`);
+
+migrate(`CREATE TRIGGER IF NOT EXISTS skills_fts_au AFTER UPDATE ON skill_records BEGIN
+  INSERT INTO skills_fts(skills_fts, rowid, name, description, content)
+  VALUES ('delete', old.rowid, old.name, old.description, old.content);
+  INSERT INTO skills_fts(rowid, name, description, content)
+  VALUES (new.rowid, new.name, new.description, new.content);
+END`);
+
 // -- Skill prepared statements --
 
 export const upsertSkill = db.prepare(`
@@ -2113,77 +2188,4 @@ migrate(`
   END;
 `);
 
-// ============================================================================
-// v6.0 -- Skills registry (OpenSpace native integration)
-// ============================================================================
-
-migrate(`
-  CREATE TABLE IF NOT EXISTS skill_records (
-    skill_id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT '',
-    path TEXT NOT NULL,
-    content TEXT NOT NULL DEFAULT '',
-    category TEXT NOT NULL DEFAULT 'workflow',
-    origin TEXT NOT NULL DEFAULT 'imported',
-    generation INTEGER NOT NULL DEFAULT 0,
-    lineage_change_summary TEXT,
-    creator_id TEXT,
-    is_active INTEGER NOT NULL DEFAULT 1,
-    total_selections INTEGER NOT NULL DEFAULT 0,
-    total_applied INTEGER NOT NULL DEFAULT 0,
-    total_completions INTEGER NOT NULL DEFAULT 0,
-    embedding BLOB,
-    first_seen TEXT NOT NULL DEFAULT (datetime('now')),
-    last_updated TEXT NOT NULL DEFAULT (datetime('now'))
-  )
-`);
-
-migrate(`ALTER TABLE skill_records ADD COLUMN ${VECTOR_COL} FLOAT32(${EMBEDDING_DIM})`);
-migrate(`CREATE INDEX IF NOT EXISTS idx_skill_records_vec ON skill_records(libsql_vector_idx(${VECTOR_COL}))`);
-migrate(`CREATE INDEX IF NOT EXISTS idx_skill_records_name ON skill_records(name)`);
-migrate(`CREATE INDEX IF NOT EXISTS idx_skill_records_category ON skill_records(category)`);
-migrate(`CREATE INDEX IF NOT EXISTS idx_skill_records_active ON skill_records(is_active) WHERE is_active = 1`);
-
-migrate(`
-  CREATE TABLE IF NOT EXISTS skill_lineage_parents (
-    skill_id TEXT NOT NULL REFERENCES skill_records(skill_id) ON DELETE CASCADE,
-    parent_skill_id TEXT NOT NULL,
-    PRIMARY KEY (skill_id, parent_skill_id)
-  )
-`);
-
-migrate(`
-  CREATE TABLE IF NOT EXISTS skill_tags (
-    skill_id TEXT NOT NULL REFERENCES skill_records(skill_id) ON DELETE CASCADE,
-    tag TEXT NOT NULL,
-    PRIMARY KEY (skill_id, tag)
-  )
-`);
-migrate(`CREATE INDEX IF NOT EXISTS idx_skill_tags_tag ON skill_tags(tag)`);
-
-migrate(`
-  CREATE VIRTUAL TABLE IF NOT EXISTS skills_fts USING fts5(
-    name, description, content,
-    content='skill_records',
-    content_rowid='rowid',
-    tokenize='porter unicode61'
-  )
-`);
-
-migrate(`CREATE TRIGGER IF NOT EXISTS skills_fts_ai AFTER INSERT ON skill_records BEGIN
-  INSERT INTO skills_fts(rowid, name, description, content)
-  VALUES (new.rowid, new.name, new.description, new.content);
-END`);
-
-migrate(`CREATE TRIGGER IF NOT EXISTS skills_fts_ad AFTER DELETE ON skill_records BEGIN
-  INSERT INTO skills_fts(skills_fts, rowid, name, description, content)
-  VALUES ('delete', old.rowid, old.name, old.description, old.content);
-END`);
-
-migrate(`CREATE TRIGGER IF NOT EXISTS skills_fts_au AFTER UPDATE ON skill_records BEGIN
-  INSERT INTO skills_fts(skills_fts, rowid, name, description, content)
-  VALUES ('delete', old.rowid, old.name, old.description, old.content);
-  INSERT INTO skills_fts(rowid, name, description, content)
-  VALUES (new.rowid, new.name, new.description, new.content);
-END`);
+// (v6.0 skills migrations are above, before prepared statements)
