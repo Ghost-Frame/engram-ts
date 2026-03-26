@@ -5,7 +5,7 @@
 
 import { db } from "../../db/index.ts";
 import { parseJsonFields, parseJsonFieldsAll } from "../helpers.ts";
-import { publish } from "../axon-stub.ts";
+import { publish } from "../axon/bus.ts";
 import {
   insertRubric, getRubricById, getRubricByName, listRubricsStmt, deleteRubricStmt,
   insertEvaluation, getEvaluationById,
