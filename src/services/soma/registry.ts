@@ -88,9 +88,12 @@ export function updateAgent(
 
 export function deregisterAgent(id: number): boolean {
   const agent = getAgent(id);
-  deleteAgentLogs.run(id);
-  deleteAgentMemberships.run(id);
-  const info = deleteAgentStmt.run(id);
+  const runDelete = db.transaction(() => {
+    deleteAgentLogs.run(id);
+    deleteAgentMemberships.run(id);
+    return deleteAgentStmt.run(id);
+  });
+  const info = runDelete();
   if (info.changes > 0 && agent) {
     publish("system", "soma", "agent.deregistered", { agent_id: id, name: (agent as any).name });
   }

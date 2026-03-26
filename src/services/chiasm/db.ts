@@ -22,7 +22,7 @@ migrate(`
     agent TEXT NOT NULL,
     project TEXT NOT NULL,
     title TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'active',
+    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','paused','blocked','completed')),
     summary TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))

@@ -42,8 +42,8 @@ migrate(`
 
 migrate(`
   CREATE TABLE IF NOT EXISTS soma_agent_groups (
-    agent_id INTEGER NOT NULL REFERENCES soma_agents(id),
-    group_id INTEGER NOT NULL REFERENCES soma_groups(id),
+    agent_id INTEGER NOT NULL REFERENCES soma_agents(id) ON DELETE CASCADE,
+    group_id INTEGER NOT NULL REFERENCES soma_groups(id) ON DELETE CASCADE,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY(agent_id, group_id)
   )
@@ -52,7 +52,7 @@ migrate(`
 migrate(`
   CREATE TABLE IF NOT EXISTS soma_agent_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    agent_id INTEGER NOT NULL REFERENCES soma_agents(id),
+    agent_id INTEGER NOT NULL REFERENCES soma_agents(id) ON DELETE CASCADE,
     level TEXT NOT NULL DEFAULT 'info',
     message TEXT NOT NULL,
     data TEXT NOT NULL DEFAULT '{}',

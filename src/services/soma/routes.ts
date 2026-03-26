@@ -94,6 +94,9 @@ export async function handleSomaRoutes(
   const hbMatch = sub.match(/^\/agents\/(\d+)\/heartbeat$/);
   if (hbMatch && method === "POST") {
     const body = await req.json().catch(() => ({})) as any;
+    if (body.status !== undefined && !VALID_AGENT_STATUSES.has(body.status)) {
+      return errorResponse(`Invalid status. Must be one of: ${[...VALID_AGENT_STATUSES].join(", ")}`, 400, requestId);
+    }
     const agent = heartbeat(parseInt(hbMatch[1], 10), body.status);
     if (!agent) return errorResponse("Agent not found", 404, requestId);
     return json(agent);

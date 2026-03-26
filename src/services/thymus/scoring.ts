@@ -87,7 +87,8 @@ export function evaluate(
   let totalWeight = 0;
   for (const c of criteria) {
     const raw = scores[c.name];
-    const normalized = (raw - c.scale_min) / (c.scale_max - c.scale_min);
+    const range = c.scale_max - c.scale_min;
+    const normalized = range > 0 ? (raw - c.scale_min) / range : 0;
     weightedSum += normalized * c.weight;
     totalWeight += c.weight;
   }
