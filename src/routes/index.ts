@@ -25,6 +25,7 @@ import {
   AUTO_ARCHIVE_ENABLED, AUTO_ARCHIVE_RETRIEVABILITY, AUTO_ARCHIVE_MIN_AGE_DAYS, AUTO_ARCHIVE_MAX_ACCESS,
 } from "../config/index.ts";
 import { log, opsCounters } from "../config/logger.ts";
+import { handleThymusRoutes, handleSomaRoutes, handleChiasmRoutes } from "../services/index.ts";
 
 // Database + prepared statements
 import {
@@ -8035,6 +8036,21 @@ If no meaningful inferences, return {"derived": []}`;
       }
       const issues = Object.values(grouped).sort((a, b) => b.count - a.count);
       return json({ issues, total: errors.length, window: windowParam, since });
+    }
+
+    // ========================================================================
+    // CONSOLIDATED SERVICE ROUTES (Thymus, Soma, Chiasm)
+    // ========================================================================
+    {
+      const serviceRes =
+        await handleThymusRoutes(method, url, req, requestId) ??
+        await handleSomaRoutes(method, url, req, requestId) ??
+        await handleChiasmRoutes(method, url, req, requestId);
+      if (serviceRes) {
+        const elapsed = (performance.now() - requestStart).toFixed(1);
+        log.info({ msg: "req", method, path: url.pathname, status: serviceRes.status, ms: elapsed, ip: clientIp, user: auth.user_id, rid: requestId });
+        return serviceRes;
+      }
     }
 
     // ========================================================================
