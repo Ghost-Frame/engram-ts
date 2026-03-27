@@ -20,7 +20,7 @@ Memory, personality, reasoning, and trust in a single self-hosted system that le
 
 ![Engram CLI demo](tools/cli-demo.gif)
 
-![Engram memory graph visualization](tools/gui-demo-v2.gif)
+![Engram memory graph visualization](tools/gui-demo-v3.gif)
 
 ---
 
