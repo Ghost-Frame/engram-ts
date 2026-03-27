@@ -644,7 +644,7 @@
       // Bloom post-processing
       const bloomPass = new UnrealBloomPass(
         new THREE.Vector2(window.innerWidth, window.innerHeight),
-        1.3, 0.5, 0.12
+        1.8, 0.7, 0.08
       );
       graph.postProcessingComposer().addPass(bloomPass);
 
