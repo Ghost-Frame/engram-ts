@@ -2,464 +2,197 @@
 
 # Engram
 
-### Persistent memory for AI agents
+**The cognitive layer for AI agents.**
 
-Store, search, recall, and link memories with automatic embeddings,
-fact extraction, versioning, deduplication, and graph visualization.
+Memory, personality, reasoning, and trust in a single self-hosted system that learns, forgets, and grows.
 
-[![License: Elastic-2.0](https://img.shields.io/badge/License-Elastic--2.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-5.9.5-gold.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-5.9.5-gold.svg)](CHANGELOG.md) [![License](https://img.shields.io/badge/License-Elastic--2.0-blue.svg)](LICENSE) [![Node](https://img.shields.io/badge/node-%3E%3D22-green.svg)](https://nodejs.org) [![Docker](https://img.shields.io/badge/docker-compose-blue.svg)](docker-compose.yml)
 
-[Quick Start](#quick-start) · [API Reference](#api-reference) · [SDKs](#sdks) · [MCP Server](#mcp-server) · [CLI](#cli) · [Self-Host](#self-hosting)
+<!-- TODO: Add graph visualization GIF once GUI is polished -->
+
+[Quick Start](#quick-start) · [Features](#what-engram-does) · [Architecture](#architecture) · [API](#api-reference) · [CLI](#cli) · [SDK](#typescript-sdk) · [MCP](#mcp-server) · [Deploy](#deployment)
 
 </div>
 
 ---
 
-## What is Engram?
+<!-- Terminal demo: replace with SVG recording when available -->
+```
+$ engram-cli store "The auth service runs on port 9091" --category discovery
+Stored memory #847 (discovery)
 
-Engram gives your AI agents **long-term memory**. Instead of losing context between sessions, agents store what they learn and recall it when relevant, automatically.
+$ engram-cli search "where does auth run"
+#847 [discovery] 0.94 : The auth service runs on port 9091
 
-```bash
-# Store what the agent learns
-curl -X POST http://localhost:4200/store \
-  -H "Authorization: Bearer eg_your_key" \
-  -H "Content-Type: application/json" \
-  -d '{"content": "User prefers dark mode and uses Vim keybindings", "category": "decision", "importance": 8}'
-
-# Later, in a new session - recall relevant context
-curl -X POST http://localhost:4200/recall \
-  -H "Authorization: Bearer eg_your_key" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "setting up the user editor"}'
-# → Returns the dark mode + Vim preference automatically
+$ engram-cli context "setting up SSO"
+7 memories across 3 categories. Top: #847 (discovery), #203 (decision), #91 (reference)
 ```
 
-**Key features:**
+---
 
-- 🧠 **FSRS-6 spaced repetition** - cognitive science-backed memory decay using power-law forgetting curves (ported from [open-spaced-repetition](https://github.com/open-spaced-repetition/fsrs4anki))
-- 💪 **Dual-strength memory model** - Bjork & Bjork (1992) storage strength (never decays) + retrieval strength (decays via power law)
-- 🧬 **Reciprocal Rank Fusion search** - four-channel RRF scoring across vector similarity, FTS5 full-text, personality signals, and graph relationships
-- 🔗 **Auto-linking** - memories automatically connect via cosine similarity, forming a knowledge graph
-- 🧹 **SimHash deduplication** - 64-bit locality-sensitive hashing detects near-duplicates before embedding, saving compute
-- 🕐 **Bi-temporal fact tracking** - structured facts carry temporal validity windows with automatic contradiction-based invalidation
-- 🧩 **Entity cooccurrence graph** - entities that appear together build weighted relationships automatically
-- 🏘️ **Community detection** - label propagation groups related memories into discoverable clusters, auto-runs on store
-- 📈 **PageRank** - iterative weighted PageRank ranks memories by structural importance, not just connection count
-- 📊 **Graph timeline** - `GET /graph/timeline` shows how your knowledge graph grew week by week
-- 🔬 **Cross-encoder reranker** - BGE-reranker-base (quantized INT8) reranks search results for semantic precision
-- 🎭 **Personality engine** - extracts preferences, values, motivations, decisions, emotions, and identity signals from memories
-- 📊 **Graph visualization** - explore your memory space in a WebGL galaxy
-- 🔄 **Versioning** - update memories without losing history
-- ⏰ **Implicit spaced repetition** - every access is an FSRS review, building stability over time
-- 🔍 **Fact extraction & auto-tagging** - LLM extracts facts, classifies, tags (optional, requires LLM)
-- 💬 **Conversation extraction** - feed chat logs, get structured memories
-- ⚡ **Contradiction detection** - find and resolve conflicting memories
-- ⏪ **Time-travel queries** - query what you knew at any point in time
-- 🎯 **Smart context builder** - token-budget-aware RAG context assembly with progressive depth (1/2/3-hop)
-- 💭 **Reflections** - periodic meta-analysis that becomes searchable memory
-- 🧬 **Derived memories** - inference engine finds patterns across memories
-- 🗜️ **Auto-consolidation** - summarize large memory clusters automatically
-- 👥 **Multi-tenant** - isolated memory per user with API keys
-- 📖 **Episodic memory** - store conversation episodes as embedded, searchable narratives with temporal + semantic search. Facts link to source episodes.
-- 🚫 **Abstention** - search returns `abstained: true` when confidence is below threshold. The system knows when it doesn't know.
-- 🤖 **Assistant recall** - extracts what the AI said/did, not just user facts. LLM + regex patterns for assistant actions.
-- ⏳ **Temporal search** - `temporal_sort` orders results chronologically. Episode search by date range.
-- 🔗 **2-hop graph traversal** - relationship expansion reaches 2 levels deep for multi-hop reasoning
-- 🧩 **Implicit connection inference** - LLM post-processing in /context finds unstated relationships between memories
-- 🛡️ **Guardrails** - `POST /guard` checks proposed actions against stored rules before execution. Returns allow/warn/block. Prevents repeated deployment mistakes, outdated references, and policy violations.
-- 📦 **Spaces, tags, episodes** - organize memories into named collections
-- 🧩 **Entities & projects** - track people, servers, tools, projects
-- 📬 **Webhooks & digests** - event hooks + scheduled HMAC-signed summaries
-- 🔄 **Sync & import** - cross-instance sync, import from Mem0 / Supermemory
-- 📥 **URL ingest** - extract facts from web pages or text blobs
-- 🛠️ **MCP server** - JSON-RPC 2.0 stdio transport for Claude Desktop, Cursor, Windsurf
-- ⌨️ **CLI** - full-featured command-line interface (`engram-cli store`, `engram-cli search`, etc.)
-- 📥 **Review queue / inbox** - auto-detected memories land in review; explicit stores bypass
-- 🔒 **Security hardening** - auth required by default, body/content limits, IP allowlists, timing-safe auth
-- 📋 **Audit trail** - every mutation logged (who, what, when, from where)
-- 📊 **Structured JSON logging** - configurable log levels, request IDs, zero raw console output
-- 💾 **Backup & checkpoint** - download SQLite DB via API, manual WAL checkpoint, graceful shutdown
-- 🐳 **One-command deploy** - `docker compose up`
+## What Engram Does
+
+### Memory
+
+FSRS-6 spaced repetition with power-law forgetting. Hybrid search fuses vector similarity, full-text matching, personality signals, and graph traversal into a single ranked result. Memories strengthen when accessed and fade when ignored.
+
+### Personality
+
+Extracts preferences, values, motivations, decisions, emotions, and identity markers from conversations. Your agent does not just remember what happened. It understands who it is talking to.
+
+### Reasoning
+
+Detects contradictions between stored facts. Generates reflections. Derives new knowledge from existing records. Time-travel queries let you ask "what did I know on March 1st?" Smart context assembles the right information for the right moment.
+
+### Trust
+
+Execution signing, guardrails, trust scoring, and full audit trails. Every record has provenance. Every action can be verified.
 
 ---
 
-## What's New
-
-### PageRank for Memory Graphs
-Full iterative PageRank algorithm with type-aware edge weighting. Memories linked to by important memories score higher, not just memories with lots of connections. Scores are normalized 0-1 and stored per memory. Runs automatically every 25th store alongside community detection.
-
-### Search Ranking from Graph Structure
-Search results now get a 0-15% boost based on their PageRank score. Structurally important memories (the ones that hold clusters together, get referenced by other high-value memories) surface higher in `/search` and `/context` results. This works on top of the existing RRF scoring, decay, and temporal signals.
-
-### Auto Graph Analysis on Store
-Every 25th memory stored triggers background community detection and PageRank recomputation via the durable job queue. Communities and centrality scores stay current without manual admin calls. No impact on store latency since it runs in the post-store pipeline.
-
-### Temporal Graph Evolution
-New `GET /graph/timeline` endpoint returns weekly aggregates of graph growth: new memories, running totals, link counts per week. Shows how the knowledge graph evolved over time.
-
-### Enriched Graph Endpoint
-`/graph` now returns `pagerank_score` per node. Node sizes are boosted by PageRank, so structurally important hub memories appear larger in the graph visualization.
-
-<details>
-<summary><strong>v5.8.3</strong></summary>
-
-**Server-Side Source Filtering** - `/search`, `/context`, and `/recall` accept a `source` parameter. Filter propagates into hybrid search at both vector and FTS5 stages.
-
-**Worker Thread Embeddings** - ONNX inference moved to a dedicated Worker thread. No more event loop blocking.
-
-**Batch Link Queries** - Relationship expansion uses single batch query instead of N+1.
-
-**TypeScript Zero Errors** - Clean compilation with zero TS errors.
-
-</details>
-
-<details>
-<summary><strong>Previous releases</strong></summary>
-
-#### v5.8.2 - Blended Retrieval, Memory Health, Feedback Loop
-
-**Blended Multi-Strategy Retrieval** - `classifyQuestionMixed` detects mixed-intent queries and blends multiple question types with normalized weights. `blendStrategies` produces a weighted combination of SearchStrategy configs.
-
-**Memory Health Endpoint** - `GET /memory-health` returns four diagnostic categories: stale, duplicates, high-value unlinked, and contradiction hints.
-
-**Retrieval Feedback** - `POST /feedback` accepts signals (used, ignored, corrected, irrelevant, helpful). Auto-adjusts importance. `GET /feedback/stats` returns analytics.
-
-**Search Explainability** - Per-channel score breakdowns (vector, FTS, graph, personality, reranker, decay) in search results.
-
-**Freshness-Weighted Structured Facts** - Facts sorted by freshness with linear decay. Old facts tagged `[possibly outdated]`.
-
-**Contradiction Ranking Penalty** - Non-latest-version memories with contradiction keywords receive 0.65x score penalty.
-
-#### v5.8.1 - Durable Jobs, Security Hardening, Scheduler Leases
-
-**Durable Job Queue** - DB-backed jobs table with retry, exponential backoff, and crash recovery.
-
-**Scheduler Leases** - DB-backed leases prevent duplicate background work in multi-instance deployments.
-
-**Security** - Atomic memory ownership, bootstrap hardening, cross-tenant scratchpad fix, SSRF redirect blocking, passport tenant binding.
-
-**Readiness Probes** - `GET /live` and `GET /ready` with 503 when degraded.
-
-#### v5.8.0 - Intelligence Pipeline Overhaul
-
-**Reciprocal Rank Fusion** - 4-channel RRF scoring (vector, FTS5, personality, graph). Question-type-aware strategies.
-
-**SimHash Deduplication** - 64-bit locality-sensitive hashing detects near-duplicates before embedding.
-
-**Bi-Temporal Fact Tracking** - Structured facts with valid_at/invalid_at windows. Contradiction-based invalidation.
-
-**Entity Cooccurrence Graph** - Composite scoring (name similarity, frequency, temporal proximity).
-
-**Community Detection** - Label propagation on memory_links graph.
-
-**Cross-Encoder Reranker** - BGE-reranker-base (INT8, sub-100ms). Optional.
-
-**Personality Engine** - Six signal types: preference, value, motivation, decision, emotion, identity.
-
-**Progressive Disclosure** - `/context` depth=1/2/3 for token budget control.
-
-#### v5.7.0 - BGE-large, Episodic Memory, Multi-Tenant Isolation
-
-BGE-large-en-v1.5 (1024-dim), episodic memory, complete multi-tenant security audit, guardrails, abstention, assistant recall, 2-hop graph traversal, implicit connection inference.
-
-#### v5.6.0 - Node.js 22, Graph Intelligence
-
-Node.js 22+, optimized MCP server, vitest, Graphology knowledge graph.
-
-#### v5.5.0 - Intelligence Layer
-
-LLM fact extraction, auto-tagging, conversation extraction, URL ingest, reflections, derived memories, auto-consolidation.
-
-#### v5.4.0 - Security Hardening
-
-7 security fixes (S1-S7), RBAC, timing-safe auth, rate limiting, HSTS, CSP.
-
-#### v5.3.0 - FSRS-6 Spaced Repetition
-
-FSRS-6 with 21 trained weights, dual-strength model, time travel, smart context, reflections, digests, derived memories, auto-consolidation.
-
-#### v5.0.0 - Multi-Tenant
-
-Users, API keys, spaces, FTS5+vector hybrid search, auto-linking, version chains, libsql.
-
-#### v4.0.0 - SQLite + Local Embeddings
-
-SQLite + FTS5, MiniLM-L6-v2 embeddings, basic CRUD, conversations.
-
-#### v3.0.0 - Initial Release
-
-In-memory storage, basic embedding search.
-
-</details>
-
-
----
-
-## Quick Start (10 minutes)
-
-### 1. Start the server
+## Quick Start
 
 ```bash
+# Docker (recommended)
 git clone https://github.com/zanfiel/engram.git && cd engram
+cp .env.example .env  # set ENGRAM_GUI_PASSWORD
+docker compose up -d
+
+# Or run directly (Node 22+)
 npm install
-cp .env.example .env    # Edit .env: set ENGRAM_GUI_PASSWORD
-npm start               # Or: docker compose up -d
+node --experimental-strip-types server-split.ts
 ```
 
-### 2. Bootstrap your admin key
+Create an API key, then store and search:
 
 ```bash
+# Bootstrap admin key (save the returned key)
 curl -X POST http://localhost:4200/bootstrap \
   -H "Content-Type: application/json" \
-  -d '{"name": "my-admin-key"}'
-# Save the returned eg_... key
-```
+  -d '{"name": "admin"}'
 
-### 3. Store your first memories
-
-```bash
-export KEY="eg_your_key_here"
-
+# Store a memory
 curl -X POST http://localhost:4200/store \
-  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"content": "Production database is PostgreSQL 16 on db.example.com:5432", "category": "reference", "importance": 8}'
-
-curl -X POST http://localhost:4200/store \
-  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"content": "Never deploy on Fridays - outage on 2026-01-15 was caused by Friday deploy", "category": "decision", "importance": 9}'
-
-curl -X POST http://localhost:4200/store \
-  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"content": "Migrated auth service from JWT to opaque sessions for compliance", "category": "decision", "importance": 7}'
-```
-
-### 4. Recall what matters
-
-```bash
-# Semantic search
-curl -X POST http://localhost:4200/search \
-  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"query": "database connection details"}'
-
-# Decision-focused search
-curl -X POST http://localhost:4200/search \
-  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"query": "deployment policy", "mode": "decision"}'
-
-# Budget-aware context for RAG injection
-curl -X POST http://localhost:4200/context \
-  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"query": "setting up a new deploy pipeline", "mode": "fast"}'
-```
-
-### 5. Check the guardrails
-
-```bash
-# Before deploying, check against stored rules
-curl -X POST http://localhost:4200/guard \
-  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"action": "deploy to production on Friday"}'
-# Returns: { "verdict": "warn", "reasons": ["Never deploy on Fridays..."] }
-```
-
----
-
-## Decision Memory
-
-Engram is especially strong as a **decision memory system**. It tracks not just what you know, but what you decided, why, and what changed.
-
-- **Versioning**: update a memory and the full version chain is preserved
-- **Contradictions**: when new information conflicts with old, both are flagged with a `contradicts` link
-- **Corrections**: `POST /correct` stores a correction that supersedes the original, with `corrects` relationship
-- **Guardrails**: `POST /guard` checks proposed actions against stored decision rules before execution
-- **Temporal queries**: "what did we know last Tuesday?" via `mode=timeline` or time-travel queries
-- **Structured facts**: subject/verb/object decomposition with temporal validity windows
-
-This makes Engram ideal for:
-- **Agent memory**: agents that learn from mistakes and don't repeat them
-- **Ops runbooks**: infrastructure decisions with context ("we chose X because Y")
-- **Project continuity**: decisions survive team turnover
-
----
-
-## Review Inbox
-
-Memories extracted by LLM (fact extraction, personality signals) land in the **review inbox** instead of being immediately trusted. This gives you control over what enters long-term memory.
-
-```bash
-# List pending memories
-curl http://localhost:4200/inbox -H "Authorization: Bearer $KEY"
-
-# Approve a memory
-curl -X POST http://localhost:4200/inbox/42/approve -H "Authorization: Bearer $KEY"
-
-# Reject a memory
-curl -X POST http://localhost:4200/inbox/42/reject -H "Authorization: Bearer $KEY"
-```
-
-Memories you store directly via `/store` bypass the inbox and are approved immediately.
-
----
-
-## SDK
-
-### TypeScript SDK
-
-```typescript
-import { Engram } from "@zanfiel/engram/sdk";
-
-const engram = new Engram({ url: "http://localhost:4200", apiKey: "eg_..." });
-
-// Store
-await engram.store("User prefers dark mode", { category: "decision", importance: 8 });
-
-// Search with presets
-const results = await engram.search("dark mode", { mode: "preference" });
-
-// Budget-aware context for RAG
-const ctx = await engram.context("setting up the editor", { mode: "fast" });
-
-// Guardrails
-const check = await engram.guard("deploy to production on Friday");
-if (check.verdict === "block") console.log("Blocked:", check.reasons);
-
-// Inbox review
-const pending = await engram.inbox();
-for (const mem of pending.pending) {
-  await engram.approve(mem.id);  // or: engram.reject(mem.id)
-}
-```
-
-### cURL
-
-```bash
-# Store
-curl -X POST http://localhost:4200/store \
-  -H "Authorization: Bearer eg_your_key" \
+  -H "Authorization: Bearer eg_YOUR_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"content": "Server migrated to new IP", "category": "state", "importance": 7}'
+  -d '{"content": "Production DB is PostgreSQL 16 on db.example.com:5432", "category": "reference"}'
 
-# Search with mode preset
+# Search with natural language
 curl -X POST http://localhost:4200/search \
-  -H "Authorization: Bearer eg_your_key" \
+  -H "Authorization: Bearer eg_YOUR_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"query": "server migration", "mode": "timeline", "limit": 5}'
-
-# Recall
-curl -X POST http://localhost:4200/recall \
-  -H "Authorization: Bearer eg_your_key" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "infrastructure changes"}'
-
-# FSRS state
-curl http://localhost:4200/fsrs/state?id=42 \
-  -H "Authorization: Bearer eg_your_key"
+  -d '{"query": "database connection info"}'
 ```
 
 ---
 
-## MCP Server
+## Features
 
-Engram includes a real [Model Context Protocol](https://modelcontextprotocol.io/) server for integration with Claude Desktop, Cursor, Windsurf, and other MCP-compatible tools.
-
-**Transport:** JSON-RPC 2.0 over stdio
-
-### Setup (Claude Desktop)
-
-Add to `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "engram": {
-      "command": "node",
-      "args": ["--experimental-strip-types", "path/to/engram/mcp-server.ts"],
-      "env": {
-        "ENGRAM_URL": "http://localhost:4200",
-        "ENGRAM_API_KEY": "eg_your_key"
-      }
-    }
-  }
-}
-```
-
-### Available Tools
-
-| Tool | Description |
-|------|-------------|
-| `memory_store` | Store a new memory with category, importance, and model attribution |
-| `memory_recall` | Semantic + full-text search across memories |
-| `memory_context` | Token-budget-aware context packing for LLM injection |
-| `memory_list` | List recent memories, optionally filtered by category |
-| `memory_delete` | Delete a memory by ID |
-| `memory_guard` | Check a proposed action against stored rules (allow/warn/block) |
-| `memory_inbox` | Review pending memories awaiting triage (approve/reject) |
-| `memory_search_preset` | Search with opinionated presets: fact, timeline, preference, decision, recent |
-| `memory_entities` | List or search tracked entities (people, servers, tools, services) |
-| `memory_projects` | List or search tracked projects |
-| `memory_episodes` | List conversation episodes (sessions of related work) |
-| `memory_scratch` | Read/write scratchpad (short-term working memory, 30min TTL) |
-| `structural_analyze` | Analyze a system in EN syntax -- topology (Pipeline/Tree/DAG/Cycle), node roles, bridges |
-| `structural_detail` | Deep analysis -- concurrency metrics, critical path, flow depth, resilience |
-| `structural_between` | Betweenness centrality for a node (0-1 score) |
-| `structural_distance` | Shortest path between two nodes with subsystem annotations |
-| `structural_trace` | Follow directed flow from A to B along yields->needs edges |
-| `structural_impact` | Blast radius -- what disconnects if a node is removed |
-| `structural_diff` | Structural diff between two systems -- topology changes, role changes, bridges |
-| `structural_evolve` | Dry-run architectural changes and preview the structural delta |
-| `structural_categorize` | Auto-discover subsystem boundaries via Louvain community detection |
-| `structural_extract` | Extract a named subsystem as standalone EN source |
-| `structural_compose` | Merge two EN graphs with entity linking |
-| `structural_memory_graph` | Analyze Engram's own memory link graph structurally |
-
-> **Note:** The MCP server connects to a running Engram instance via HTTP. All tools support signed tool manifests for integrity verification when `ENGRAM_SIGNING_SECRET` is set.
+- **[4-channel hybrid search](#architecture):** Reciprocal Rank Fusion across vector, full-text, personality, and graph signals
+- **[Knowledge graph](#architecture):** Auto-linking, community detection, PageRank, 2-hop traversal
+- **[Spaced repetition](#architecture):** FSRS-6 with power-law forgetting and dual-strength memory model
+- **[Personality engine](#architecture):** Preferences, values, motivations, decisions, emotions, identity
+- **[Guardrails](#api-reference):** Pre-action safety checks against stored rules (allow, warn, block)
+- **[MCP server](#mcp-server):** 25+ tools for Claude Desktop, Cursor, Windsurf, and other MCP clients
+- **[TypeScript SDK](#typescript-sdk):** First-class client with store, search, context, guard, inbox
+- **[CLI](#cli):** Zero-dependency command-line interface for scripting and shell use
+- **[Graph visualization](#deployment):** WebGL force graph for exploring memory space
+- **[Multi-tenant](#configuration):** Isolated memory per user with API key auth
+- **[One-command deploy](#deployment):** docker compose up -d
 
 ---
 
-## CLI
+<a id="architecture"></a>
+<details>
+<summary><strong>Architecture</strong></summary>
 
-Engram ships a full CLI that wraps the HTTP API. Zero external dependencies -- uses Node.js 22 built-in `util.parseArgs`.
+### Runtime Stack
 
-```bash
-# Install globally (or use npx)
-npm install -g @zanfiel/engram
+- Server: Node.js 22+ with `--experimental-strip-types` (or Bun)
+- Database: libsql (SQLite fork with native FLOAT32 vector columns and FTS5)
+- Embeddings: BGE-large-en-v1.5, 1024-dim, local ONNX inference in a Worker thread
+- Reranker: BGE-reranker-base INT8 quantized cross-encoder (optional)
+- Decay: FSRS-6 with 21 trained parameters and power-law forgetting
+- LLM: optional, any OpenAI-compatible endpoint (fact extraction, personality, consolidation)
 
-# Configure
-export ENGRAM_URL=http://localhost:4200
-export ENGRAM_API_KEY=eg_your_key
+### Search Pipeline
 
-# Store
-engram-cli store "Deployed auth migration to production" --category state --importance 9
+Every query runs through four parallel channels, then merges via Reciprocal Rank Fusion:
 
-# Search
-engram-cli search "deployment history" --limit 5 --explain
+1. Vector similarity: cosine distance against BGE-large-en-v1.5 embeddings
+2. FTS5 full-text: BM25 ranking across content and tags
+3. Personality signals: match against extracted preferences, values, and identity markers
+4. Graph relationships: 2-hop traversal weighted by edge type and PageRank score
 
-# Context (RAG)
-engram-cli context "current infrastructure state" --budget 4000
+Question-type detection (fact recall, preference, reasoning, generalization, timeline) adapts channel weights before scoring. The cross-encoder reranker then reorders the top-K results for semantic precision.
 
-# Recall
-engram-cli recall --context "what changed recently"
+### Memory Lifecycle
 
-# Other commands
-engram-cli list --limit 20
-engram-cli forget 42 --reason "outdated"
-engram-cli delete 42
-engram-cli health
-engram-cli stats
+1. **Store:** SimHash (64-bit, Hamming distance <= 3) checks for near-duplicates. If unique, BGE-large-en-v1.5 embeds the content. Stored in libsql with FTS5 indexing.
+2. **Auto-link:** New memory is compared against existing ones via in-memory cosine similarity. Links form at >= 0.55 similarity with typed relationships: similarity, updates, extends, contradicts, caused_by, prerequisite_for.
+3. **FSRS-6 init:** Each memory gets initial stability, difficulty, storage strength, and retrieval strength. Power-law forgetting begins.
+4. **Fact extraction:** If an LLM is configured, structured facts with temporal validity windows (valid_at, invalid_at) are extracted. Contradicting facts automatically invalidate predecessors.
+5. **Entity cooccurrence:** Entities in the same memory update the weighted cooccurrence graph.
+6. **Personality extraction:** Six signal types scanned: preference, value, motivation, decision, emotion, identity.
+7. **Recall:** RRF fuses four channels. Every recalled memory receives an implicit FSRS review graded "Good", building stability.
+8. **Spaced repetition:** Archived or forgotten memories receive "Again". Stable memories can reach months or years between reviews.
+9. **Dual-strength decay:** Storage strength accumulates (never decays). Retrieval strength decays via power law. Retention score: `0.7 * retrieval + 0.3 * (storage/10)`.
+10. **Community detection and PageRank:** Run automatically every 25th store. Label propagation groups related memories. Iterative weighted PageRank ranks memories by structural importance.
+
+### Supported LLM Providers
+
+Any OpenAI-compatible provider via `LLM_URL`, `LLM_API_KEY`, and `LLM_MODEL`. Up to 10 providers with automatic failover or round-robin rotation.
+
+| Provider | Example URL | Example Model |
+|----------|-------------|---------------|
+| Gemini | `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions` | `gemini-2.5-flash` |
+| MiniMax | `https://api.minimax.io/v1/chat/completions` | `MiniMax-M2.5` |
+| Groq | `https://api.groq.com/openai/v1/chat/completions` | `llama-3.3-70b-versatile` |
+| DeepSeek | `https://api.deepseek.com/v1/chat/completions` | `deepseek-chat` |
+| OpenAI | `https://api.openai.com/v1/chat/completions` | `gpt-4o` |
+| Anthropic | `https://api.anthropic.com/v1/messages` | `claude-sonnet-4-20250514` |
+| Ollama | `http://127.0.0.1:11434/v1/chat/completions` | `llama3` |
+| LiteLLM | `http://127.0.0.1:4000/v1/chat/completions` | Any routed model |
+
+### ASCII Diagram
+
+```
+┌──────────────────────────────────────────────────────┐
+│                    Engram Server                      │
+│                                                       │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
+│  │  FSRS-6  │  │   RRF    │  │  FTS5    │           │
+│  │  Engine   │  │  Scorer  │  │  Search  │           │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘           │
+│       │              │              │                 │
+│  ┌────┴──────────────┴──────────────┴────┐           │
+│  │    libsql (SQLite + vector columns)   │           │
+│  │      FLOAT32(1024) + FTS5             │           │
+│  └───────────────────────────────────────┘           │
+│                                                       │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
+│  │ BGE-large│  │ Reranker │  │  Graph   │           │
+│  │  Embedder │  │ (BGE-rr) │  │  Engine  │           │
+│  └──────────┘  └──────────┘  └──────────┘           │
+│                                                       │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
+│  │ SimHash  │  │Personality│  │ Temporal │           │
+│  │  Dedup   │  │  Engine   │  │  Facts   │           │
+│  └──────────┘  └──────────┘  └──────────┘           │
+└──────────────────────────────────────────────────────┘
 ```
 
-All commands support `--json` for raw API output and `--quiet` for minimal output (IDs and counts only). Config can also be set in `~/.engram/config.json`.
+</details>
 
----
-
-## API Reference
+<a id="api-reference"></a>
+<details>
+<summary><strong>API Reference</strong></summary>
 
 ### Authentication
 
-All endpoints require `Authorization: Bearer eg_...` header by default. Set `ENGRAM_OPEN_ACCESS=1` for unauthenticated single-user mode.
+All endpoints require `Authorization: Bearer eg_...` by default. Set `ENGRAM_OPEN_ACCESS=1` for unauthenticated single-user mode.
 
-Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a specific memory space. Every response includes an `X-Request-Id` header for correlation.
+Use `X-Space: space-name` (or `X-Engram-Space`) to scope operations to a named memory space. Every response includes `X-Request-Id` for correlation.
 
 ### Core Endpoints
 
@@ -492,7 +225,7 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 | `GET` | `/fsrs/state?id=N` | Retrievability, stability, next review interval |
 | `POST` | `/fsrs/init` | Backfill FSRS state for all memories |
 | `POST` | `/decay/refresh` | Recalculate all decay scores |
-| `GET` | `/decay/scores` | View decay scores + FSRS state |
+| `GET` | `/decay/scores` | View decay scores and FSRS state |
 
 ### Intelligence
 
@@ -517,11 +250,12 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 | `POST` | `/feedback` | Submit retrieval feedback (used/ignored/corrected/irrelevant/helpful) |
 | `GET` | `/feedback/stats` | Feedback analytics: signal breakdown, precision estimate, top memories |
 
-### Graph & Communities
+### Graph and Communities
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/communities` | List and browse memory communities |
+| `GET` | `/graph/timeline` | Weekly graph growth: new memories, totals, link counts |
 | `POST` | `/admin/detect-communities` | Run community detection (admin) |
 | `POST` | `/admin/rebuild-cooccurrences` | Rebuild entity cooccurrence graph (admin) |
 | `POST` | `/admin/backfill-facts` | Re-extract facts from all memories (admin) |
@@ -543,17 +277,17 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/conversations/bulk` | Bulk store conversation (`agent` + `messages` required) |
+| `POST` | `/conversations/bulk` | Bulk store conversation (`agent` and `messages` required) |
 | `POST` | `/conversations/upsert` | Upsert by session_id |
 | `GET` | `/conversations` | List conversations |
 | `GET` | `/conversations/:id/messages` | Get conversation messages |
 | `POST` | `/messages/search` | Search across all messages |
 
-### Data & Sync
+### Data and Sync
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/export` | Export all memories + links (JSON/JSONL) |
+| `GET` | `/export` | Export all memories and links (JSON/JSONL) |
 | `POST` | `/import` | Bulk import memories |
 | `POST` | `/import/mem0` | Import from Mem0 |
 | `POST` | `/import/supermemory` | Import from Supermemory |
@@ -572,7 +306,7 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 | `POST` | `/pack` | Pack memories into token budget |
 | `GET` | `/prompt` | Generate prompt template |
 
-### Auth & Multi-tenant
+### Auth and Multi-tenant
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -592,8 +326,8 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 |--------|------|-------------|
 | `GET` | `/inbox` | List pending memories |
 | `POST` | `/inbox/:id/approve` | Approve a pending memory |
-| `POST` | `/inbox/:id/reject` | Reject (archive + set reason) |
-| `POST` | `/inbox/:id/edit` | Edit content + auto-approve |
+| `POST` | `/inbox/:id/reject` | Reject (archive and set reason) |
+| `POST` | `/inbox/:id/edit` | Edit content and auto-approve |
 | `POST` | `/inbox/bulk` | Bulk approve/reject |
 
 ### System
@@ -601,6 +335,8 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/health` | Health check (30+ feature flags) |
+| `GET` | `/live` | Liveness probe |
+| `GET` | `/ready` | Readiness probe (503 when degraded) |
 | `GET` | `/stats` | Detailed statistics |
 | `GET` | `/metrics` | Prometheus-format metrics (admin) |
 | `GET` | `/openapi.json` | OpenAPI 3.1 spec |
@@ -631,96 +367,152 @@ Use `X-Space: space-name` (or `X-Engram-Space`) header to scope operations to a 
 | `POST` | `/admin/detect-communities` | Run Louvain community detection |
 | `POST` | `/admin/backfill-facts` | Extract facts from memories missing structured data |
 | `POST` | `/admin/refresh-cache` | Force reload embedding cache from DB |
-| `POST` | `/admin/compact` | VACUUM + ANALYZE database to reclaim space |
+| `POST` | `/admin/compact` | VACUUM and ANALYZE database to reclaim space |
 
----
+</details>
 
-## How It Works
+<a id="cli"></a>
+<details>
+<summary><strong>CLI</strong></summary>
 
-### Memory Lifecycle
+Engram ships a full CLI that wraps the HTTP API. Zero external dependencies. Uses Node.js 22 built-in `util.parseArgs`.
 
-1. **Store** - Memory content is checked for near-duplicates via SimHash (Hamming distance <= 3). If unique, it is embedded using BGE-large-en-v1.5 (1024-dim vectors, runs locally via ONNX) and stored in libsql with FTS5 full-text indexing.
+### Install
 
-2. **Auto-link** - New memories are compared against existing ones via in-memory cosine similarity. Memories above 0.55 cosine similarity are linked with typed relationships (similarity, updates, extends, contradicts, caused_by, prerequisite_for).
-
-3. **FSRS-6 initialization** - Each new memory gets initial FSRS state: stability, difficulty, storage strength, retrieval strength. The power-law forgetting curve starts tracking retrievability.
-
-4. **Fact extraction** - If an LLM is configured, Engram analyzes new memories, extracts structured facts with temporal validity windows (valid_at, invalid_at), auto-tags with keywords, classifies importance, and detects relationships to existing memories. Contradicting facts automatically invalidate predecessors.
-
-5. **Entity cooccurrence** - Entities appearing in the same memory update the cooccurrence graph, building weighted relationships based on frequency, name similarity, and temporal proximity.
-
-6. **Personality extraction** - The personality engine scans for preference, value, motivation, decision, emotion, and identity signals, building a profile over time.
-
-7. **Recall** - Reciprocal Rank Fusion combines four channels: vector similarity, FTS5 full-text, personality signals, and graph relationships. Question-type detection adapts scoring strategy. Cross-encoder reranker refines the final ordering. Every recalled memory gets an implicit FSRS review, building stability.
-
-8. **Spaced repetition** - Each access is an FSRS-6 review graded as "Good". Archived/forgotten memories receive an "Again" grade. Stability grows with successful recalls; frequently accessed memories can have stability measured in months or years.
-
-9. **Dual-strength decay** - Storage strength (0-10) accumulates over time, representing deep consolidation. Retrieval strength (0-1) decays via power law, representing current accessibility. Together they produce a retention score: `0.7 * retrieval + 0.3 * (storage/10)`.
-
-10. **Contradiction detection** - Scans for memories that conflict. LLM verification eliminates false positives. Contradictions can be resolved by keeping one side, both, or merging.
-
-11. **Consolidation** - Large clusters of related memories get summarized into a single dense memory. Originals are archived, links preserved.
-
-12. **Community detection** - Label propagation groups related memories into communities via type-aware edge weights. Communities are browsable and searchable.
-
-13. **Reflection** - On-demand meta-analysis generates insights about themes, progress, and patterns. Reflections become searchable memories themselves.
-
-### Architecture
-
+```bash
+npm install -g @zanfiel/engram
 ```
-┌──────────────────────────────────────────────────────┐
-│                    Engram Server                      │
-│                                                       │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
-│  │  FSRS-6  │  │   RRF    │  │  FTS5    │           │
-│  │  Engine   │  │  Scorer  │  │  Search  │           │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘           │
-│       │              │              │                 │
-│  ┌────┴──────────────┴──────────────┴────┐           │
-│  │    libsql (SQLite + vector columns)   │           │
-│  │      FLOAT32(1024) + FTS5             │           │
-│  └───────────────────────────────────────┘           │
-│                                                       │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
-│  │ BGE-large│  │ Reranker │  │  Graph   │           │
-│  │  Embedder │  │ (BGE-rr) │  │  Engine  │           │
-│  └──────────┘  └──────────┘  └──────────┘           │
-│                                                       │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
-│  │ SimHash  │  │Personality│  │ Temporal │           │
-│  │  Dedup   │  │  Engine   │  │  Facts   │           │
-│  └──────────┘  └──────────┘  └──────────┘           │
-└──────────────────────────────────────────────────────┘
-```
-
-- **Runtime:** Node.js 22+ (primary, with `--experimental-strip-types`) or Bun
-- **Database:** libsql (SQLite fork with vector column support)
-- **Embeddings:** BGE-large-en-v1.5 (1024-dim, runs locally via raw ONNX inference)
-- **Reranker:** BGE-reranker-base (XLM-RoBERTa, quantized INT8, optional)
-- **Search:** Reciprocal Rank Fusion across vector, FTS5, personality, and graph channels
-- **LLM:** Optional, for fact extraction / personality / consolidation (with fallback chain)
-- **Decay:** FSRS-6 (21-parameter power-law forgetting curve)
-
-### Supported LLM Providers
-
-Engram works with any OpenAI-compatible provider via `LLM_URL`, `LLM_API_KEY`, and `LLM_MODEL`. Supports up to 10 providers with automatic failover or round-robin rotation.
-
-| Provider | Example URL | Example Model |
-|----------|-------------|---------------|
-| **Gemini** | `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions` | `gemini-2.5-flash` |
-| **MiniMax** | `https://api.minimax.io/v1/chat/completions` | `MiniMax-M2.5` |
-| **Groq** | `https://api.groq.com/openai/v1/chat/completions` | `llama-3.3-70b-versatile` |
-| **DeepSeek** | `https://api.deepseek.com/v1/chat/completions` | `deepseek-chat` |
-| **OpenAI** | `https://api.openai.com/v1/chat/completions` | `gpt-4o` |
-| **Anthropic** | `https://api.anthropic.com/v1/messages` | `claude-sonnet-4-20250514` |
-| **Ollama** | `http://127.0.0.1:11434/v1/chat/completions` | `llama3` |
-| **LiteLLM** | `http://127.0.0.1:4000/v1/chat/completions` | Any routed model |
-
----
-
-## Self-Hosting
 
 ### Configuration
+
+```bash
+export ENGRAM_URL=http://localhost:4200
+export ENGRAM_API_KEY=eg_your_key
+```
+
+Config can also be set in `~/.engram/config.json`.
+
+### Commands
+
+```bash
+# Store
+engram-cli store "Deployed auth migration to production" --category state --importance 9
+
+# Search
+engram-cli search "deployment history" --limit 5 --explain
+
+# Context (RAG)
+engram-cli context "current infrastructure state" --budget 4000
+
+# Recall
+engram-cli recall --context "what changed recently"
+
+# Other commands
+engram-cli list --limit 20
+engram-cli forget 42 --reason "outdated"
+engram-cli delete 42
+engram-cli health
+engram-cli stats
+```
+
+All commands support `--json` for raw API output and `--quiet` for minimal output (IDs and counts only).
+
+</details>
+
+<a id="typescript-sdk"></a>
+<details>
+<summary><strong>TypeScript SDK</strong></summary>
+
+```typescript
+import { Engram } from "@zanfiel/engram/sdk";
+
+const engram = new Engram({ url: "http://localhost:4200", apiKey: "eg_..." });
+
+// Store
+await engram.store("User prefers dark mode", { category: "decision", importance: 8 });
+
+// Search with presets
+const results = await engram.search("dark mode", { mode: "preference" });
+
+// Budget-aware context for RAG
+const ctx = await engram.context("setting up the editor", { mode: "fast" });
+
+// Guardrails
+const check = await engram.guard("deploy to production on Friday");
+if (check.verdict === "block") console.log("Blocked:", check.reasons);
+
+// Inbox review
+const pending = await engram.inbox();
+for (const mem of pending.pending) {
+  await engram.approve(mem.id);  // or: engram.reject(mem.id)
+}
+```
+
+</details>
+
+<a id="mcp-server"></a>
+<details>
+<summary><strong>MCP Server</strong></summary>
+
+Transport: JSON-RPC 2.0 over stdio. The MCP server connects to a running Engram instance via HTTP.
+
+### Claude Desktop Setup
+
+Add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "engram": {
+      "command": "node",
+      "args": ["--experimental-strip-types", "path/to/engram/mcp-server.ts"],
+      "env": {
+        "ENGRAM_URL": "http://localhost:4200",
+        "ENGRAM_API_KEY": "eg_your_key"
+      }
+    }
+  }
+}
+```
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `memory_store` | Store a new memory with category, importance, and model attribution |
+| `memory_recall` | Semantic and full-text search across memories |
+| `memory_context` | Token-budget-aware context packing for LLM injection |
+| `memory_list` | List recent memories, optionally filtered by category |
+| `memory_delete` | Delete a memory by ID |
+| `memory_guard` | Check a proposed action against stored rules (allow/warn/block) |
+| `memory_inbox` | Review pending memories awaiting triage (approve/reject) |
+| `memory_search_preset` | Search with opinionated presets: fact, timeline, preference, decision, recent |
+| `memory_entities` | List or search tracked entities (people, servers, tools, services) |
+| `memory_projects` | List or search tracked projects |
+| `memory_episodes` | List conversation episodes (sessions of related work) |
+| `memory_scratch` | Read/write scratchpad (short-term working memory, 30min TTL) |
+| `structural_analyze` | Analyze a system in EN syntax: topology (Pipeline/Tree/DAG/Cycle), node roles, bridges |
+| `structural_detail` | Deep analysis: concurrency metrics, critical path, flow depth, resilience |
+| `structural_between` | Betweenness centrality for a node (0-1 score) |
+| `structural_distance` | Shortest path between two nodes with subsystem annotations |
+| `structural_trace` | Follow directed flow from A to B along yields->needs edges |
+| `structural_impact` | Blast radius: what disconnects if a node is removed |
+| `structural_diff` | Structural diff between two systems: topology changes, role changes, bridges |
+| `structural_evolve` | Dry-run architectural changes and preview the structural delta |
+| `structural_categorize` | Auto-discover subsystem boundaries via Louvain community detection |
+| `structural_extract` | Extract a named subsystem as standalone EN source |
+| `structural_compose` | Merge two EN graphs with entity linking |
+| `structural_memory_graph` | Analyze Engram's own memory link graph structurally |
+
+All tools support signed tool manifests for integrity verification when `ENGRAM_SIGNING_SECRET` is set.
+
+</details>
+
+<a id="configuration"></a>
+<details>
+<summary><strong>Configuration</strong></summary>
+
+### Core
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -734,22 +526,32 @@ Engram works with any OpenAI-compatible provider via `LLM_URL`, `LLM_API_KEY`, a
 | `ENGRAM_CORS_ORIGIN` | unset | Optional allowed browser origin for cross-origin access |
 | `ENGRAM_MAX_BODY_SIZE` | `1048576` | Max request body (bytes) |
 | `ENGRAM_MAX_CONTENT_SIZE` | `102400` | Max memory content (bytes) |
-| `ENGRAM_ALLOWED_IPS` | - | Comma-separated IP allowlist |
+| `ENGRAM_ALLOWED_IPS` | unset | Comma-separated IP allowlist |
+
+### Embeddings and Reranker
+
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `ENGRAM_EMBEDDING_PROVIDER` | `local` | Embedding provider: `local`, `google`, `vertex` |
 | `ENGRAM_EMBEDDING_DIM` | auto | Embedding dimension (1024 for local, 768 for google/vertex) |
 | `ENGRAM_CROSS_ENCODER` | `1` | Set `0` to disable the ONNX cross-encoder reranker |
 | `ENGRAM_RERANKER` | `1` | Set `0` to disable all reranking in search results |
 | `ENGRAM_RERANKER_TOP_K` | `12` | Rerank top K candidates |
 | `ENGRAM_RERANKER_FP32` | `0` | Set `1` for full-precision reranker instead of quantized INT8 |
-| `GOOGLE_API_KEY` | - | Google AI Studio API key (for `google` embedding provider) |
-| `GOOGLE_CLOUD_PROJECT` | - | GCP project ID (for `vertex` embedding provider) |
-| `GOOGLE_APPLICATION_CREDENTIALS` | - | Service account JSON path (for `vertex`) |
-| `LLM_URL` | - | OpenAI-compatible API URL |
-| `LLM_API_KEY` | - | API key for LLM |
-| `LLM_MODEL` | - | Model name (e.g., `gpt-4o`, `claude-sonnet-4-20250514`) |
-| `LLM_STRATEGY` | `fallback` | `fallback` or `round-robin` for multi-provider LLM rotation |
+| `GOOGLE_API_KEY` | unset | Google AI Studio API key (for `google` embedding provider) |
+| `GOOGLE_CLOUD_PROJECT` | unset | GCP project ID (for `vertex` embedding provider) |
+| `GOOGLE_APPLICATION_CREDENTIALS` | unset | Service account JSON path (for `vertex`) |
 
-#### Search Tuning
+### LLM
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_URL` | unset | OpenAI-compatible API URL |
+| `LLM_API_KEY` | unset | API key for LLM |
+| `LLM_MODEL` | unset | Model name (e.g., `gpt-4o`, `claude-sonnet-4-20250514`) |
+| `LLM_STRATEGY` | `fallback` | `fallback` or `round-robin` for multi-provider rotation |
+
+### Search Tuning
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -763,56 +565,58 @@ Engram works with any OpenAI-compatible provider via `LLM_URL`, `LLM_API_KEY`, a
 | `ENGRAM_SEARCH_PERSONALITY_MIN_SCORE` | `0.30` | Min score for personality signal matching |
 | `AUTO_LINK_MAX` | `6` | Max auto-links created per memory |
 
+</details>
+
+<a id="deployment"></a>
+<details>
+<summary><strong>Deployment</strong></summary>
+
+### Docker (Recommended)
+
+```bash
+git clone https://github.com/zanfiel/engram.git && cd engram
+cp .env.example .env  # set ENGRAM_GUI_PASSWORD
+docker compose up -d
+```
+
+### Node Direct
+
+```bash
+npm install
+node --experimental-strip-types server-split.ts
+```
+
 ### Storage
 
 All data lives in a single libsql database (`data/memory.db`). Embedding BLOBs are stored alongside native `FLOAT32(N)` vector columns matching the configured `EMBEDDING_DIM`.
 
-**Backup:** `GET /backup` returns a consistent SQLite snapshot via `VACUUM INTO` (admin required). Safe to call under write load. WAL checkpoints every 5 minutes and on graceful shutdown. Manual checkpoint via `POST /checkpoint`.
+Backup: `GET /backup` returns a consistent SQLite snapshot via `VACUUM INTO` (admin required). Safe to call under write load. WAL checkpoints every 5 minutes and on graceful shutdown. Manual checkpoint via `POST /checkpoint`.
 
-**Audit:** `GET /audit` shows all mutations - who stored, deleted, archived, or modified memories, from which IP, with request IDs.
-
+Audit: `GET /audit` shows all mutations with who, what, when, and from which IP.
 
 ### Safe Deployment
 
-Production source files are locked immutable (`chattr +i`). Direct writes -- including SCP, git checkout, and editor saves -- are blocked at the kernel level.
+Production source files are locked immutable (`chattr +i`). Direct writes are blocked at the kernel level.
 
-To make changes:
-
-1. **Start staging** -- copies production into an unlocked staging directory and launches on port 4201:
+1. Start staging (copies production into an unlocked staging directory, launches on port 4201):
    ```bash
    /opt/engram/start-staging.sh
    ```
 
-2. **Edit and test** -- modify files in `/opt/engram/staging/`, then verify:
+2. Edit and test in `/opt/engram/staging/`, then verify:
    ```bash
    curl http://localhost:4201/health
    ```
 
-3. **Promote or discard:**
-   - **Promote** -- unlocks production, copies staged files over, re-locks, and restarts:
+3. Promote or discard:
+   - Promote (unlocks production, copies staged files over, re-locks, and restarts):
      ```bash
      /opt/engram/promote.sh
      ```
-   - **Discard** -- throws away staging, production untouched:
+   - Discard (throws away staging, production untouched):
      ```bash
      /opt/engram/stop-staging.sh
      ```
-
-Staging runs on-demand only. Production source is re-locked automatically after every promote.
-
-### Observability
-
-Engram ships Grafana dashboard provisioning JSON in `grafana/`:
-
-| Dashboard | Contents |
-|-----------|----------|
-| `engram-service-overview.json` | Request rate, p95 latency, error rate, search throughput, embedding/LLM latency, recent traces |
-| `chiasm-service-overview.json` | Chiasm task coordination metrics |
-| `service-map.json` | Inter-service dependency map |
-
-To enable tracing, set `OTEL_EXPORTER_OTLP_ENDPOINT` (e.g. `http://localhost:4318`). The server instruments `embed()`, `callLLM()`, and `hybridSearch()` with spans exported via OTLP HTTP. Metrics are available at `GET /metrics` in Prometheus format.
-
-Import the dashboards via Grafana's provisioning API or the UI (Dashboards > Import > Upload JSON).
 
 ### Reverse Proxy
 
@@ -828,19 +632,35 @@ server {
 }
 ```
 
----
-
-## Test Suite
+### Tests
 
 ```bash
-# Start the server, then:
 npm test
 # or directly:
 node --test tests/api.test.mjs
 ```
 
+### Graph Visualization
+
+The built-in WebGL force graph is served at `http://localhost:4200/graph-ui`. Node size reflects PageRank score. Edge color reflects relationship type.
+
+</details>
+
+<a id="contributing"></a>
+<details>
+<summary><strong>Contributing</strong></summary>
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
+
+</details>
+
 ---
 
-## License
+<div align="center">
 
-Elastic License 2.0 - see [LICENSE](LICENSE).
+[engram.lol](https://engram.lol) · [GitHub](https://github.com/zanfiel/engram) · [Issues](https://github.com/zanfiel/engram/issues) · [Changelog](CHANGELOG.md)
+
+Elastic License 2.0
+
+</div>
+
