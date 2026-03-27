@@ -10,7 +10,7 @@ Memory, personality, reasoning, and trust in a single self-hosted system that le
 
 </div>
 
-![Engram memory graph visualization](tools/gui-demo.gif)
+![Engram memory graph visualization](tools/gui-demo-v2.gif)
 
 <div align="center">
 
