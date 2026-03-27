@@ -45,7 +45,14 @@ src/
 ├── memory/        core memory CRUD + versioning, hybrid vector+FTS search, profile generation
 ├── platform/      webhooks, digests, sync, import/export
 ├── reranker/      ONNX cross-encoder (BGE-reranker-base) with SentencePiece tokenizer
-├── routes/        HTTP route definitions (monolithic, split planned)
+├── routes/        HTTP route definitions
+├── services/      consolidated Syntheos microservices
+│   ├── thymus/    rubric-based quality evaluation and scoring
+│   ├── soma/      agent registry, heartbeat, groups, logs
+│   ├── chiasm/    task tracking and agent coordination
+│   ├── axon/      event bus with pub/sub, SSE streaming, webhook fan-out
+│   ├── loom/      workflow orchestration with step executors
+│   └── broca/     action logging, template narration, NL query
 └── tier4/         causal chains, predictive recall, valence scoring
 
 engram-gui.html    WebGL galaxy visualization (standalone HTML)
@@ -70,6 +77,8 @@ landing.html       marketing landing page
 7. **Episodic memory**: Conversations are stored as episodes with narrative summaries, embedded for semantic search, and linked to extracted facts. This enables temporal queries ("what did I work on last week?") and contextual recall ("why was this decision made?").
 
 8. **Abstention**: Search returns an `abstained` flag when top result confidence is below a configurable threshold. This prevents false positives - the system knows when it doesn't have relevant information.
+
+9. **Service consolidation pattern**: Satellite services (Thymus, Soma, Chiasm) are absorbed into the monolith under `src/services/<name>/`. Each service follows a consistent `db.ts` (schema + prepared statements) / business-logic / `routes.ts` pattern. Tables are prefixed (e.g., `soma_agents`, `chiasm_tasks`) to avoid collisions. Route handlers return `Response | null` and are mounted as prefix checks in `fetchHandler`. Events publish via the shared Axon stub.
 
 ## Code Style
 
@@ -107,28 +116,27 @@ We always need more coverage:
 4. Update CHANGELOG.md under `[Unreleased]`
 5. Submit a PR with a clear description of what changed and why
 
-## Recent Changes (v5.9)
+## Recent Changes (v5.10)
 
-**PageRank in search scoring** - Iterative weighted PageRank scores are now factored into search results via a configurable boost (`ENGRAM_PAGERANK_WEIGHT`, default 0.15). The `/graph` endpoint returns `pagerank_score` per node with size boosted by centrality. See `src/memory/search.ts` and `src/graph/pagerank.ts`.
+**Syntheos Phase 1: Service Consolidation** - Three standalone microservices (Thymus, Soma, Chiasm) absorbed into the Engram monolith as native modules under `src/services/`. Each service follows the same `db.ts` / business-logic / `routes.ts` pattern. All use parameterized SQL, share the main database, and reuse Engram auth. See `src/services/index.ts` for the barrel export and `src/routes/index.ts` fetchHandler for route wiring.
 
-**CLI tool** - Full command-line interface at `src/cli/index.ts`. Uses Node.js 22 `util.parseArgs` with zero external dependencies. Commands: store, search, context, recall, list, forget, delete, health, stats.
+**Thymus** - Rubric-based quality evaluation. Define weighted criteria, score agent outputs, track metrics over time. See `src/services/thymus/`.
 
-**Incremental cache operations** - `removeFromEmbeddingCache()` and `demoteFromLatestCache()` replace expensive full-cache rebuilds for single-memory operations (forget, archive, delete, supersede). See `src/embeddings/index.ts`.
+**Soma** - Agent registry with heartbeat tracking, capability search, group management, and structured logging. See `src/services/soma/`.
 
-**RERANKER_ENABLED enforcement** - The `ENGRAM_RERANKER=0` flag now properly disables cross-encoder reranking in both `/search` and `/context` endpoints.
-
-**Cache invalidation fixes** - `sweepExpiredMemories()` and `/memory/:id/update` now properly invalidate the embedding cache when memories are forgotten or superseded.
+**Chiasm** - Task tracking and coordination. Agents create tasks, update status, read each other's work via a feed endpoint. See `src/services/chiasm/`.
 
 These areas may benefit from additional test coverage:
 
 | Feature | Location |
 |---------|----------|
+| Thymus rubric CRUD and scoring | `src/services/thymus/routes.ts`, `scoring.ts` |
+| Soma agent lifecycle | `src/services/soma/routes.ts`, `registry.ts` |
+| Chiasm task coordination | `src/services/chiasm/routes.ts`, `engine.ts` |
 | PageRank in search scoring | `src/memory/search.ts`, `src/graph/pagerank.ts` |
 | CLI commands | `src/cli/index.ts` |
-| Incremental cache ops | `src/embeddings/index.ts` `removeFromEmbeddingCache()`, `demoteFromLatestCache()` |
-| Source filtering in search | `src/memory/search.ts` `hybridSearch()`, `src/routes/index.ts` |
+| Source filtering in search | `src/memory/search.ts` `hybridSearch()` |
 | Memory health diagnostics | `GET /memory-health` |
-| Retrieval feedback loop | `POST /feedback`, `GET /feedback/stats` |
 
 ## Roadmap (Not Yet Shipped)
 

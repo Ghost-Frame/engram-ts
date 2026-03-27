@@ -824,6 +824,12 @@ export async function hybridSearch(
     const pagerankBoost = 1 + ((r as any)._pagerank_score || 0) * PAGERANK_WEIGHT;
     r.score = rrf * decayFactor * sourceBoost * staticBoost * temporalBoost * pagerankBoost;
 
+    // PageRank centrality boost (0-15%)
+    try {
+      const prRow = db.prepare("SELECT COALESCE(pagerank_score, 0) as pr FROM memories WHERE id = ?").get(r.id) as { pr: number } | undefined;
+      if (prRow && prRow.pr > 0) r.score *= (1 + prRow.pr * 0.15);
+    } catch {}
+
     // Contradiction penalty: memories with temporal-contradiction language that
     // are NOT the latest version get demoted to prefer the most current fact.
     // Latest-version contradictions are kept at full score (they represent updates).

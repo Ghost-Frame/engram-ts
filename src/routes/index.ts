@@ -25,6 +25,7 @@ import {
   AUTO_ARCHIVE_ENABLED, AUTO_ARCHIVE_RETRIEVABILITY, AUTO_ARCHIVE_MIN_AGE_DAYS, AUTO_ARCHIVE_MAX_ACCESS,
 } from "../config/index.ts";
 import { log, opsCounters } from "../config/logger.ts";
+import { handleThymusRoutes, handleSomaRoutes, handleChiasmRoutes, handleAxonRoutes, handleLoomRoutes, handleBrocaRoutes } from "../services/index.ts";
 
 // Database + prepared statements
 import {
@@ -4305,9 +4306,11 @@ Return JSON:
 
         const results: Map<number, { memory: any; score: number; source: string }> = new Map();
 
-        // 1. Static facts (always included, highest priority)
+        // 1. Static facts (capped to 25% of limit to leave room for semantic results -- fixes #10)
         let staticFacts = getStaticMemories.all(auth.user_id) as Array<any>;
         if (recallSourceFilter) staticFacts = staticFacts.filter((s: any) => s.source && s.source.includes(recallSourceFilter));
+        const staticCap = Math.max(1, Math.ceil(limit * 0.25));
+        if (staticFacts.length > staticCap) staticFacts = staticFacts.slice(0, staticCap);
         for (const sf of staticFacts) {
           results.set(sf.id, { memory: sf, score: 100, source: "static" });
         }
@@ -8038,6 +8041,24 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
+    // CONSOLIDATED SERVICE ROUTES (Thymus, Soma, Chiasm, Axon)
+    // ========================================================================
+    {
+      const serviceRes =
+        await handleThymusRoutes(method, url, req, requestId) ??
+        await handleSomaRoutes(method, url, req, requestId) ??
+        await handleChiasmRoutes(method, url, req, requestId) ??
+        await handleAxonRoutes(method, url, req, requestId) ??
+        await handleLoomRoutes(method, url, req, requestId) ??
+        await handleBrocaRoutes(method, url, req, requestId);
+      if (serviceRes) {
+        const elapsed = (performance.now() - requestStart).toFixed(1);
+        log.info({ msg: "req", method, path: url.pathname, status: serviceRes.status, ms: elapsed, ip: clientIp, user: auth.user_id, rid: requestId });
+        return serviceRes;
+      }
+    }
+
+    // ========================================================================
     // CATCH-ALL 404 with request log
     // ========================================================================
     {
@@ -8151,3 +8172,7 @@ function autoArchiveDeadMemories(): void {
 
 // Auto-archive: every 24 hours
 setInterval(() => { autoArchiveDeadMemories(); }, 24 * 60 * 60 * 1000);
+
+// Axon: prune expired events every hour
+import { pruneEvents as pruneAxonEvents } from "../services/axon/bus.ts";
+setInterval(() => { try { pruneAxonEvents(); } catch (e: any) { log.warn({ msg: "axon_prune_failed", error: e.message }); } }, 60 * 60 * 1000);

@@ -2,8 +2,8 @@
 /**
  * Engram MCP Server â€” exposes Engram memory tools to OpenCode
  *
- * Tools (12): memory_store, memory_recall, memory_context, memory_list, memory_delete,
- *   memory_guard, memory_inbox, memory_search_preset, memory_entities,
+ * Tools (12): memory_store, memory_search_preset, memory_recall, memory_context, memory_list,
+ *   memory_delete, memory_guard, memory_inbox, memory_entities,
  *   memory_projects, memory_episodes, memory_scratch
  */
 
@@ -35,7 +35,7 @@ async function engram(path: string, method = "GET", body?: unknown) {
 }
 
 const server = new Server(
-  { name: "engram", version: "5.9.5" },
+  { name: "engram", version: "5.11.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -55,14 +55,28 @@ const TOOLS: ToolDefinition[] = [
           description: "Category (default: task)",
         },
         importance: { type: "number", description: "Importance 1-10 (default: 5)" },
+        source: { type: "string", description: "Source identifier for attribution (e.g. cursor, claude-code, opencode). Defaults to 'opencode' if not provided." },
         model: { type: "string", description: "Model ID that created this memory (e.g. claude-opus-4-6, claude-sonnet-4-6)" },
       },
       required: ["content"],
     },
   },
   {
+    name: "memory_search_preset",
+    description: "Semantic search across all memories with query-optimized presets. Use this for finding specific information. Modes: fact (standard semantic search), timeline (chronological), preference (user preferences), decision (decisions and corrections), recent (last 24h).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "What to search for" },
+        mode: { type: "string", enum: ["fact", "timeline", "preference", "decision", "recent"], description: "Search preset mode" },
+        limit: { type: "number", description: "Max results (default: 10)" },
+      },
+      required: ["query", "mode"],
+    },
+  },
+  {
     name: "memory_recall",
-    description: "Search Engram memories by semantic similarity. Use at session start or when you need context about past work.",
+    description: "Load broad session context from Engram (static facts + semantic + important + recent memories). Best for session-start context loading. For precise semantic search, use memory_search_preset instead.",
     inputSchema: {
       type: "object",
       properties: {
@@ -128,19 +142,6 @@ const TOOLS: ToolDefinition[] = [
         action: { type: "string", enum: ["list", "approve", "reject"], description: "Action to take (default: list)" },
         id: { type: "number", description: "Memory ID to approve/reject (required for approve/reject)" },
       },
-    },
-  },
-  {
-    name: "memory_search_preset",
-    description: "Search with opinionated presets. Modes: fact (standard), timeline (chronological), preference (user preferences), decision (decisions/corrections), recent (last 24h).",
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: { type: "string", description: "What to search for" },
-        mode: { type: "string", enum: ["fact", "timeline", "preference", "decision", "recent"], description: "Search preset mode" },
-        limit: { type: "number", description: "Max results (default: 10)" },
-      },
-      required: ["query", "mode"],
     },
   },
   {
@@ -367,7 +368,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           content: args!.content,
           category: args!.category ?? "task",
           importance: args!.importance ?? 5,
-          source: SOURCE,
+          source: args!.source ?? SOURCE,
           model: args!.model || undefined,
         });
         return { content: [{ type: "text", text: `Stored memory (id: ${result.id ?? "ok"})` }] };
@@ -381,7 +382,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const memories: any[] = result.memories ?? [];
         if (memories.length === 0) return { content: [{ type: "text", text: "No memories found." }] };
         const text = memories
-          .map((m) => `[${m.category}] (id:${m.id}) ${m.content}`)
+          .map((m) => `[${m.category}] (id:${m.id}, source:${m.source ?? "unknown"}) ${m.content}`)
           .join("\n\n");
         return { content: [{ type: "text", text }] };
       }
@@ -449,7 +450,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         });
         const memories: any[] = result.results ?? [];
         if (result.abstained || memories.length === 0) return { content: [{ type: "text", text: "No results found." }] };
-        const text = memories.map((m: any) => `[${m.category}] (id:${m.id}, score:${m.score?.toFixed(3)}) ${m.content}`).join("\n\n");
+        const text = memories.map((m: any) => `[${m.category}] (id:${m.id}, source:${m.source ?? "unknown"}, score:${m.score?.toFixed(3)}) ${m.content}`).join("\n\n");
         return { content: [{ type: "text", text }] };
       }
 
