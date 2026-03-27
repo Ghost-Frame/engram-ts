@@ -422,6 +422,8 @@ function recordAgentGuard(agentId: number | null, signal: "allow" | "warn" | "bl
 
 async function fetchHandler(req: Request, socketIp?: string): Promise<Response> {
     const url = new URL(req.url);
+    // Strip /api prefix added by SvelteKit GUI when served behind a reverse proxy
+    if (url.pathname.startsWith("/api/")) url.pathname = url.pathname.slice(4);
     const method = req.method;
 
     // CORS preflight
