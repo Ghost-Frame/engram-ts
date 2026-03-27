@@ -10,8 +10,6 @@ Memory, personality, reasoning, and trust in a single self-hosted system that le
 
 </div>
 
-![Engram memory graph visualization](tools/gui-demo-v2.gif)
-
 <div align="center">
 
 [Quick Start](#quick-start) · [Features](#what-engram-does) · [Architecture](#architecture) · [API](#api-reference) · [CLI](#cli) · [SDK](#typescript-sdk) · [MCP](#mcp-server) · [Deploy](#deployment)
@@ -21,6 +19,8 @@ Memory, personality, reasoning, and trust in a single self-hosted system that le
 ---
 
 ![Engram CLI demo](tools/cli-demo.gif)
+
+![Engram memory graph visualization](tools/gui-demo-v2.gif)
 
 ---
 
