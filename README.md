@@ -8,7 +8,7 @@ Memory, personality, reasoning, and trust in a single self-hosted system that le
 
 [![Version](https://img.shields.io/badge/version-5.11.0-gold.svg)](CHANGELOG.md) [![License](https://img.shields.io/badge/License-Elastic--2.0-blue.svg)](LICENSE) [![Node](https://img.shields.io/badge/node-%3E%3D22-green.svg)](https://nodejs.org) [![Docker](https://img.shields.io/badge/docker-compose-blue.svg)](docker-compose.yml)
 
-<!-- TODO: Add graph visualization GIF once GUI is polished -->
+![Engram memory graph visualization](tools/gui-demo.gif)
 
 [Quick Start](#quick-start) · [Features](#what-engram-does) · [Architecture](#architecture) · [API](#api-reference) · [CLI](#cli) · [SDK](#typescript-sdk) · [MCP](#mcp-server) · [Deploy](#deployment)
 
@@ -16,17 +16,7 @@ Memory, personality, reasoning, and trust in a single self-hosted system that le
 
 ---
 
-<!-- Terminal demo: replace with SVG recording when available -->
-```
-$ engram-cli store "The auth service runs on port 9091" --category discovery
-Stored memory #847 (discovery)
-
-$ engram-cli search "where does auth run"
-#847 [discovery] 0.94 : The auth service runs on port 9091
-
-$ engram-cli context "setting up SSO"
-7 memories across 3 categories. Top: #847 (discovery), #203 (decision), #91 (reference)
-```
+![Engram CLI demo](tools/cli-demo.gif)
 
 ---
 
@@ -55,269 +45,6 @@ Seven standalone microservices absorbed into Engram as native modules. Agent reg
 ---
 
 ## Quick Start
-- 🧠 **FSRS-6 spaced repetition** - cognitive science-backed memory decay using power-law forgetting curves (ported from [open-spaced-repetition](https://github.com/open-spaced-repetition/fsrs4anki))
-- 💪 **Dual-strength memory model** - Bjork & Bjork (1992) storage strength (never decays) + retrieval strength (decays via power law)
-- 🧬 **Reciprocal Rank Fusion search** - four-channel RRF scoring across vector similarity, FTS5 full-text, personality signals, and graph relationships
-- 🔗 **Auto-linking** - memories automatically connect via cosine similarity, forming a knowledge graph
-- 🧹 **SimHash deduplication** - 64-bit locality-sensitive hashing detects near-duplicates before embedding, saving compute
-- 🕐 **Bi-temporal fact tracking** - structured facts carry temporal validity windows with automatic contradiction-based invalidation
-- 🧩 **Entity cooccurrence graph** - entities that appear together build weighted relationships automatically
-- 🏘️ **Community detection** - label propagation groups related memories into discoverable clusters, auto-runs on store
-- 📈 **PageRank** - iterative weighted PageRank ranks memories by structural importance, not just connection count
-- 📊 **Graph timeline** - `GET /graph/timeline` shows how your knowledge graph grew week by week
-- 🔬 **Cross-encoder reranker** - BGE-reranker-base (quantized INT8) reranks search results for semantic precision
-- 🎭 **Personality engine** - extracts preferences, values, motivations, decisions, emotions, and identity signals from memories
-- 📊 **Graph visualization** - explore your memory space in a WebGL galaxy
-- 🔄 **Versioning** - update memories without losing history
-- ⏰ **Implicit spaced repetition** - every access is an FSRS review, building stability over time
-- 🔍 **Fact extraction & auto-tagging** - LLM extracts facts, classifies, tags (optional, requires LLM)
-- 💬 **Conversation extraction** - feed chat logs, get structured memories
-- ⚡ **Contradiction detection** - find and resolve conflicting memories
-- ⏪ **Time-travel queries** - query what you knew at any point in time
-- 🎯 **Smart context builder** - token-budget-aware RAG context assembly with progressive depth (1/2/3-hop)
-- 💭 **Reflections** - periodic meta-analysis that becomes searchable memory
-- 🧬 **Derived memories** - inference engine finds patterns across memories
-- 🗜️ **Auto-consolidation** - summarize large memory clusters automatically
-- 👥 **Multi-tenant** - isolated memory per user with API keys
-- 📖 **Episodic memory** - store conversation episodes as embedded, searchable narratives with temporal + semantic search. Facts link to source episodes.
-- 🚫 **Abstention** - search returns `abstained: true` when confidence is below threshold. The system knows when it doesn't know.
-- 🤖 **Assistant recall** - extracts what the AI said/did, not just user facts. LLM + regex patterns for assistant actions.
-- ⏳ **Temporal search** - `temporal_sort` orders results chronologically. Episode search by date range.
-- 🔗 **2-hop graph traversal** - relationship expansion reaches 2 levels deep for multi-hop reasoning
-- 🧩 **Implicit connection inference** - LLM post-processing in /context finds unstated relationships between memories
-- 🛡️ **Guardrails** - `POST /guard` checks proposed actions against stored rules before execution. Returns allow/warn/block. Prevents repeated deployment mistakes, outdated references, and policy violations.
-- 📦 **Spaces, tags, episodes** - organize memories into named collections
-- 🧩 **Entities & projects** - track people, servers, tools, projects
-- 📬 **Webhooks & digests** - event hooks + scheduled HMAC-signed summaries
-- 🔄 **Sync & import** - cross-instance sync, import from Mem0 / Supermemory
-- 📥 **URL ingest** - extract facts from web pages or text blobs
-- 🛠️ **MCP server** - JSON-RPC 2.0 stdio transport for Claude Desktop, Cursor, Windsurf
-- ⌨️ **CLI** - full-featured command-line interface (`engram-cli store`, `engram-cli search`, etc.)
-- 📥 **Review queue / inbox** - auto-detected memories land in review; explicit stores bypass
-- 🔒 **Security hardening** - auth required by default, body/content limits, IP allowlists, timing-safe auth
-- 📋 **Audit trail** - every mutation logged (who, what, when, from where)
-- 📊 **Structured JSON logging** - configurable log levels, request IDs, zero raw console output
-- 💾 **Backup & checkpoint** - download SQLite DB via API, manual WAL checkpoint, graceful shutdown
-- 🏗️ **Structural analysis** - deterministic graph analysis engine (absorbed from OpenSpace). Describe systems in EN syntax, get topology classification (Pipeline/Tree/DAG/Cycle), node roles, bridges, betweenness centrality, blast radius, shortest paths, and Louvain community detection. 12 MCP tools for architecture reasoning.
-- 🐳 **One-command deploy** - `docker compose up`
-
----
-
-## What's New
-
-### Syntheos Service Consolidation (v5.11.0)
-
-Seven standalone microservices absorbed into the Engram monolith as native modules. No new dependencies, no new processes. Same database, same auth.
-
-**Thymus** (quality evaluation) - Rubric-based scoring engine for agent output quality. Define evaluation criteria with weighted scales, run evaluations, track agent scores over time. Stores quality metrics alongside memories.
-
-- `POST /thymus/rubrics` - Create evaluation rubrics with weighted criteria
-- `GET /thymus/rubrics` - List rubrics
-- `POST /thymus/evaluations` - Score agent output against a rubric
-- `GET /thymus/evaluations` - List evaluations with agent/rubric filtering
-- `GET /thymus/agents/:agent/scores` - Aggregate scores per agent
-- `POST /thymus/metrics` - Record arbitrary quality metrics
-- `GET /thymus/metrics` - Query metrics with time range and agent filtering
-- `GET /thymus/stats` - Rubric, evaluation, and metric counts
-
-**Soma** (agent registry) - Agent lifecycle management. Register agents with capabilities, track heartbeats, organize into groups, collect structured logs.
-
-- `POST /soma/agents` - Register an agent
-- `GET /soma/agents` - List agents with type/status/capability filtering
-- `PATCH /soma/agents/:id` - Update agent metadata
-- `DELETE /soma/agents/:id` - Deregister (atomic cascade delete)
-- `POST /soma/agents/:id/heartbeat` - Heartbeat with optional status update
-- `GET /soma/agents/stale` - Find agents that missed heartbeats
-- `POST /soma/agents/:id/logs` - Submit structured log entries
-- `GET /soma/agents/:id/logs` - Read agent logs
-- `POST /soma/groups` - Create agent groups
-- `GET /soma/groups` - List groups
-- `POST /soma/groups/:id/members` - Add agent to group
-- `DELETE /soma/groups/:id/members/:agentId` - Remove from group
-- `GET /soma/agents/capability/:name` - Find agents by capability
-- `GET /soma/stats` - Registry statistics
-
-**Chiasm** (task tracking) - Lightweight task coordination for multi-agent systems. Agents create tasks, update status, and read each other's active work via a feed endpoint.
-
-- `POST /tasks` - Create a task
-- `GET /tasks` - List tasks with status/agent/project filtering
-- `GET /tasks/:id` - Get task with full audit trail
-- `PATCH /tasks/:id` - Update status/summary (creates audit entry)
-- `DELETE /tasks/:id` - Delete task
-- `GET /tasks/stats` - Task counts by status
-- `GET /feed` - Activity feed of recent task updates
-
-**Axon** (event bus) - Real-time pub/sub event bus with SSE streaming, webhook fan-out, and cursor-based polling. Agents publish events to named channels, subscribe for real-time delivery or poll at their own pace.
-
-- `POST /axon/publish` - Publish an event to a channel
-- `GET /axon/events` - Query events with channel/type/source filtering
-- `GET /axon/channels` - List channels with event and subscriber counts
-- `POST /axon/channels` - Create a new channel
-- `POST /axon/subscribe` - Subscribe agent to channel (optional webhook URL)
-- `POST /axon/unsubscribe` - Remove subscription
-- `GET /axon/subscriptions` - List subscriptions
-- `GET /axon/poll` - Cursor-based event consumption
-- `GET /axon/stream` - SSE real-time event stream
-- `GET /axon/stats` - Bus statistics
-
-**Loom** (workflow orchestration) - Multi-step pipeline engine with dependency-based execution. Define reusable workflows with webhook, LLM, and transform step types. Runs track progress, retry failed steps, and collect outputs.
-
-- `POST /loom/workflows` - Create a workflow definition
-- `GET /loom/workflows` - List workflows
-- `POST /loom/runs` - Start a workflow run with input
-- `GET /loom/runs` - List runs with status filtering
-- `GET /loom/runs/:id` - Get run with full state
-- `POST /loom/runs/:id/cancel` - Cancel a running workflow
-- `GET /loom/runs/:id/steps` - Get step states for a run
-- `GET /loom/runs/:id/logs` - Get execution logs
-- `POST /loom/steps/:id/complete` - External callback to complete a step
-- `POST /loom/steps/:id/fail` - External callback to fail a step
-- `GET /loom/stats` - Workflow and run statistics
-
-**Broca** (action log and narrator) - Agent action logger with template-based narration and natural language query. Logs what agents do, translates actions into plain English, and answers questions about system activity.
-
-- `POST /broca/actions` - Log an action with auto-narration
-- `GET /broca/actions` - Query actions with filtering
-- `GET /broca/actions/:id` - Get single action
-- `GET /broca/actions/:id/narrate` - Generate narrative for action
-- `GET /broca/feed` - Activity feed with narratives
-- `POST /broca/narrate` - Bulk narrate actions
-- `POST /broca/ask` - Natural language query over the system
-- `GET /broca/stats` - Action statistics
-
-**OpenSpace** (structural analysis) - Deterministic graph analysis engine for architecture reasoning. Describe systems in EN (Entity-Notation) syntax and get topology classification, node role detection, bridge analysis, betweenness centrality, shortest paths, blast radius assessment, structural diffs, and Louvain community detection. No AI inside the computation -- pure graph theory via Graphology.
-
-- `structural_analyze` - Topology classification (Pipeline/Tree/DAG/Cycle), node roles (SOURCE/SINK/FORK/JOIN/HUB), bridges
-- `structural_detail` - Concurrency metrics, critical path, flow depth, resilience analysis
-- `structural_between` - Betweenness centrality for any node (0-1)
-- `structural_distance` - Shortest path with subsystem crossing annotations
-- `structural_trace` - Follow directed flow from A to B along yields->needs edges
-- `structural_impact` - Blast radius: what disconnects if a node is removed
-- `structural_diff` - Structural diff between two system descriptions
-- `structural_evolve` - Dry-run architectural changes, preview structural delta
-- `structural_categorize` - Auto-discover subsystem boundaries via Louvain
-- `structural_extract` - Extract a named subsystem as standalone EN source
-- `structural_compose` - Merge two EN graphs with entity linking
-- `structural_memory_graph` - Analyze Engram's own memory link graph structurally
-
-Available via MCP tools or HTTP at `/structural/*` endpoints. No LLM required.
-
-All seven services share the main Engram database, reuse auth middleware, and publish events via the Axon event bus.
-
-<details>
-<summary><strong>v5.9.x</strong></summary>
-
-**PageRank for Memory Graphs** - Full iterative PageRank algorithm with type-aware edge weighting. Memories linked to by important memories score higher, not just memories with lots of connections. Scores are normalized 0-1 and stored per memory. Runs automatically every 25th store alongside community detection.
-
-**Search Ranking from Graph Structure** - Search results now get a 0-15% boost based on their PageRank score. Structurally important memories surface higher in `/search` and `/context` results. This works on top of the existing RRF scoring, decay, and temporal signals.
-
-**Auto Graph Analysis on Store** - Every 25th memory stored triggers background community detection and PageRank recomputation via the durable job queue. No impact on store latency.
-
-**Temporal Graph Evolution** - New `GET /graph/timeline` endpoint returns weekly aggregates of graph growth.
-
-**Enriched Graph Endpoint** - `/graph` now returns `pagerank_score` per node. Node sizes are boosted by PageRank.
-
-</details>
-
-<details>
-<summary><strong>v5.8.3</strong></summary>
-
-**Server-Side Source Filtering** - `/search`, `/context`, and `/recall` accept a `source` parameter. Filter propagates into hybrid search at both vector and FTS5 stages.
-
-**Worker Thread Embeddings** - ONNX inference moved to a dedicated Worker thread. No more event loop blocking.
-
-**Batch Link Queries** - Relationship expansion uses single batch query instead of N+1.
-
-**TypeScript Zero Errors** - Clean compilation with zero TS errors.
-
-</details>
-
-<details>
-<summary><strong>Previous releases</strong></summary>
-
-#### v5.8.2 - Blended Retrieval, Memory Health, Feedback Loop
-
-**Blended Multi-Strategy Retrieval** - `classifyQuestionMixed` detects mixed-intent queries and blends multiple question types with normalized weights. `blendStrategies` produces a weighted combination of SearchStrategy configs.
-
-**Memory Health Endpoint** - `GET /memory-health` returns four diagnostic categories: stale, duplicates, high-value unlinked, and contradiction hints.
-
-**Retrieval Feedback** - `POST /feedback` accepts signals (used, ignored, corrected, irrelevant, helpful). Auto-adjusts importance. `GET /feedback/stats` returns analytics.
-
-**Search Explainability** - Per-channel score breakdowns (vector, FTS, graph, personality, reranker, decay) in search results.
-
-**Freshness-Weighted Structured Facts** - Facts sorted by freshness with linear decay. Old facts tagged `[possibly outdated]`.
-
-**Contradiction Ranking Penalty** - Non-latest-version memories with contradiction keywords receive 0.65x score penalty.
-
-#### v5.8.1 - Durable Jobs, Security Hardening, Scheduler Leases
-
-**Durable Job Queue** - DB-backed jobs table with retry, exponential backoff, and crash recovery.
-
-**Scheduler Leases** - DB-backed leases prevent duplicate background work in multi-instance deployments.
-
-**Security** - Atomic memory ownership, bootstrap hardening, cross-tenant scratchpad fix, SSRF redirect blocking, passport tenant binding.
-
-**Readiness Probes** - `GET /live` and `GET /ready` with 503 when degraded.
-
-#### v5.8.0 - Intelligence Pipeline Overhaul
-
-**Reciprocal Rank Fusion** - 4-channel RRF scoring (vector, FTS5, personality, graph). Question-type-aware strategies.
-
-**SimHash Deduplication** - 64-bit locality-sensitive hashing detects near-duplicates before embedding.
-
-**Bi-Temporal Fact Tracking** - Structured facts with valid_at/invalid_at windows. Contradiction-based invalidation.
-
-**Entity Cooccurrence Graph** - Composite scoring (name similarity, frequency, temporal proximity).
-
-**Community Detection** - Label propagation on memory_links graph.
-
-**Cross-Encoder Reranker** - BGE-reranker-base (INT8, sub-100ms). Optional.
-
-**Personality Engine** - Six signal types: preference, value, motivation, decision, emotion, identity.
-
-**Progressive Disclosure** - `/context` depth=1/2/3 for token budget control.
-
-#### v5.7.0 - BGE-large, Episodic Memory, Multi-Tenant Isolation
-
-BGE-large-en-v1.5 (1024-dim), episodic memory, complete multi-tenant security audit, guardrails, abstention, assistant recall, 2-hop graph traversal, implicit connection inference.
-
-#### v5.6.0 - Node.js 22, Graph Intelligence
-
-Node.js 22+, optimized MCP server, vitest, Graphology knowledge graph.
-
-#### v5.5.0 - Intelligence Layer
-
-LLM fact extraction, auto-tagging, conversation extraction, URL ingest, reflections, derived memories, auto-consolidation.
-
-#### v5.4.0 - Security Hardening
-
-7 security fixes (S1-S7), RBAC, timing-safe auth, rate limiting, HSTS, CSP.
-
-#### v5.3.0 - FSRS-6 Spaced Repetition
-
-FSRS-6 with 21 trained weights, dual-strength model, time travel, smart context, reflections, digests, derived memories, auto-consolidation.
-
-#### v5.0.0 - Multi-Tenant
-
-Users, API keys, spaces, FTS5+vector hybrid search, auto-linking, version chains, libsql.
-
-#### v4.0.0 - SQLite + Local Embeddings
-
-SQLite + FTS5, MiniLM-L6-v2 embeddings, basic CRUD, conversations.
-
-#### v3.0.0 - Initial Release
-
-In-memory storage, basic embedding search.
-
-</details>
-
-
----
-
-## Quick Start (10 minutes)
-
-### 1. Start the server
->>>>>>> origin/master
 
 ```bash
 # Docker (recommended)
@@ -597,102 +324,6 @@ Use `X-Space: space-name` (or `X-Engram-Space`) to scope operations to a named m
 | `POST` | `/inbox/:id/edit` | Edit content and auto-approve |
 | `POST` | `/inbox/bulk` | Bulk approve/reject |
 
-### Thymus (Quality Evaluation)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/thymus/rubrics` | Create evaluation rubric with weighted criteria |
-| `GET` | `/thymus/rubrics` | List rubrics |
-| `GET` | `/thymus/rubrics/:id` | Get rubric by ID |
-| `POST` | `/thymus/evaluations` | Score agent output against a rubric |
-| `GET` | `/thymus/evaluations` | List evaluations (filter by agent, rubric) |
-| `GET` | `/thymus/agents/:agent/scores` | Aggregate score stats for an agent |
-| `POST` | `/thymus/metrics` | Record a quality metric |
-| `GET` | `/thymus/metrics` | Query metrics (filter by agent, metric, time range) |
-| `GET` | `/thymus/stats` | Rubric, evaluation, and metric counts |
-
-### Soma (Agent Registry)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/soma/agents` | Register a new agent |
-| `GET` | `/soma/agents` | List agents (filter by type, status, capability) |
-| `GET` | `/soma/agents/:id` | Get agent by ID |
-| `PATCH` | `/soma/agents/:id` | Update agent metadata |
-| `DELETE` | `/soma/agents/:id` | Deregister agent (cascade deletes logs and group memberships) |
-| `POST` | `/soma/agents/:id/heartbeat` | Send heartbeat with optional status |
-| `GET` | `/soma/agents/stale` | Find agents that missed heartbeats |
-| `POST` | `/soma/agents/:id/logs` | Submit structured log entry |
-| `GET` | `/soma/agents/:id/logs` | Read agent logs |
-| `POST` | `/soma/groups` | Create agent group |
-| `GET` | `/soma/groups` | List groups |
-| `GET` | `/soma/groups/:id` | Get group with member list |
-| `DELETE` | `/soma/groups/:id` | Delete group |
-| `POST` | `/soma/groups/:id/members` | Add agent to group |
-| `DELETE` | `/soma/groups/:id/members/:agentId` | Remove agent from group |
-| `GET` | `/soma/agents/capability/:name` | Find agents by capability |
-| `GET` | `/soma/stats` | Registry statistics |
-
-### Chiasm (Task Tracking)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/tasks` | Create a task |
-| `GET` | `/tasks` | List tasks (filter by status, agent, project) |
-| `GET` | `/tasks/:id` | Get task with audit trail |
-| `PATCH` | `/tasks/:id` | Update task status/summary |
-| `DELETE` | `/tasks/:id` | Delete task |
-| `GET` | `/tasks/stats` | Task counts by status |
-| `GET` | `/feed` | Activity feed of recent task updates |
-
-### Axon (Event Bus)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/axon/publish` | Publish event to a channel |
-| `GET` | `/axon/events` | Query events (filter by channel, type, source) |
-| `GET` | `/axon/events/:id` | Get single event |
-| `GET` | `/axon/channels` | List channels with counts |
-| `POST` | `/axon/channels` | Create channel |
-| `POST` | `/axon/subscribe` | Subscribe agent to channel |
-| `POST` | `/axon/unsubscribe` | Remove subscription |
-| `GET` | `/axon/subscriptions` | List subscriptions |
-| `GET` | `/axon/poll` | Cursor-based event consumption |
-| `GET` | `/axon/stream` | SSE real-time event stream |
-| `GET` | `/axon/stats` | Bus statistics |
-
-### Loom (Workflow Orchestration)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/loom/workflows` | Create workflow definition |
-| `GET` | `/loom/workflows` | List workflows |
-| `GET` | `/loom/workflows/:id` | Get workflow |
-| `PATCH` | `/loom/workflows/:id` | Update workflow |
-| `DELETE` | `/loom/workflows/:id` | Delete workflow |
-| `POST` | `/loom/runs` | Start workflow run |
-| `GET` | `/loom/runs` | List runs (filter by status, workflow) |
-| `GET` | `/loom/runs/:id` | Get run state |
-| `POST` | `/loom/runs/:id/cancel` | Cancel run |
-| `GET` | `/loom/runs/:id/steps` | Get step states |
-| `GET` | `/loom/runs/:id/logs` | Get execution logs |
-| `POST` | `/loom/steps/:id/complete` | Complete step (external callback) |
-| `POST` | `/loom/steps/:id/fail` | Fail step (external callback) |
-| `GET` | `/loom/stats` | Workflow statistics |
-
-### Broca (Action Log)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/broca/actions` | Log action with auto-narration |
-| `GET` | `/broca/actions` | Query actions |
-| `GET` | `/broca/actions/:id` | Get single action |
-| `GET` | `/broca/actions/:id/narrate` | Generate narrative |
-| `GET` | `/broca/feed` | Activity feed with narratives |
-| `POST` | `/broca/narrate` | Bulk narrate actions |
-| `POST` | `/broca/ask` | Natural language query |
-| `GET` | `/broca/stats` | Action statistics |
-
 ### System
 
 | Method | Path | Description |
@@ -731,6 +362,94 @@ Use `X-Space: space-name` (or `X-Engram-Space`) to scope operations to a named m
 | `POST` | `/admin/backfill-facts` | Extract facts from memories missing structured data |
 | `POST` | `/admin/refresh-cache` | Force reload embedding cache from DB |
 | `POST` | `/admin/compact` | VACUUM and ANALYZE database to reclaim space |
+
+### Thymus (Quality Evaluation)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/thymus/rubrics` | Create evaluation rubric with weighted criteria |
+| `GET` | `/thymus/rubrics` | List rubrics |
+| `POST` | `/thymus/evaluations` | Score agent output against a rubric |
+| `GET` | `/thymus/evaluations` | List evaluations (filter by agent, rubric) |
+| `GET` | `/thymus/agents/:agent/scores` | Aggregate score stats for an agent |
+| `POST` | `/thymus/metrics` | Record a quality metric |
+| `GET` | `/thymus/metrics` | Query metrics (filter by agent, metric, time range) |
+| `GET` | `/thymus/stats` | Rubric, evaluation, and metric counts |
+
+### Soma (Agent Registry)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/soma/agents` | Register a new agent |
+| `GET` | `/soma/agents` | List agents (filter by type, status, capability) |
+| `PATCH` | `/soma/agents/:id` | Update agent metadata |
+| `DELETE` | `/soma/agents/:id` | Deregister agent (cascade deletes logs and group memberships) |
+| `POST` | `/soma/agents/:id/heartbeat` | Send heartbeat with optional status |
+| `GET` | `/soma/agents/stale` | Find agents that missed heartbeats |
+| `POST` | `/soma/agents/:id/logs` | Submit structured log entry |
+| `GET` | `/soma/agents/:id/logs` | Read agent logs |
+| `POST` | `/soma/groups` | Create agent group |
+| `GET` | `/soma/groups` | List groups |
+| `POST` | `/soma/groups/:id/members` | Add agent to group |
+| `DELETE` | `/soma/groups/:id/members/:agentId` | Remove agent from group |
+| `GET` | `/soma/agents/capability/:name` | Find agents by capability |
+| `GET` | `/soma/stats` | Registry statistics |
+
+### Chiasm (Task Tracking)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/tasks` | Create a task |
+| `GET` | `/tasks` | List tasks (filter by status, agent, project) |
+| `GET` | `/tasks/:id` | Get task with audit trail |
+| `PATCH` | `/tasks/:id` | Update task status/summary |
+| `DELETE` | `/tasks/:id` | Delete task |
+| `GET` | `/tasks/stats` | Task counts by status |
+| `GET` | `/feed` | Activity feed of recent task updates |
+
+### Axon (Event Bus)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/axon/publish` | Publish event to a channel |
+| `GET` | `/axon/events` | Query events (filter by channel, type, source) |
+| `GET` | `/axon/channels` | List channels with counts |
+| `POST` | `/axon/channels` | Create channel |
+| `POST` | `/axon/subscribe` | Subscribe agent to channel |
+| `POST` | `/axon/unsubscribe` | Remove subscription |
+| `GET` | `/axon/subscriptions` | List subscriptions |
+| `GET` | `/axon/poll` | Cursor-based event consumption |
+| `GET` | `/axon/stream` | SSE real-time event stream |
+| `GET` | `/axon/stats` | Bus statistics |
+
+### Loom (Workflow Orchestration)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/loom/workflows` | Create workflow definition |
+| `GET` | `/loom/workflows` | List workflows |
+| `POST` | `/loom/runs` | Start workflow run |
+| `GET` | `/loom/runs` | List runs (filter by status, workflow) |
+| `GET` | `/loom/runs/:id` | Get run state |
+| `POST` | `/loom/runs/:id/cancel` | Cancel run |
+| `GET` | `/loom/runs/:id/steps` | Get step states |
+| `GET` | `/loom/runs/:id/logs` | Get execution logs |
+| `POST` | `/loom/steps/:id/complete` | Complete step (external callback) |
+| `POST` | `/loom/steps/:id/fail` | Fail step (external callback) |
+| `GET` | `/loom/stats` | Workflow statistics |
+
+### Broca (Action Log)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/broca/actions` | Log action with auto-narration |
+| `GET` | `/broca/actions` | Query actions |
+| `GET` | `/broca/actions/:id` | Get single action |
+| `GET` | `/broca/actions/:id/narrate` | Generate narrative |
+| `GET` | `/broca/feed` | Activity feed with narratives |
+| `POST` | `/broca/narrate` | Bulk narrate actions |
+| `POST` | `/broca/ask` | Natural language query |
+| `GET` | `/broca/stats` | Action statistics |
 
 </details>
 

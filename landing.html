@@ -22,91 +22,9 @@ a{color:var(--accent);text-decoration:none}
 a:hover{text-decoration:underline}
 code{font-family:'JetBrains Mono',monospace;font-size:0.85em;background:var(--bg3);padding:2px 6px;border-radius:4px}
 
-/* Hero */
-.hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:5rem 2rem 2rem;position:relative}
-.hero::before{content:'';position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 70% 45% at 50% -10%,rgba(196,162,101,0.06),transparent)}
-.hero-badge{display:inline-flex;align-items:center;gap:8px;padding:6px 16px;border-radius:99px;border:1px solid rgba(196,162,101,0.2);background:rgba(196,162,101,0.06);color:var(--accent);font-size:12px;font-weight:600;letter-spacing:0.5px;margin-bottom:2rem;text-transform:uppercase}
-.hero-badge .dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
-.hero h1{font-size:clamp(3rem,8vw,5.5rem);font-weight:800;letter-spacing:-0.03em;line-height:1.05;margin-bottom:1.5rem}
-.hero h1 span{background:linear-gradient(135deg,#f5f0e8,#c4a265);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.hero p{font-size:clamp(1rem,2.5vw,1.25rem);color:var(--dim);max-width:600px;margin-bottom:2.5rem}
-.hero-actions{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
-.btn{display:inline-block;padding:12px 28px;border-radius:var(--radius);font-size:14px;font-weight:600;font-family:'Inter',sans-serif;border:none;cursor:pointer;transition:all 0.2s}
-.btn-primary{background:var(--accent);color:#0a0a0a}
-.btn-primary:hover{background:var(--accent2);transform:translateY(-1px);box-shadow:0 8px 30px rgba(196,162,101,0.3)}
-.btn-secondary{background:rgba(255,255,255,0.04);color:var(--text);border:1px solid rgba(255,255,255,0.08)}
-.btn-secondary:hover{background:rgba(255,255,255,0.08);transform:translateY(-1px)}
-.hero-code{margin-top:3rem;text-align:left;background:var(--bg2);border:1px solid rgba(255,255,255,0.06);border-radius:var(--radius);padding:24px 28px;max-width:600px;width:100%;font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.8;color:var(--dim);position:relative;overflow-x:auto}
-.hero-code .kw{color:var(--accent2)}
-.hero-code .fn{color:var(--cyan)}
-.hero-code .str{color:var(--green)}
-.hero-code .num{color:var(--pink)}
-.hero-code .cm{color:var(--muted)}
-.hero-code .tag{position:absolute;top:12px;right:16px;font-size:10px;color:var(--muted);font-family:'Inter',sans-serif;text-transform:uppercase;letter-spacing:1px}
-
-/* Sections */
-section{padding:6rem 2rem}
-.container{max-width:1100px;margin:0 auto}
-.section-label{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--accent);margin-bottom:1rem}
-.section-title{font-size:clamp(1.75rem,4vw,2.5rem);font-weight:800;letter-spacing:-0.02em;margin-bottom:1rem}
-.section-desc{color:var(--dim);font-size:1.05rem;max-width:600px;margin-bottom:3rem}
-
-/* Feature groups */
-.feature-group{margin-bottom:3.5rem}
-.feature-group:last-child{margin-bottom:0}
-.group-label{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--dim);margin-bottom:1.25rem;padding-bottom:0.75rem;border-bottom:1px solid rgba(255,255,255,0.04)}
-.features{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.25rem}
-.feature{background:var(--bg2);border:1px solid rgba(176,176,190,0.2);border-radius:var(--radius);padding:24px;transition:all 0.3s}
-.feature:hover{border-color:rgba(176,176,190,0.5);transform:translateY(-2px)}
-.feature.highlight{border-color:rgba(196,162,101,0.4);background:linear-gradient(135deg,rgba(196,162,101,0.06),rgba(196,162,101,0.02))}
-.feature-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;margin-bottom:14px}
-.feature h3{font-size:14px;font-weight:700;margin-bottom:6px}
-.feature p{font-size:13px;color:var(--dim);line-height:1.6}
-
-/* Code blocks */
-.code-section{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem;align-items:start}
-@media(max-width:900px){.code-section{grid-template-columns:1fr}}
-.code-block{background:var(--bg2);border:1px solid rgba(255,255,255,0.04);border-radius:var(--radius);overflow:hidden}
-.code-header{padding:12px 20px;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim)}
-.code-header .lang{color:var(--accent);font-weight:600}
-.code-body{padding:20px;font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.8;color:var(--dim);overflow-x:auto}
-.code-body .kw{color:var(--accent2)}
-.code-body .fn{color:var(--cyan)}
-.code-body .str{color:var(--green)}
-.code-body .num{color:var(--pink)}
-.code-body .cm{color:var(--muted)}
-
-/* Steps grid */
-.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1.25rem}
-.step{background:var(--bg2);border:1px solid rgba(255,255,255,0.04);border-radius:var(--radius);padding:22px;text-align:center}
-.step-num{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
-.step-icon{font-size:1.6rem;margin-bottom:8px}
-.step h3{font-size:13px;font-weight:700;margin-bottom:5px}
-.step p{font-size:12px;color:var(--dim);line-height:1.55}
-
-/* MCP table */
-.mcp-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start}
-@media(max-width:768px){.mcp-grid{grid-template-columns:1fr}}
-.mcp-list{display:flex;flex-direction:column;gap:8px}
-.mcp-item{display:flex;gap:10px;align-items:center}
-.mcp-item code{font-size:11px;padding:2px 8px;border-radius:4px}
-.mcp-item span{font-size:12px;color:var(--dim)}
-
-/* CTA */
-.cta{text-align:center;padding:8rem 2rem;position:relative}
-.cta::before{content:'';position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 60% 50% at 50% 100%,rgba(196,162,101,0.08),transparent)}
-.cta h2{font-size:clamp(2rem,5vw,3rem);font-weight:800;letter-spacing:-0.02em;margin-bottom:1rem}
-.cta p{color:var(--dim);margin-bottom:2rem;font-size:1.1rem}
-.cta-code{display:inline-block;background:var(--bg2);border:1px solid rgba(255,255,255,0.06);border-radius:var(--radius);padding:16px 32px;font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--text);margin-bottom:2rem}
-.cta-code span{color:var(--accent)}
-
-/* Footer */
-footer{text-align:center;padding:3rem 2rem;color:var(--muted);font-size:12px;border-top:1px solid rgba(255,255,255,0.04)}
-footer a{color:var(--dim)}
-
 /* Nav */
-nav{position:fixed;top:0;left:0;right:0;z-index:50;padding:16px 2rem;display:flex;align-items:center;justify-content:space-between;backdrop-filter:blur(12px);background:rgba(9,9,11,0.85);border-bottom:1px solid rgba(255,255,255,0.04)}
+nav{position:fixed;top:0;left:0;right:0;z-index:50;padding:16px 2rem;display:flex;align-items:center;justify-content:space-between;backdrop-filter:blur(12px);background:rgba(9,9,11,0.6);border-bottom:1px solid rgba(255,255,255,0.04);transition:background 0.3s ease,border-color 0.3s ease}
+nav.scrolled{background:rgba(9,9,11,0.95);border-color:rgba(255,255,255,0.07)}
 nav .logo{font-size:16px;font-weight:800;letter-spacing:-0.02em}
 nav .logo span{color:var(--accent)}
 nav .links{display:flex;gap:24px;font-size:13px;color:var(--dim)}
@@ -124,6 +42,144 @@ nav .links a:hover{color:var(--text);text-decoration:none}
 .sponsor-drop a:hover{background:rgba(255,255,255,0.04);color:var(--text);text-decoration:none}
 .sponsor-drop a span.s-icon{width:16px;text-align:center;font-size:14px}
 
+/* Hero */
+.hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:5rem 2rem 2rem;position:relative;overflow:hidden}
+#hero-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}
+.hero-mesh{position:absolute;inset:0;pointer-events:none;z-index:1}
+.hero-mesh::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 80% 50% at 50% -15%,rgba(196,162,101,0.09),transparent 70%)}
+.hero-mesh::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 40% at 20% 80%,rgba(94,174,189,0.05),transparent 60%)}
+.hero > *{position:relative;z-index:2}
+.hero-badge{display:inline-flex;align-items:center;gap:8px;padding:6px 16px;border-radius:99px;border:1px solid rgba(196,162,101,0.25);background:rgba(196,162,101,0.07);color:var(--accent);font-size:12px;font-weight:600;letter-spacing:0.5px;margin-bottom:2rem;text-transform:uppercase;backdrop-filter:blur(4px)}
+.hero-badge .dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(90,158,126,0.6)}50%{opacity:0.5;box-shadow:0 0 0 4px rgba(90,158,126,0)}}
+.hero h1{font-size:clamp(3rem,8vw,5.5rem);font-weight:800;letter-spacing:-0.03em;line-height:1.05;margin-bottom:1.5rem}
+.hero h1 span{background:linear-gradient(135deg,#f5f0e8 0%,#c4a265 40%,#e8d4a0 70%,#c4a265 100%);background-size:200% 200%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:gradientShift 6s ease infinite}
+@keyframes gradientShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+.hero p{font-size:clamp(1rem,2.5vw,1.25rem);color:var(--dim);max-width:600px;margin-bottom:2.5rem}
+.hero-actions{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+.btn{display:inline-block;padding:12px 28px;border-radius:var(--radius);font-size:14px;font-weight:600;font-family:'Inter',sans-serif;border:none;cursor:pointer;transition:all 0.3s ease}
+.btn-primary{background:var(--accent);color:#0a0a0a}
+.btn-primary:hover{background:var(--accent2);transform:translateY(-2px);box-shadow:0 10px 40px rgba(196,162,101,0.35);text-decoration:none}
+.btn-secondary{background:rgba(255,255,255,0.04);color:var(--text);border:1px solid rgba(255,255,255,0.09)}
+.btn-secondary:hover{background:rgba(255,255,255,0.09);transform:translateY(-2px);border-color:rgba(255,255,255,0.15);text-decoration:none}
+.hero-code{margin-top:3rem;text-align:left;background:rgba(17,17,20,0.85);border:1px solid rgba(255,255,255,0.08);border-radius:var(--radius);padding:24px 28px;max-width:600px;width:100%;font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.8;color:var(--dim);position:relative;overflow:hidden;backdrop-filter:blur(12px)}
+.hero-code::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(196,162,101,0.03),transparent 50%,rgba(94,174,189,0.02));pointer-events:none}
+.hero-code .kw{color:var(--accent2)}
+.hero-code .fn{color:var(--cyan)}
+.hero-code .str{color:var(--green)}
+.hero-code .num{color:var(--pink)}
+.hero-code .cm{color:var(--muted)}
+.hero-code .tag{position:absolute;top:12px;right:16px;font-size:10px;color:var(--muted);font-family:'Inter',sans-serif;text-transform:uppercase;letter-spacing:1px}
+.typed-cursor{display:inline-block;width:2px;height:1em;background:var(--cyan);vertical-align:text-bottom;animation:blink 1s step-end infinite;margin-left:1px}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* Sections */
+section{padding:6rem 2rem}
+.container{max-width:1100px;margin:0 auto}
+.section-label{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--accent);margin-bottom:1rem}
+.section-title{font-size:clamp(1.75rem,4vw,2.5rem);font-weight:800;letter-spacing:-0.02em;margin-bottom:1rem}
+.section-desc{color:var(--dim);font-size:1.05rem;max-width:600px;margin-bottom:3rem}
+
+/* Scroll animations */
+.fade-up{opacity:0;transform:translateY(28px);transition:opacity 0.6s ease,transform 0.6s ease}
+.fade-up.visible{opacity:1;transform:translateY(0)}
+
+/* Stats section */
+.stats-section{padding:4rem 2rem;position:relative;overflow:hidden}
+.stats-section::before{content:'';position:absolute;inset:0;background:linear-gradient(180deg,transparent,rgba(196,162,101,0.025) 50%,transparent)}
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1.5rem;max-width:1100px;margin:0 auto}
+@media(max-width:768px){.stats-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:400px){.stats-grid{grid-template-columns:1fr}}
+.stat-card{text-align:center;padding:2rem 1rem;background:rgba(17,17,20,0.6);border:1px solid rgba(255,255,255,0.05);border-radius:var(--radius);backdrop-filter:blur(8px);transition:border-color 0.3s,transform 0.3s}
+.stat-card:hover{border-color:rgba(196,162,101,0.2);transform:translateY(-2px)}
+.stat-value{font-size:clamp(1.5rem,3vw,2.25rem);font-weight:800;letter-spacing:-0.03em;color:var(--text);margin-bottom:6px;font-variant-numeric:tabular-nums}
+.stat-value .stat-num{display:inline-block}
+.stat-value .stat-suffix{color:var(--accent)}
+.stat-label{font-size:12px;color:var(--dim);font-weight:500;letter-spacing:0.3px}
+
+/* Feature groups */
+.feature-group{margin-bottom:3.5rem}
+.feature-group:last-child{margin-bottom:0}
+.group-label{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--dim);margin-bottom:1.5rem;padding-bottom:0.75rem;position:relative}
+.group-label::after{content:'';position:absolute;bottom:0;left:0;width:60px;height:1px;background:linear-gradient(90deg,var(--accent),transparent)}
+.features{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.25rem}
+.feature{background:rgba(17,17,20,0.7);border:1px solid rgba(176,176,190,0.12);border-radius:var(--radius);padding:28px;transition:all 0.3s ease;backdrop-filter:blur(4px);position:relative;overflow:hidden}
+.feature::before{content:'';position:absolute;inset:0;opacity:0;transition:opacity 0.3s;border-radius:var(--radius)}
+.feature:hover{transform:translateY(-3px);box-shadow:0 16px 48px rgba(0,0,0,0.4)}
+.feature.highlight{border-color:rgba(196,162,101,0.25);background:linear-gradient(135deg,rgba(196,162,101,0.07),rgba(196,162,101,0.02))}
+.feature-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;margin-bottom:16px;transition:transform 0.3s}
+.feature:hover .feature-icon{transform:scale(1.08)}
+.feature h3{font-size:14px;font-weight:700;margin-bottom:8px}
+.feature p{font-size:13px;color:var(--dim);line-height:1.65}
+
+/* Glow borders on hover per icon color */
+.feature[data-glow="gold"]:hover{border-color:rgba(196,162,101,0.5);box-shadow:0 16px 48px rgba(0,0,0,0.4),0 0 0 1px rgba(196,162,101,0.15),inset 0 0 30px rgba(196,162,101,0.04)}
+.feature[data-glow="cyan"]:hover{border-color:rgba(94,174,189,0.5);box-shadow:0 16px 48px rgba(0,0,0,0.4),0 0 0 1px rgba(94,174,189,0.15),inset 0 0 30px rgba(94,174,189,0.04)}
+.feature[data-glow="green"]:hover{border-color:rgba(90,158,126,0.5);box-shadow:0 16px 48px rgba(0,0,0,0.4),0 0 0 1px rgba(90,158,126,0.15),inset 0 0 30px rgba(90,158,126,0.04)}
+.feature[data-glow="pink"]:hover{border-color:rgba(176,120,136,0.5);box-shadow:0 16px 48px rgba(0,0,0,0.4),0 0 0 1px rgba(176,120,136,0.15),inset 0 0 30px rgba(176,120,136,0.04)}
+.feature[data-glow="red"]:hover{border-color:rgba(192,96,96,0.5);box-shadow:0 16px 48px rgba(0,0,0,0.4),0 0 0 1px rgba(192,96,96,0.15),inset 0 0 30px rgba(192,96,96,0.04)}
+.feature[data-glow="amber"]:hover{border-color:rgba(196,162,101,0.4);box-shadow:0 16px 48px rgba(0,0,0,0.4),0 0 0 1px rgba(196,162,101,0.12),inset 0 0 30px rgba(196,162,101,0.03)}
+
+/* Code blocks */
+.code-section{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem;align-items:start}
+@media(max-width:900px){.code-section{grid-template-columns:1fr}}
+.code-block{background:rgba(17,17,20,0.8);border:1px solid rgba(255,255,255,0.06);border-radius:var(--radius);overflow:hidden;transition:border-color 0.3s,box-shadow 0.3s;backdrop-filter:blur(4px)}
+.code-block:hover{border-color:rgba(255,255,255,0.1);box-shadow:0 8px 32px rgba(0,0,0,0.3)}
+.code-header{padding:12px 20px;border-bottom:1px solid rgba(255,255,255,0.05);display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim)}
+.code-header .lang{color:var(--accent);font-weight:600}
+.code-body{padding:20px;font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.8;color:var(--dim);overflow-x:auto;position:relative}
+.code-body .kw{color:var(--accent2)}
+.code-body .fn{color:var(--cyan)}
+.code-body .str{color:var(--green)}
+.code-body .num{color:var(--pink)}
+.code-body .cm{color:var(--muted)}
+.copy-btn{position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);color:var(--dim);font-size:11px;font-family:'Inter',sans-serif;cursor:pointer;transition:all 0.2s;opacity:0}
+.code-body:hover .copy-btn{opacity:1}
+.copy-btn:hover{background:rgba(255,255,255,0.08);color:var(--text);border-color:rgba(255,255,255,0.15)}
+.copy-btn.copied{color:var(--green);border-color:rgba(90,158,126,0.3)}
+
+/* Steps grid */
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1.25rem}
+.step{background:rgba(17,17,20,0.7);border:1px solid rgba(255,255,255,0.05);border-radius:var(--radius);padding:24px;text-align:center;transition:all 0.3s;backdrop-filter:blur(4px)}
+.step:hover{border-color:rgba(196,162,101,0.2);transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,0.3)}
+.step-num{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+.step-icon{font-size:1.6rem;margin-bottom:8px}
+.step h3{font-size:13px;font-weight:700;margin-bottom:5px}
+.step p{font-size:12px;color:var(--dim);line-height:1.55}
+
+/* MCP table */
+.mcp-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start}
+@media(max-width:768px){.mcp-grid{grid-template-columns:1fr}}
+.mcp-list{display:flex;flex-direction:column;gap:8px}
+.mcp-item{display:flex;gap:10px;align-items:center}
+.mcp-item code{font-size:11px;padding:2px 8px;border-radius:4px}
+.mcp-item span{font-size:12px;color:var(--dim)}
+
+/* Demo section */
+.demo-frame{margin:2rem auto;max-width:800px;background:var(--bg);border-radius:var(--radius);overflow:hidden;position:relative}
+.demo-frame::before{content:'';position:absolute;inset:-1px;border-radius:calc(var(--radius) + 1px);background:linear-gradient(135deg,rgba(196,162,101,0.3),rgba(94,174,189,0.15),rgba(176,120,136,0.2),rgba(196,162,101,0.3));background-size:300% 300%;animation:demoBorder 6s ease infinite;z-index:0}
+.demo-frame-inner{position:relative;z-index:1;background:var(--bg);border-radius:calc(var(--radius) - 0px);overflow:hidden;margin:1px}
+.demo-titlebar{padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;gap:8px;background:rgba(17,17,20,0.95)}
+@keyframes demoBorder{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+
+/* CTA */
+.cta{text-align:center;padding:8rem 2rem;position:relative;overflow:hidden}
+.cta-mesh{position:absolute;inset:0;pointer-events:none}
+.cta-mesh::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 70% 60% at 50% 120%,rgba(196,162,101,0.1),transparent 70%)}
+.cta-mesh::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 50% 40% at 80% 20%,rgba(94,174,189,0.05),transparent 60%)}
+.cta > *{position:relative;z-index:1}
+.cta h2{font-size:clamp(2rem,5vw,3rem);font-weight:800;letter-spacing:-0.02em;margin-bottom:1rem}
+.cta p{color:var(--dim);margin-bottom:2rem;font-size:1.1rem}
+.cta-code{display:inline-block;background:rgba(17,17,20,0.9);border:1px solid rgba(255,255,255,0.08);border-radius:var(--radius);padding:16px 32px;font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--text);margin-bottom:2rem;backdrop-filter:blur(8px)}
+.cta-code span{color:var(--accent)}
+
+/* Dot pattern overlay */
+.dot-bg{position:absolute;inset:0;pointer-events:none;background-image:radial-gradient(circle,rgba(255,255,255,0.03) 1px,transparent 1px);background-size:28px 28px;mask-image:radial-gradient(ellipse 80% 80% at 50% 50%,black,transparent)}
+
+/* Footer */
+footer{text-align:center;padding:3rem 2rem;color:var(--muted);font-size:12px;border-top:1px solid rgba(255,255,255,0.04)}
+footer a{color:var(--dim)}
+
 @media(max-width:640px){
   .nav-toggle{display:block}
   nav .links{display:none;position:absolute;top:100%;left:0;right:0;flex-direction:column;gap:0;background:rgba(9,9,11,0.98);border-bottom:1px solid rgba(255,255,255,0.06);padding:1rem 2rem}
@@ -133,13 +189,19 @@ nav .links a:hover{color:var(--text);text-decoration:none}
   .sponsor-drop{position:static;display:none;border:none;box-shadow:none;padding:0 0 0 1rem;background:transparent}
   .sponsor-wrap:hover .sponsor-drop{display:block}
 }
+@media(prefers-reduced-motion:reduce){
+  .fade-up{opacity:1;transform:none;transition:none}
+  .hero h1 span{animation:none}
+  #hero-canvas{display:none}
+  .demo-frame::before{animation:none}
+}
 </style>
 </head>
 <body>
 
-<nav>
+<nav id="site-nav">
   <div class="logo">en<span>gram</span></div>
-  <button class="nav-toggle" onclick="this.nextElementSibling.classList.toggle('open')">☰</button>
+  <button class="nav-toggle" onclick="this.nextElementSibling.classList.toggle('open')">&#9776;</button>
   <div class="links">
     <a href="#features">Features</a>
     <a href="#how-it-works">How It Works</a>
@@ -160,64 +222,83 @@ nav .links a:hover{color:var(--text);text-decoration:none}
 
 <!-- Hero -->
 <section class="hero">
-  <div class="hero-badge"><span class="dot"></span> v5.9 - Open Source</div>
-  <h1>Memory for<br><span>AI agents</span></h1>
-  <p>Persistent, searchable, self-organizing memory with FSRS-6 spaced repetition. Store what agents learn. Recall it when it matters. No external APIs.</p>
-  <div class="hero-actions">
-    <a href="https://github.com/zanfiel/engram" class="btn btn-primary">Get Started →</a>
+  <canvas id="hero-canvas" aria-hidden="true"></canvas>
+  <div class="hero-mesh" aria-hidden="true"></div>
+
+  <div class="hero-badge fade-up"><span class="dot"></span> v5.11 &nbsp;&#x2022;&nbsp; Open Source</div>
+  <h1 class="fade-up">Memory for<br><span>AI agents</span></h1>
+  <p class="fade-up">Persistent, searchable, self-organizing memory with FSRS-6 spaced repetition. Store what agents learn. Recall it when it matters. No external APIs.</p>
+  <div class="hero-actions fade-up">
+    <a href="https://github.com/zanfiel/engram" class="btn btn-primary">Get Started &#8594;</a>
     <a href="https://demo.engram.lol/gui" class="btn btn-secondary">Try Live Demo</a>
   </div>
-  <div class="hero-code">
+  <div class="hero-code fade-up" id="hero-code-block">
     <span class="tag">TypeScript</span>
-    <span class="kw">import</span> { <span class="fn">Engram</span> } <span class="kw">from</span> <span class="str">"@zanfiel/engram/sdk"</span>;<br><br>
-    <span class="kw">const</span> mem = <span class="kw">new</span> <span class="fn">Engram</span>({ url: <span class="str">"http://localhost:4200"</span> });<br><br>
-    <span class="cm">// Store - embeddings generated locally, no API key needed</span><br>
-    <span class="kw">await</span> mem.<span class="fn">store</span>(<span class="str">"Deployed auth migration to production"</span>, {<br>
-    &nbsp;&nbsp;category: <span class="str">"state"</span>, importance: <span class="num">9</span>,<br>
-    });<br><br>
-    <span class="cm">// In a new session - multi-layer contextual recall</span><br>
-    <span class="kw">const</span> ctx = <span class="kw">await</span> mem.<span class="fn">recall</span>(<span class="str">"current production state"</span>);<br>
-    <span class="cm">// → Weighted by FSRS-6 retrievability, assembled into context</span>
+    <div id="typed-output" aria-label="Code example"></div>
+    <span class="typed-cursor" id="typed-cursor" aria-hidden="true"></span>
   </div>
 </section>
+
+<!-- Stats -->
+<div class="stats-section fade-up">
+  <div class="dot-bg" aria-hidden="true"></div>
+  <div class="stats-grid">
+    <div class="stat-card fade-up">
+      <div class="stat-value"><span class="stat-num" data-target="50" data-suffix="+">0</span><span class="stat-suffix">+</span></div>
+      <div class="stat-label">API Endpoints</div>
+    </div>
+    <div class="stat-card fade-up">
+      <div class="stat-value"><span class="stat-num" data-target="4" data-suffix="">0</span><span class="stat-suffix">-Channel</span></div>
+      <div class="stat-label">Hybrid Search</div>
+    </div>
+    <div class="stat-card fade-up">
+      <div class="stat-value" style="font-size:clamp(1.1rem,2vw,1.5rem);letter-spacing:-0.01em;padding-top:4px">FSRS-6</div>
+      <div class="stat-label">Spaced Repetition</div>
+    </div>
+    <div class="stat-card fade-up">
+      <div class="stat-value"><span class="stat-num" data-target="0" data-suffix="">0</span></div>
+      <div class="stat-label">External APIs Required</div>
+    </div>
+  </div>
+</div>
 
 <!-- Features -->
 <section id="features">
   <div class="container">
-    <div class="section-label">Features</div>
-    <h2 class="section-title">Everything agents need to remember</h2>
-    <p class="section-desc">One server. One libsql database. Runs on Node.js 22+ or Bun. No external services required.</p>
+    <div class="section-label fade-up">Features</div>
+    <h2 class="section-title fade-up">Everything agents need to remember</h2>
+    <p class="section-desc fade-up">One server. One libsql database. Runs on Node.js 22+ or Bun. No external services required.</p>
 
     <div class="feature-group">
-      <div class="group-label">Smart Memory</div>
+      <div class="group-label fade-up">Smart Memory</div>
       <div class="features">
-        <div class="feature highlight">
-          <div class="feature-icon" style="background:rgba(196,162,101,0.15);color:var(--accent)">⏱️</div>
+        <div class="feature highlight fade-up" data-glow="gold">
+          <div class="feature-icon" style="background:rgba(196,162,101,0.15);color:var(--accent)">&#8987;</div>
           <h3>FSRS-6 Spaced Repetition</h3>
           <p>21-parameter algorithm trained on millions of Anki reviews. Power-law forgetting curves. Every access is an implicit review. Stability grows over time.</p>
         </div>
-        <div class="feature highlight">
-          <div class="feature-icon" style="background:rgba(176,176,190,0.15);color:var(--accent2)">💪</div>
+        <div class="feature highlight fade-up" data-glow="gold">
+          <div class="feature-icon" style="background:rgba(176,176,190,0.15);color:var(--accent2)">&#128170;</div>
           <h3>Dual-Strength Model</h3>
-          <p>Bjork & Bjork (1992): storage strength never decays, retrieval strength resets on access. Combined retention score: 0.7 × retrieval + 0.3 × storage.</p>
+          <p>Bjork &amp; Bjork (1992): storage strength never decays, retrieval strength resets on access. Combined retention score: 0.7 x retrieval + 0.3 x storage.</p>
         </div>
-        <div class="feature">
-          <div class="feature-icon" style="background:rgba(52,211,153,0.1);color:var(--green)">🔄</div>
+        <div class="feature fade-up" data-glow="green">
+          <div class="feature-icon" style="background:rgba(52,211,153,0.1);color:var(--green)">&#128260;</div>
           <h3>Versioning</h3>
           <p>Update memories without losing history. Full version chain preserved. Only the latest version surfaces in search and recall.</p>
         </div>
-        <div class="feature">
-          <div class="feature-icon" style="background:rgba(34,211,238,0.1);color:var(--cyan)">🧹</div>
+        <div class="feature fade-up" data-glow="cyan">
+          <div class="feature-icon" style="background:rgba(34,211,238,0.1);color:var(--cyan)">&#129529;</div>
           <h3>Auto-Deduplication</h3>
           <p>SimHash 64-bit locality-sensitive hashing detects near-identical memories and merges them. Source count tracks how often something was mentioned.</p>
         </div>
-        <div class="feature">
-          <div class="feature-icon" style="background:rgba(251,191,36,0.1);color:var(--amber)">⏰</div>
+        <div class="feature fade-up" data-glow="amber">
+          <div class="feature-icon" style="background:rgba(251,191,36,0.1);color:var(--amber)">&#9200;</div>
           <h3>Auto-Forget / TTL</h3>
           <p>Set memories to expire with <code>forget_after</code>. Background sweep every 5 minutes. Critical memories persist forever.</p>
         </div>
-        <div class="feature">
-          <div class="feature-icon" style="background:rgba(248,113,113,0.1);color:var(--red)">⚡</div>
+        <div class="feature fade-up" data-glow="red">
+          <div class="feature-icon" style="background:rgba(248,113,113,0.1);color:var(--red)">&#9889;</div>
           <h3>Contradiction Detection</h3>
           <p>LLM-verified conflict scanning eliminates false positives. Resolve by keeping one side, both, or merging into a single memory.</p>
         </div>
@@ -225,55 +306,55 @@ nav .links a:hover{color:var(--text);text-decoration:none}
     </div>
 
     <div class="feature-group">
-      <div class="group-label">Intelligence Layer</div>
+      <div class="group-label fade-up">Intelligence Layer</div>
       <div class="features">
-        <div class="feature highlight">
-          <div class="feature-icon" style="background:rgba(34,211,238,0.15);color:var(--cyan)">🧠</div>
+        <div class="feature highlight fade-up" data-glow="cyan">
+          <div class="feature-icon" style="background:rgba(34,211,238,0.15);color:var(--cyan)">&#129504;</div>
           <h3>Hybrid Semantic + FTS5</h3>
           <p>4-channel Reciprocal Rank Fusion: BGE-large vector similarity, FTS5 full-text, personality signals, and graph relationships. Cross-encoder reranking (BGE-reranker-base INT8). No OpenAI key required.</p>
         </div>
-        <div class="feature">
-          <div class="feature-icon" style="background:rgba(244,114,182,0.1);color:var(--pink)">🔍</div>
-          <h3>Fact Extraction & Auto-Tagging</h3>
+        <div class="feature fade-up" data-glow="pink">
+          <div class="feature-icon" style="background:rgba(244,114,182,0.1);color:var(--pink)">&#128269;</div>
+          <h3>Fact Extraction &amp; Auto-Tagging</h3>
           <p>LLM extracts static facts from conversations. Auto-tags with keywords, classifies importance, detects relationship types (updates, extends, contradicts, caused_by).</p>
         </div>
-        <div class="feature">
-          <div class="feature-icon" style="background:rgba(196,162,101,0.1);color:var(--accent)">💬</div>
+        <div class="feature fade-up" data-glow="gold">
+          <div class="feature-icon" style="background:rgba(196,162,101,0.1);color:var(--accent)">&#128172;</div>
           <h3>Conversation Extraction</h3>
           <p>Feed raw chat logs to <code>/add</code>. Get structured memories out. Works with any agent framework or raw message arrays.</p>
         </div>
-        <div class="feature">
-          <div class="feature-icon" style="background:rgba(52,211,153,0.1);color:var(--green)">🌐</div>
+        <div class="feature fade-up" data-glow="green">
+          <div class="feature-icon" style="background:rgba(52,211,153,0.1);color:var(--green)">&#127760;</div>
           <h3>URL Ingest</h3>
           <p>Point <code>/ingest</code> at a URL or paste raw text. Facts extracted and stored automatically with source tracking.</p>
         </div>
-        <div class="feature">
-          <div class="feature-icon" style="background:rgba(176,176,190,0.1);color:var(--accent2)">💭</div>
+        <div class="feature fade-up" data-glow="gold">
+          <div class="feature-icon" style="background:rgba(176,176,190,0.1);color:var(--accent2)">&#128173;</div>
           <h3>Reflections</h3>
           <p>On-demand meta-analysis detects themes, patterns, and progress across your memory space. Reflections become searchable memories.</p>
         </div>
-        <div class="feature">
-          <div class="feature-icon" style="background:rgba(251,191,36,0.1);color:var(--amber)">🧬</div>
-          <h3>Derived Memories & Consolidation</h3>
+        <div class="feature fade-up" data-glow="amber">
+          <div class="feature-icon" style="background:rgba(251,191,36,0.1);color:var(--amber)">&#129326;</div>
+          <h3>Derived Memories &amp; Consolidation</h3>
           <p>LLM inference finds patterns across clusters and generates new knowledge. Auto-consolidation compresses large clusters into dense memories.</p>
         </div>
-        <div class="feature highlight">
-          <div class="feature-icon" style="background:rgba(196,162,101,0.15);color:var(--accent)">🚫</div>
+        <div class="feature highlight fade-up" data-glow="gold">
+          <div class="feature-icon" style="background:rgba(196,162,101,0.15);color:var(--accent)">&#128683;</div>
           <h3>Abstention</h3>
           <p>Search returns <code>abstained: true</code> when confidence is below threshold. The system knows what it doesn't know. No more false positives on unrelated queries.</p>
         </div>
-        <div class="feature">
-          <div class="feature-icon" style="background:rgba(90,158,126,0.1);color:var(--green)">🤖</div>
+        <div class="feature fade-up" data-glow="green">
+          <div class="feature-icon" style="background:rgba(90,158,126,0.1);color:var(--green)">&#129302;</div>
           <h3>Assistant Recall</h3>
           <p>Extracts what the AI said, recommended, and produced, not just user facts. LLM + regex patterns capture assistant actions as structured facts.</p>
         </div>
-        <div class="feature highlight">
-          <div class="feature-icon" style="background:rgba(244,114,182,0.15);color:var(--pink)">🎭</div>
+        <div class="feature highlight fade-up" data-glow="pink">
+          <div class="feature-icon" style="background:rgba(244,114,182,0.15);color:var(--pink)">&#127917;</div>
           <h3>Personality Engine</h3>
           <p>Extracts six signal types from conversations: preferences, values, motivations, decisions, emotions, identity. LLM synthesizes a coherent profile that shapes future recall scoring.</p>
         </div>
-        <div class="feature highlight">
-          <div class="feature-icon" style="background:rgba(248,113,113,0.15);color:var(--red)">🛡️</div>
+        <div class="feature highlight fade-up" data-glow="red">
+          <div class="feature-icon" style="background:rgba(248,113,113,0.15);color:var(--red)">&#128737;</div>
           <h3>Guardrails</h3>
           <p>Agents call <code>/guard</code> before destructive actions. Engram checks stored rules for conflicts and returns allow/warn/block, preventing repeated mistakes before they happen.</p>
         </div>
@@ -281,40 +362,40 @@ nav .links a:hover{color:var(--text);text-decoration:none}
     </div>
 
     <div class="feature-group">
-      <div class="group-label">Developer Platform</div>
+      <div class="group-label fade-up">Developer Platform</div>
       <div class="features">
-        <div class="feature highlight">
-          <div class="feature-icon" style="background:rgba(34,211,238,0.15);color:var(--cyan)">🔧</div>
+        <div class="feature highlight fade-up" data-glow="cyan">
+          <div class="feature-icon" style="background:rgba(34,211,238,0.15);color:var(--cyan)">&#128295;</div>
           <h3>MCP Server</h3>
           <p>Native Model Context Protocol. JSON-RPC 2.0 stdio. Works with Claude Desktop, Cursor, and Windsurf out of the box. 8 tools, 3 resources.</p>
         </div>
-        <div class="feature highlight">
-          <div class="feature-icon" style="background:rgba(52,211,153,0.15);color:var(--green)">⌨️</div>
+        <div class="feature highlight fade-up" data-glow="green">
+          <div class="feature-icon" style="background:rgba(52,211,153,0.15);color:var(--green)">&#9000;</div>
           <h3>CLI</h3>
           <p><code>engram-cli store</code>, <code>engram-cli search</code>, <code>engram-cli context</code> and more. Full access to every feature from your terminal. Supports <code>--json</code> and <code>--quiet</code> output modes.</p>
         </div>
-        <div class="feature">
-          <div class="feature-icon" style="background:rgba(196,162,101,0.1);color:var(--accent)">👥</div>
+        <div class="feature fade-up" data-glow="gold">
+          <div class="feature-icon" style="background:rgba(196,162,101,0.1);color:var(--accent)">&#128101;</div>
           <h3>Multi-Tenant + RBAC</h3>
           <p>Isolated memory per user. Role-based access: admin, writer, reader. Per-key rate limiting, scoped permissions, API key management.</p>
         </div>
-        <div class="feature">
-          <div class="feature-icon" style="background:rgba(244,114,182,0.1);color:var(--pink)">📬</div>
-          <h3>Webhooks & Digests</h3>
+        <div class="feature fade-up" data-glow="pink">
+          <div class="feature-icon" style="background:rgba(244,114,182,0.1);color:var(--pink)">&#128236;</div>
+          <h3>Webhooks &amp; Digests</h3>
           <p>Event hooks on every mutation with HMAC signing. Scheduled memory digest delivery. Built-in SSRF protection on webhook URLs.</p>
         </div>
-        <div class="feature">
-          <div class="feature-icon" style="background:rgba(176,176,190,0.1);color:var(--accent2)">🔄</div>
+        <div class="feature fade-up" data-glow="gold">
+          <div class="feature-icon" style="background:rgba(176,176,190,0.1);color:var(--accent2)">&#128260;</div>
           <h3>Cross-Instance Sync</h3>
           <p>Pull changes since a timestamp, push to another instance. Keep multiple Engram deployments in sync across environments.</p>
         </div>
-        <div class="feature">
-          <div class="feature-icon" style="background:rgba(248,113,113,0.1);color:var(--red)">📋</div>
-          <h3>Audit Trail & Structured Logging</h3>
+        <div class="feature fade-up" data-glow="red">
+          <div class="feature-icon" style="background:rgba(248,113,113,0.1);color:var(--red)">&#128203;</div>
+          <h3>Audit Trail &amp; Structured Logging</h3>
           <p>Every mutation logged: who, what, when, from where, with request IDs. Queryable via <code>/audit</code>. JSON logs throughout.</p>
         </div>
-        <div class="feature">
-          <div class="feature-icon" style="background:rgba(251,191,36,0.1);color:var(--amber)">📝</div>
+        <div class="feature fade-up" data-glow="amber">
+          <div class="feature-icon" style="background:rgba(251,191,36,0.1);color:var(--amber)">&#128221;</div>
           <h3>Scratchpad / Working Memory</h3>
           <p>Ephemeral per-session storage with TTL auto-purge. Promote entries to permanent memories when they prove valuable. Injected into <code>/context</code> as a working memory layer.</p>
         </div>
@@ -322,50 +403,50 @@ nav .links a:hover{color:var(--text);text-decoration:none}
     </div>
 
     <div class="feature-group">
-      <div class="group-label">Visualization & Organization</div>
+      <div class="group-label fade-up">Visualization &amp; Organization</div>
       <div class="features">
-        <div class="feature highlight">
-          <div class="feature-icon" style="background:rgba(52,211,153,0.15);color:var(--green)">🌌</div>
+        <div class="feature highlight fade-up" data-glow="green">
+          <div class="feature-icon" style="background:rgba(52,211,153,0.15);color:var(--green)">&#127756;</div>
           <h3>WebGL Galaxy Graph</h3>
           <p>Explore your entire memory space as an interactive galaxy at <code>/gui</code>. Click memories, trace connections, search, create, and edit in the browser.</p>
         </div>
-        <div class="feature">
-          <div class="feature-icon" style="background:rgba(196,162,101,0.1);color:var(--accent)">🕸️</div>
+        <div class="feature fade-up" data-glow="gold">
+          <div class="feature-icon" style="background:rgba(196,162,101,0.1);color:var(--accent)">&#128376;</div>
           <h3>Knowledge Graph</h3>
           <p>Auto-linking via cosine similarity with typed edges. PageRank centrality, community detection, and shortest path traversal. Search results are boosted by graph importance.</p>
         </div>
-        <div class="feature highlight">
-          <div class="feature-icon" style="background:rgba(34,211,238,0.15);color:var(--cyan)">📖</div>
+        <div class="feature highlight fade-up" data-glow="cyan">
+          <div class="feature-icon" style="background:rgba(34,211,238,0.15);color:var(--cyan)">&#128214;</div>
           <h3>Episodic Memory</h3>
           <p>Store conversation episodes as embedded, searchable narratives. Facts link back to their source episode. Semantic + temporal episode search. Ask "what happened last week?" and get coherent answers.</p>
         </div>
-        <div class="feature">
-          <div class="feature-icon" style="background:rgba(251,191,36,0.1);color:var(--amber)">🧩</div>
-          <h3>Entities & Projects</h3>
+        <div class="feature fade-up" data-glow="amber">
+          <div class="feature-icon" style="background:rgba(251,191,36,0.1);color:var(--amber)">&#129513;</div>
+          <h3>Entities &amp; Projects</h3>
           <p>Track people, servers, tools, and projects as first-class objects. Entity cooccurrence graph with composite scoring surfaces hidden relationships automatically.</p>
         </div>
-        <div class="feature">
-          <div class="feature-icon" style="background:rgba(176,176,190,0.1);color:var(--accent2)">📥</div>
+        <div class="feature fade-up" data-glow="gold">
+          <div class="feature-icon" style="background:rgba(176,176,190,0.1);color:var(--accent2)">&#128229;</div>
           <h3>Review Queue / Inbox</h3>
           <p>Auto-detected memories land in inbox for review. Approve, reject, or edit before they enter recall. Bulk operations supported.</p>
         </div>
-        <div class="feature highlight">
-          <div class="feature-icon" style="background:rgba(90,158,126,0.15);color:var(--green)">🏘️</div>
+        <div class="feature highlight fade-up" data-glow="green">
+          <div class="feature-icon" style="background:rgba(90,158,126,0.15);color:var(--green)">&#127864;</div>
           <h3>Community Detection</h3>
           <p>Label propagation on the memory graph surfaces clusters of related memories. Runs automatically every 25th store. Type-aware edge weighting.</p>
         </div>
-        <div class="feature highlight">
-          <div class="feature-icon" style="background:rgba(196,162,101,0.15);color:var(--accent)">📈</div>
+        <div class="feature highlight fade-up" data-glow="gold">
+          <div class="feature-icon" style="background:rgba(196,162,101,0.15);color:var(--accent)">&#128200;</div>
           <h3>PageRank</h3>
           <p>Iterative weighted PageRank scores memories by structural importance. A memory referenced by high-value hubs outranks one with lots of weak connections. Boosts search results by up to 15%.</p>
         </div>
-        <div class="feature">
-          <div class="feature-icon" style="background:rgba(34,211,238,0.1);color:var(--cyan)">📊</div>
+        <div class="feature fade-up" data-glow="cyan">
+          <div class="feature-icon" style="background:rgba(34,211,238,0.1);color:var(--cyan)">&#128202;</div>
           <h3>Graph Timeline</h3>
           <p>See how your knowledge graph grew over time. Weekly aggregates of new memories, total links, and cluster formation. Hit <code>/graph/timeline</code> and watch the evolution.</p>
         </div>
-        <div class="feature">
-          <div class="feature-icon" style="background:rgba(244,114,182,0.1);color:var(--pink)">⏪</div>
+        <div class="feature fade-up" data-glow="pink">
+          <div class="feature-icon" style="background:rgba(244,114,182,0.1);color:var(--pink)">&#9194;</div>
           <h3>Time-Travel Queries</h3>
           <p>Query what you knew at any past moment. Debug decisions, audit context drift, understand how your agent's worldview evolved.</p>
         </div>
@@ -377,99 +458,102 @@ nav .links a:hover{color:var(--text);text-decoration:none}
 
 
 <!-- GUI Demo -->
-<section style="background:var(--bg2)">
-  <div class="container" style="text-align:center">
-    <div class="section-label">Try It Now</div>
-    <h2 class="section-title">See your memory space</h2>
-    <p class="section-desc" style="margin-left:auto;margin-right:auto">Engram includes a built-in WebGL graph visualization. Explore connections between memories, search, create, edit, all from the browser.</p>
-    <div style="margin:2rem auto;max-width:800px;background:var(--bg);border:1px solid rgba(255,255,255,0.06);border-radius:var(--radius);overflow:hidden">
-      <div style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;gap:8px">
-        <span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span>
-        <span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span>
-        <span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span>
-        <span style="flex:1;text-align:center;font-size:12px;color:var(--muted)">demo.engram.lol/gui</span>
-      </div>
-      <div style="padding:3rem 2rem;display:flex;flex-direction:column;align-items:center;gap:1.5rem">
-        <div style="font-size:3rem">&#129504;</div>
-        <div style="color:var(--text);font-size:18px;font-weight:700">Interactive Memory Galaxy</div>
-        <div style="color:var(--dim);font-size:14px;max-width:500px;line-height:1.6">Explore a live demo with sample memories and auto-generated links. Click nodes to inspect. Search, filter by category, create new memories. Keyboard shortcuts for power users.</div>
-        <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:0.5rem">
-          <span style="padding:4px 12px;border-radius:99px;font-size:11px;background:rgba(34,211,238,0.1);color:var(--cyan)">WebGL Rendering</span>
-          <span style="padding:4px 12px;border-radius:99px;font-size:11px;background:rgba(176,176,190,0.1);color:var(--accent2)">Force-Directed Layout</span>
-          <span style="padding:4px 12px;border-radius:99px;font-size:11px;background:rgba(52,211,153,0.1);color:var(--green)">Real-time Search</span>
-          <span style="padding:4px 12px;border-radius:99px;font-size:11px;background:rgba(244,114,182,0.1);color:var(--pink)">Category Filters</span>
+<section style="background:var(--bg2);position:relative;overflow:hidden">
+  <div class="dot-bg" aria-hidden="true" style="opacity:0.5"></div>
+  <div class="container" style="text-align:center;position:relative;z-index:1">
+    <div class="section-label fade-up">Try It Now</div>
+    <h2 class="section-title fade-up">See your memory space</h2>
+    <p class="section-desc fade-up" style="margin-left:auto;margin-right:auto">Engram includes a built-in WebGL graph visualization. Explore connections between memories, search, create, edit, all from the browser.</p>
+    <div class="demo-frame fade-up">
+      <div class="demo-frame-inner">
+        <div class="demo-titlebar">
+          <span style="width:12px;height:12px;border-radius:50%;background:#ff5f57;display:inline-block"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#febc2e;display:inline-block"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#28c840;display:inline-block"></span>
+          <span style="flex:1;text-align:center;font-size:12px;color:var(--muted)">demo.engram.lol/gui</span>
         </div>
-        <a href="https://demo.engram.lol/gui" class="btn btn-primary" style="margin-top:1rem">Open Live Demo &#8594;</a>
-        <div style="font-size:12px;color:var(--muted)">Password: <code style="color:var(--accent)">demo</code></div>
+        <div style="padding:3rem 2rem;display:flex;flex-direction:column;align-items:center;gap:1.5rem">
+          <div style="font-size:3rem">&#129504;</div>
+          <div style="color:var(--text);font-size:18px;font-weight:700">Interactive Memory Galaxy</div>
+          <div style="color:var(--dim);font-size:14px;max-width:500px;line-height:1.6">Explore a live demo with sample memories and auto-generated links. Click nodes to inspect. Search, filter by category, create new memories. Keyboard shortcuts for power users.</div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:0.5rem">
+            <span style="padding:4px 12px;border-radius:99px;font-size:11px;background:rgba(34,211,238,0.1);color:var(--cyan);border:1px solid rgba(34,211,238,0.15)">WebGL Rendering</span>
+            <span style="padding:4px 12px;border-radius:99px;font-size:11px;background:rgba(176,176,190,0.1);color:var(--accent2);border:1px solid rgba(176,176,190,0.15)">Force-Directed Layout</span>
+            <span style="padding:4px 12px;border-radius:99px;font-size:11px;background:rgba(52,211,153,0.1);color:var(--green);border:1px solid rgba(52,211,153,0.15)">Real-time Search</span>
+            <span style="padding:4px 12px;border-radius:99px;font-size:11px;background:rgba(244,114,182,0.1);color:var(--pink);border:1px solid rgba(244,114,182,0.15)">Category Filters</span>
+          </div>
+          <a href="https://demo.engram.lol/gui" class="btn btn-primary" style="margin-top:1rem">Open Live Demo &#8594;</a>
+        </div>
       </div>
     </div>
   </div>
 </section>
 
 <!-- How It Works -->
-<section id="how-it-works" style="background:var(--bg2)">
-  <div class="container">
-    <div class="section-label">How It Works</div>
-    <h2 class="section-title">The memory lifecycle</h2>
-    <p class="section-desc">From store to recall: what happens to every memory.</p>
+<section id="how-it-works" style="background:var(--bg2);position:relative;overflow:hidden">
+  <div class="dot-bg" aria-hidden="true"></div>
+  <div class="container" style="position:relative;z-index:1">
+    <div class="section-label fade-up">How It Works</div>
+    <h2 class="section-title fade-up">The memory lifecycle</h2>
+    <p class="section-desc fade-up">From store to recall: what happens to every memory.</p>
     <div class="steps">
-      <div class="step">
+      <div class="step fade-up">
         <div class="step-num">01</div>
-        <div class="step-icon">💾</div>
+        <div class="step-icon">&#128190;</div>
         <h3>Store</h3>
         <p>Content embedded via BGE-large ONNX (1024-dim), stored in libsql with FTS5 full-text indexing.</p>
       </div>
-      <div class="step">
+      <div class="step fade-up">
         <div class="step-num">02</div>
-        <div class="step-icon">🔗</div>
+        <div class="step-icon">&#128279;</div>
         <h3>Auto-Link</h3>
         <p>Compared to existing memories. Above 0.55 cosine similarity, typed relationship edges are created automatically.</p>
       </div>
-      <div class="step">
+      <div class="step fade-up">
         <div class="step-num">03</div>
-        <div class="step-icon">⏱️</div>
+        <div class="step-icon">&#8987;</div>
         <h3>FSRS-6 Init</h3>
         <p>Stability, difficulty, storage + retrieval strength initialized. Power-law forgetting curve begins tracking retrievability.</p>
       </div>
-      <div class="step">
+      <div class="step fade-up">
         <div class="step-num">04</div>
-        <div class="step-icon">🔍</div>
+        <div class="step-icon">&#128269;</div>
         <h3>Fact Extract</h3>
         <p>If LLM configured: static facts extracted, keywords tagged, importance scored, relationships to existing memories detected.</p>
       </div>
-      <div class="step">
+      <div class="step fade-up">
         <div class="step-num">05</div>
-        <div class="step-icon">🎯</div>
+        <div class="step-icon">&#127919;</div>
         <h3>Recall</h3>
         <p>Multi-layer context assembly: static facts, semantic matches, episodic context, graph expansion, recent activity, working memory, personality signals, and implicit inference.</p>
       </div>
-      <div class="step">
+      <div class="step fade-up">
         <div class="step-num">06</div>
-        <div class="step-icon">📈</div>
+        <div class="step-icon">&#128200;</div>
         <h3>Review</h3>
         <p>Every recall is an implicit FSRS-6 "Good" review. Stability builds. Frequently recalled memories can reach months of retention.</p>
       </div>
-      <div class="step">
+      <div class="step fade-up">
         <div class="step-num">07</div>
-        <div class="step-icon">💪</div>
+        <div class="step-icon">&#128170;</div>
         <h3>Dual Decay</h3>
-        <p>Storage strength accumulates. Retrieval strength decays via power law. Combined: 0.7 × retrieval + 0.3 × (storage/10).</p>
+        <p>Storage strength accumulates. Retrieval strength decays via power law. Combined: 0.7 x retrieval + 0.3 x (storage/10).</p>
       </div>
-      <div class="step">
+      <div class="step fade-up">
         <div class="step-num">08</div>
-        <div class="step-icon">⚡</div>
+        <div class="step-icon">&#9889;</div>
         <h3>Contradiction</h3>
         <p>Conflicts detected and LLM-verified. Resolved by keeping one, both, or merging. False positives eliminated automatically.</p>
       </div>
-      <div class="step">
+      <div class="step fade-up">
         <div class="step-num">09</div>
-        <div class="step-icon">🗜️</div>
+        <div class="step-icon">&#128220;</div>
         <h3>Consolidate</h3>
         <p>Large related clusters summarized into a single dense memory. Originals archived, graph links preserved.</p>
       </div>
-      <div class="step">
+      <div class="step fade-up">
         <div class="step-num">10</div>
-        <div class="step-icon">💭</div>
+        <div class="step-icon">&#128173;</div>
         <h3>Reflect</h3>
         <p>Periodic meta-analysis generates insights about themes, progress, and patterns. Reflections become searchable memories.</p>
       </div>
@@ -480,14 +564,15 @@ nav .links a:hover{color:var(--text);text-decoration:none}
 <!-- SDKs -->
 <section id="sdks">
   <div class="container">
-    <div class="section-label">SDKs</div>
-    <h2 class="section-title">Three lines to persistent memory</h2>
-    <p class="section-desc">TypeScript SDK, CLI, or raw HTTP. Pick your weapon.</p>
+    <div class="section-label fade-up">SDKs</div>
+    <h2 class="section-title fade-up">Three lines to persistent memory</h2>
+    <p class="section-desc fade-up">TypeScript SDK, CLI, or raw HTTP. Pick your weapon.</p>
 
     <div class="code-section">
-      <div class="code-block">
+      <div class="code-block fade-up">
         <div class="code-header"><span class="lang">TypeScript</span> npm install @zanfiel/engram</div>
         <div class="code-body">
+          <button class="copy-btn" data-copy="ts" title="Copy">Copy</button>
           <span class="kw">const</span> mem = <span class="kw">new</span> <span class="fn">Engram</span>({<br>
           &nbsp;&nbsp;url: <span class="str">"http://localhost:4200"</span>,<br>
           &nbsp;&nbsp;apiKey: <span class="str">"eg_..."</span>,<br>
@@ -501,9 +586,10 @@ nav .links a:hover{color:var(--text);text-decoration:none}
           <span class="cm">// { retrievability: 0.94, stability: 6.2 }</span>
         </div>
       </div>
-      <div class="code-block">
+      <div class="code-block fade-up">
         <div class="code-header"><span class="lang">CLI</span> npm install -g @zanfiel/engram</div>
         <div class="code-body">
+          <button class="copy-btn" data-copy="cli" title="Copy">Copy</button>
           <span class="cm"># Store a memory</span><br>
           engram-cli <span class="fn">store</span> <span class="str">"Auth migrated to JWT"</span> \<br>
           &nbsp;&nbsp;--category <span class="str">decision</span> --importance <span class="num">9</span><br><br>
@@ -515,9 +601,10 @@ nav .links a:hover{color:var(--text);text-decoration:none}
           <span class="cm"># All commands support --json output</span>
         </div>
       </div>
-      <div class="code-block">
+      <div class="code-block fade-up">
         <div class="code-header"><span class="lang">cURL</span> raw HTTP</div>
         <div class="code-body">
+          <button class="copy-btn" data-copy="curl" title="Copy">Copy</button>
           <span class="cm"># Store a memory</span><br>
           curl -X POST localhost:<span class="num">4200</span>/store \<br>
           &nbsp;&nbsp;-H <span class="str">"Authorization: Bearer eg_..."</span> \<br>
@@ -535,14 +622,15 @@ nav .links a:hover{color:var(--text);text-decoration:none}
 </section>
 
 <!-- MCP -->
-<section id="mcp" style="background:var(--bg2)">
-  <div class="container">
-    <div class="section-label">MCP Server</div>
-    <h2 class="section-title">Works with your AI tools</h2>
-    <p class="section-desc">Native Model Context Protocol. Drop Engram into Claude Desktop, Cursor, or Windsurf in under a minute.</p>
+<section id="mcp" style="background:var(--bg2);position:relative;overflow:hidden">
+  <div class="dot-bg" aria-hidden="true"></div>
+  <div class="container" style="position:relative;z-index:1">
+    <div class="section-label fade-up">MCP Server</div>
+    <h2 class="section-title fade-up">Works with your AI tools</h2>
+    <p class="section-desc fade-up">Native Model Context Protocol. Drop Engram into Claude Desktop, Cursor, or Windsurf in under a minute.</p>
 
     <div class="mcp-grid">
-      <div class="code-block">
+      <div class="code-block fade-up">
         <div class="code-header"><span class="lang">JSON</span> claude_desktop_config.json</div>
         <div class="code-body">
           {<br>
@@ -559,7 +647,7 @@ nav .links a:hover{color:var(--text);text-decoration:none}
           }
         </div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:1.25rem">
+      <div style="display:flex;flex-direction:column;gap:1.25rem" class="fade-up">
         <div class="feature" style="margin:0">
           <h3 style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--dim);margin-bottom:14px">Tools</h3>
           <div class="mcp-list">
@@ -585,12 +673,14 @@ nav .links a:hover{color:var(--text);text-decoration:none}
 
 <!-- CTA -->
 <section class="cta">
-  <h2>Get started in 30 seconds</h2>
-  <p>One command. Full memory. Your hardware.</p>
-  <div class="cta-code"><span>$</span> docker compose up -d</div>
+  <div class="cta-mesh" aria-hidden="true"></div>
+  <div class="dot-bg" aria-hidden="true" style="opacity:0.4"></div>
+  <h2 class="fade-up">Get started in 30 seconds</h2>
+  <p class="fade-up">One command. Full memory. Your hardware.</p>
+  <div class="cta-code fade-up"><span>$</span> docker compose up -d</div>
   <br>
-  <div class="hero-actions" style="justify-content:center">
-    <a href="https://github.com/zanfiel/engram" class="btn btn-primary">View on GitHub →</a>
+  <div class="hero-actions fade-up" style="justify-content:center">
+    <a href="https://github.com/zanfiel/engram" class="btn btn-primary">View on GitHub &#8594;</a>
     <a href="https://github.com/zanfiel/engram/blob/main/README.md" class="btn btn-secondary">Read the Docs</a>
     <a href="https://demo.engram.lol/gui" class="btn btn-secondary">Try the Demo</a>
   </div>
@@ -598,8 +688,198 @@ nav .links a:hover{color:var(--text);text-decoration:none}
 
 <footer>
   <p><a href="https://github.com/zanfiel/engram/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Elastic%202.0-blue" alt="Elastic License 2.0" style="vertical-align:middle"></a></p>
-  <p style="margin-top:8px"><a href="https://github.com/zanfiel/engram">GitHub</a> &nbsp;·&nbsp; <a href="https://github.com/sponsors/Zanfiel">Sponsor</a> &nbsp;·&nbsp; <a href="https://www.patreon.com/ZanEngram">Patreon</a> &nbsp;·&nbsp; <a href="https://ko-fi.com/zanfiel10426">Ko-fi</a></p>
+  <p style="margin-top:8px"><a href="https://github.com/zanfiel/engram">GitHub</a> &nbsp;&middot;&nbsp; <a href="https://github.com/sponsors/Zanfiel">Sponsor</a> &nbsp;&middot;&nbsp; <a href="https://www.patreon.com/ZanEngram">Patreon</a> &nbsp;&middot;&nbsp; <a href="https://ko-fi.com/zanfiel10426">Ko-fi</a></p>
 </footer>
 
+<script>
+(function(){
+  // Nav scroll effect
+  var nav = document.getElementById('site-nav');
+  window.addEventListener('scroll', function(){
+    nav.classList.toggle('scrolled', window.scrollY > 40);
+  }, {passive:true});
+
+  // Particle canvas
+  var canvas = document.getElementById('hero-canvas');
+  if(!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var W, H, particles = [];
+
+  function resize(){
+    W = canvas.width = canvas.offsetWidth;
+    H = canvas.height = canvas.offsetHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize, {passive:true});
+
+  function rand(a, b){ return a + Math.random()*(b-a); }
+
+  // ~30 particles
+  for(var i=0; i<30; i++){
+    particles.push({
+      x: rand(0,1), y: rand(0,1),
+      vx: rand(-0.04, 0.04), vy: rand(-0.06, -0.01),
+      r: rand(0.8, 2.2),
+      o: rand(0.15, 0.55),
+      c: Math.random() < 0.4 ? [196,162,101] : Math.random() < 0.5 ? [94,174,189] : [228,228,231]
+    });
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    for(var i=0; i<particles.length; i++){
+      var p = particles[i];
+      p.x += p.vx * 0.003;
+      p.y += p.vy * 0.003;
+      if(p.y < -0.02) p.y = 1.02;
+      if(p.x < -0.02) p.x = 1.02;
+      if(p.x > 1.02) p.x = -0.02;
+      ctx.beginPath();
+      ctx.arc(p.x*W, p.y*H, p.r, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba('+p.c[0]+','+p.c[1]+','+p.c[2]+','+p.o+')';
+      ctx.fill();
+    }
+    requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+
+  // Intersection Observer for fade-up
+  var fadeEls = document.querySelectorAll('.fade-up');
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(entry, idx){
+      if(entry.isIntersecting){
+        // stagger cards inside feature grids
+        var el = entry.target;
+        var delay = 0;
+        var siblings = el.parentElement ? el.parentElement.querySelectorAll('.fade-up') : null;
+        if(siblings && el.parentElement.classList.contains('features')){
+          siblings.forEach(function(s, i){ if(s === el) delay = i * 80; });
+        }
+        setTimeout(function(){ el.classList.add('visible'); }, delay);
+        io.unobserve(el);
+      }
+    });
+  }, {threshold:0.1, rootMargin:'0px 0px -40px 0px'});
+
+  fadeEls.forEach(function(el){ io.observe(el); });
+
+  // Count-up animation for stats
+  function countUp(el, target, suffix){
+    var start = 0, duration = 1200, startTime = null;
+    function step(ts){
+      if(!startTime) startTime = ts;
+      var progress = Math.min((ts - startTime) / duration, 1);
+      var ease = 1 - Math.pow(1 - progress, 3);
+      var val = Math.round(ease * target);
+      el.textContent = val;
+      if(progress < 1) requestAnimationFrame(step);
+      else el.textContent = target;
+    }
+    requestAnimationFrame(step);
+  }
+
+  var statNums = document.querySelectorAll('.stat-num[data-target]');
+  var statIo = new IntersectionObserver(function(entries){
+    entries.forEach(function(entry){
+      if(entry.isIntersecting){
+        var el = entry.target;
+        var target = parseInt(el.getAttribute('data-target'), 10);
+        countUp(el, target);
+        statIo.unobserve(el);
+      }
+    });
+  }, {threshold:0.5});
+  statNums.forEach(function(el){ statIo.observe(el); });
+
+  // Hero code typing animation
+  var codeLines = [
+    '<span class="kw">import</span> { <span class="fn">Engram</span> } <span class="kw">from</span> <span class="str">"@zanfiel/engram/sdk"</span>;',
+    '',
+    '<span class="kw">const</span> mem = <span class="kw">new</span> <span class="fn">Engram</span>({ url: <span class="str">"http://localhost:4200"</span> });',
+    '',
+    '<span class="cm">// Store - embeddings generated locally, no API key needed</span>',
+    '<span class="kw">await</span> mem.<span class="fn">store</span>(<span class="str">"Deployed auth migration to production"</span>, {',
+    '&nbsp;&nbsp;category: <span class="str">"state"</span>, importance: <span class="num">9</span>,',
+    '});',
+    '',
+    '<span class="cm">// In a new session - multi-layer contextual recall</span>',
+    '<span class="kw">const</span> ctx = <span class="kw">await</span> mem.<span class="fn">recall</span>(<span class="str">"current production state"</span>);',
+    '<span class="cm">// Weighted by FSRS-6 retrievability, assembled into context</span>'
+  ];
+
+  var output = document.getElementById('typed-output');
+  var cursor = document.getElementById('typed-cursor');
+  if(!output) return;
+
+  var lineIdx = 0, charIdx = 0, rendered = [];
+  var plain = codeLines.map(function(l){ return l.replace(/<[^>]+>/g,'').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&#[^;]+;/g,''); });
+
+  function typeNext(){
+    if(lineIdx >= codeLines.length){
+      cursor.style.display='none';
+      return;
+    }
+    var line = codeLines[lineIdx];
+    var plainLine = plain[lineIdx];
+    if(charIdx <= plainLine.length){
+      // Render HTML up to charIdx visible chars
+      var visible = 0, html = '', i = 0, src = line;
+      while(i < src.length && visible < charIdx){
+        if(src[i] === '<'){
+          var end = src.indexOf('>',i);
+          html += src.slice(i, end+1);
+          i = end+1;
+        } else if(src[i] === '&'){
+          var end2 = src.indexOf(';',i);
+          html += src.slice(i, end2+1);
+          i = end2+1;
+          visible++;
+        } else {
+          html += src[i];
+          i++;
+          visible++;
+        }
+      }
+      // Close any open tags
+      rendered[lineIdx] = html;
+      output.innerHTML = rendered.join('<br>');
+      charIdx++;
+      var speed = plainLine[charIdx-1] === ' ' ? 12 : line[lineIdx] === '' ? 80 : 18;
+      setTimeout(typeNext, charIdx === 1 && lineIdx > 0 ? 40 : speed);
+    } else {
+      rendered[lineIdx] = line;
+      output.innerHTML = rendered.join('<br>');
+      lineIdx++;
+      charIdx = 0;
+      setTimeout(typeNext, lineIdx < codeLines.length && codeLines[lineIdx] === '' ? 60 : 40);
+    }
+  }
+
+  // Start typing after hero fades in
+  setTimeout(typeNext, 900);
+
+  // Copy buttons
+  var copyData = {
+    ts: 'const mem = new Engram({\n  url: "http://localhost:4200",\n  apiKey: "eg_...",\n});\n\nawait mem.store("Auth migrated to JWT", {\n  category: "decision", importance: 9,\n});\n\nconst ctx = await mem.recall("authentication setup");\n\n// Check FSRS memory health\nconst fsrs = await mem.fsrsState(id);\n// { retrievability: 0.94, stability: 6.2 }',
+    cli: '# Store a memory\nengram-cli store "Auth migrated to JWT" \\\n  --category decision --importance 9\n\n# Search with explanation\nengram-cli search "auth setup" --explain\n\n# Budget-aware context for RAG\nengram-cli context "auth setup" \\\n  --budget 2000\n\n# All commands support --json output',
+    curl: '# Store a memory\ncurl -X POST localhost:4200/store \\\n  -H "Authorization: Bearer eg_..." \\\n  -d \'{"content":"Auth migrated","category":"decision","importance":9}\'\n\n# Contextual recall\ncurl -X POST localhost:4200/context \\\n  -d \'{"query":"auth setup","budget":2000}\''
+  };
+
+  document.querySelectorAll('.copy-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var key = btn.getAttribute('data-copy');
+      var text = copyData[key] || '';
+      navigator.clipboard.writeText(text).then(function(){
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(function(){ btn.textContent='Copy'; btn.classList.remove('copied'); }, 2000);
+      }).catch(function(){
+        btn.textContent = 'Copy';
+      });
+    });
+  });
+
+})();
+</script>
 </body>
 </html>
