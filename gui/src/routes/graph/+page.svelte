@@ -653,33 +653,30 @@
       graph.d3Force('clusterY', makeClusterForce(clusterCentroids, 'y', 0.03));
       graph.d3Force('clusterZ', makeClusterForce(clusterCentroids, 'z', 0.03));
 
-      // Force tuning: tree-like branching structure
-      // Extreme repulsion forces branches apart
-      graph.d3Force('charge')?.strength(-800).distanceMax(1500);
-      // Only strong connections create pull -- weak ones contribute nothing
-      // This lets unrelated clusters fly apart and form branches
+      // Force tuning: strong repulsion pushes nodes apart, only tight
+      // connections pull. Weak links are visual-only (zero force).
+      graph.d3Force('charge')?.strength(-1500).distanceMax(3000);
       graph.d3Force('link')
         ?.distance((link: any) => {
           const w = link.weight ?? 0.3;
-          if (w > 0.7) return 8;
-          if (w > 0.5) return 25;
-          return 400;
+          if (w > 0.7) return 30;
+          if (w > 0.5) return 80;
+          return 600;
         })
         .strength((link: any) => {
           const w = link.weight ?? 0.3;
-          if (w > 0.7) return 1.5;
-          if (w > 0.5) return 0.5;
-          return 0;  // weak links exert ZERO force -- they're visual only
+          if (w > 0.7) return 0.8;
+          if (w > 0.5) return 0.2;
+          return 0;
         });
-      // Minimal center gravity -- just prevent flying to infinity
-      graph.d3Force('center')?.strength(0.005);
+      graph.d3Force('center')?.strength(0.003);
 
       // Resize
       resizeHandler = () => graph.width(window.innerWidth).height(window.innerHeight);
       window.addEventListener('resize', resizeHandler);
 
-      // Fit after settling
-      setTimeout(() => graph.zoomToFit(800, 50), 3000);
+      // Fit after settling -- generous padding so it doesn't feel cramped
+      setTimeout(() => graph.zoomToFit(800, 120), 3000);
 
       loading = false;
     } catch (e: any) {
