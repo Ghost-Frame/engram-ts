@@ -80,6 +80,7 @@
   let pinnedNode: GNode | null = null;
 
   const nodeSprites = new Map<string, { material: any; baseSize: number; sprite: any }>();
+  const nodeLabels = new Map<string, any>();
   const nodeMap = new Map<string, GNode>();
 
   // ── Constants ──────────────────────────────────────────
@@ -377,12 +378,36 @@
 
   // ── Reactive Effects ───────────────────────────────────
 
+  // Labels: toggle visibility of text label sprites created at init
   $effect(() => {
-    if (graphInstance) {
-      graphInstance.nodeLabel((n: any) => showLabels ? (n as GNode).label : '');
-    }
+    const show = showLabels;
+    nodeLabels.forEach((label) => { label.visible = show; });
   });
 
+  // Weight threshold: re-set link accessors so graph re-evaluates visibility
+  $effect(() => {
+    if (!graphInstance) return;
+    const wt = weightThreshold;
+    graphInstance
+      .linkWidth((link: any) => {
+        if (highlightLinks.has(link)) return Math.max(0.5, (link.weight ?? 0.5) * 2);
+        if ((link.weight ?? 0) >= wt) return 0.15;
+        return 0;
+      })
+      .linkOpacity((link: any) => {
+        if (highlightLinks.has(link)) return Math.max(0.3, (link.weight ?? 0.5) * 0.8);
+        if (hoverNode && !highlightLinks.has(link)) return 0.04;
+        if ((link.weight ?? 0) >= wt) return 0.05 + (link.weight ?? 0) * 0.12;
+        return 0;
+      })
+      .linkColor((link: any) => {
+        if (highlightLinks.has(link)) return getLinkColor(link);
+        if ((link.weight ?? 0) >= wt) return getLinkColor(link);
+        return 'rgba(0,0,0,0)';
+      });
+  });
+
+  // Clusters: toggle community clustering forces
   $effect(() => {
     if (!graphInstance) return;
     if (clusterEnabled && Object.keys(clusterCentroids).length) {
@@ -494,13 +519,12 @@
         .linkSource('source')
         .linkTarget('target')
 
-        // Living organism nodes
+        // Living organism nodes with optional text labels
         .nodeThreeObject((node: any) => {
           const n = node as GNode;
           const baseSize = Math.max(4, (n.importance || 5) * 1.8 + (n.size || 0) * 0.4);
           const idNum = parseInt(n.id.replace(/\D/g, '') || '0');
 
-          // Each node gets a texture variant based on its ID
           const tex = organismTextures[idNum % organismTextures.length];
           breathPhases.set(n.id, (idNum * 0.7) % (Math.PI * 2));
 
@@ -515,9 +539,10 @@
           sprite.scale.set(baseSize, baseSize, baseSize);
           nodeSprites.set(n.id, { material, baseSize, sprite });
 
+          const group = new THREE.Group();
+          group.add(sprite);
+
           if (n.is_static) {
-            const group = new THREE.Group();
-            group.add(sprite);
             const ringMat = new THREE.SpriteMaterial({
               map: ringTexture,
               transparent: true,
@@ -527,10 +552,28 @@
             const ring = new THREE.Sprite(ringMat);
             ring.scale.set(baseSize * 1.15, baseSize * 1.15, baseSize * 1.15);
             group.add(ring);
-            return group;
           }
 
-          return sprite;
+          // Text label (hidden by default, toggled via showLabels)
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d')!;
+          const text = n.label || n.content?.slice(0, 30) || n.id;
+          canvas.width = 256;
+          canvas.height = 40;
+          ctx.font = '20px Inter, sans-serif';
+          ctx.fillStyle = 'white';
+          ctx.textAlign = 'center';
+          ctx.fillText(text.length > 28 ? text.slice(0, 28) + '...' : text, 128, 28);
+          const labelTex = new THREE.CanvasTexture(canvas);
+          const labelMat = new THREE.SpriteMaterial({ map: labelTex, transparent: true, opacity: 0.7, depthWrite: false });
+          const label = new THREE.Sprite(labelMat);
+          label.scale.set(baseSize * 2.5, baseSize * 0.4, 1);
+          label.position.set(0, baseSize * 0.8, 0);
+          label.visible = showLabels;
+          group.add(label);
+          nodeLabels.set(n.id, label);
+
+          return group;
         })
 
         // Breathing animation -- nodes gently pulse like living cells
