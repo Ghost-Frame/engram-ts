@@ -539,10 +539,9 @@
           sprite.scale.set(baseSize, baseSize, baseSize);
           nodeSprites.set(n.id, { material, baseSize, sprite });
 
-          const group = new THREE.Group();
-          group.add(sprite);
-
           if (n.is_static) {
+            const group = new THREE.Group();
+            group.add(sprite);
             const ringMat = new THREE.SpriteMaterial({
               map: ringTexture,
               transparent: true,
@@ -552,28 +551,30 @@
             const ring = new THREE.Sprite(ringMat);
             ring.scale.set(baseSize * 1.15, baseSize * 1.15, baseSize * 1.15);
             group.add(ring);
+
+            // Text label (hidden by default, toggled via showLabels)
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d')!;
+            const text = n.label || n.content?.slice(0, 30) || n.id;
+            canvas.width = 256;
+            canvas.height = 40;
+            ctx.font = '20px Inter, sans-serif';
+            ctx.fillStyle = 'white';
+            ctx.textAlign = 'center';
+            ctx.fillText(text.length > 28 ? text.slice(0, 28) + '...' : text, 128, 28);
+            const labelTex = new THREE.CanvasTexture(canvas);
+            const labelMat = new THREE.SpriteMaterial({ map: labelTex, transparent: true, opacity: 0.7, depthWrite: false });
+            const label = new THREE.Sprite(labelMat);
+            label.scale.set(baseSize * 2.5, baseSize * 0.4, 1);
+            label.position.set(0, baseSize * 0.8, 0);
+            label.visible = showLabels;
+            group.add(label);
+            nodeLabels.set(n.id, label);
+
+            return group;
           }
 
-          // Text label (hidden by default, toggled via showLabels)
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d')!;
-          const text = n.label || n.content?.slice(0, 30) || n.id;
-          canvas.width = 256;
-          canvas.height = 40;
-          ctx.font = '20px Inter, sans-serif';
-          ctx.fillStyle = 'white';
-          ctx.textAlign = 'center';
-          ctx.fillText(text.length > 28 ? text.slice(0, 28) + '...' : text, 128, 28);
-          const labelTex = new THREE.CanvasTexture(canvas);
-          const labelMat = new THREE.SpriteMaterial({ map: labelTex, transparent: true, opacity: 0.7, depthWrite: false });
-          const label = new THREE.Sprite(labelMat);
-          label.scale.set(baseSize * 2.5, baseSize * 0.4, 1);
-          label.position.set(0, baseSize * 0.8, 0);
-          label.visible = showLabels;
-          group.add(label);
-          nodeLabels.set(n.id, label);
-
-          return group;
+          return sprite;
         })
 
         // Breathing animation -- nodes gently pulse like living cells
@@ -644,7 +645,7 @@
       // Bloom post-processing
       const bloomPass = new UnrealBloomPass(
         new THREE.Vector2(window.innerWidth, window.innerHeight),
-        1.8, 0.7, 0.08
+        1.3, 0.5, 0.12
       );
       graph.postProcessingComposer().addPass(bloomPass);
 
@@ -653,30 +654,33 @@
       graph.d3Force('clusterY', makeClusterForce(clusterCentroids, 'y', 0.03));
       graph.d3Force('clusterZ', makeClusterForce(clusterCentroids, 'z', 0.03));
 
-      // Force tuning: strong repulsion pushes nodes apart, only tight
-      // connections pull. Weak links are visual-only (zero force).
-      graph.d3Force('charge')?.strength(-1500).distanceMax(3000);
+      // Force tuning: tree-like branching structure
+      // Extreme repulsion forces branches apart
+      graph.d3Force('charge')?.strength(-800).distanceMax(1500);
+      // Only strong connections create pull -- weak ones contribute nothing
+      // This lets unrelated clusters fly apart and form branches
       graph.d3Force('link')
         ?.distance((link: any) => {
           const w = link.weight ?? 0.3;
-          if (w > 0.7) return 30;
-          if (w > 0.5) return 80;
-          return 600;
+          if (w > 0.7) return 8;
+          if (w > 0.5) return 25;
+          return 400;
         })
         .strength((link: any) => {
           const w = link.weight ?? 0.3;
-          if (w > 0.7) return 0.8;
-          if (w > 0.5) return 0.2;
-          return 0;
+          if (w > 0.7) return 1.5;
+          if (w > 0.5) return 0.5;
+          return 0;  // weak links exert ZERO force -- they're visual only
         });
-      graph.d3Force('center')?.strength(0.003);
+      // Minimal center gravity -- just prevent flying to infinity
+      graph.d3Force('center')?.strength(0.005);
 
       // Resize
       resizeHandler = () => graph.width(window.innerWidth).height(window.innerHeight);
       window.addEventListener('resize', resizeHandler);
 
-      // Fit after settling -- generous padding so it doesn't feel cramped
-      setTimeout(() => graph.zoomToFit(800, 120), 3000);
+      // Fit after settling
+      setTimeout(() => graph.zoomToFit(800, 50), 3000);
 
       loading = false;
     } catch (e: any) {
