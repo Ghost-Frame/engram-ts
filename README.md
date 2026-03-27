@@ -8,7 +8,11 @@ Memory, personality, reasoning, and trust in a single self-hosted system that le
 
 [![Version](https://img.shields.io/badge/version-5.11.0-gold.svg)](CHANGELOG.md) [![License](https://img.shields.io/badge/License-Elastic--2.0-blue.svg)](LICENSE) [![Node](https://img.shields.io/badge/node-%3E%3D22-green.svg)](https://nodejs.org) [![Docker](https://img.shields.io/badge/docker-compose-blue.svg)](docker-compose.yml)
 
-<img src="tools/gui-demo.gif" alt="Engram memory graph visualization" width="720" />
+</div>
+
+![Engram memory graph visualization](tools/gui-demo.gif)
+
+<div align="center">
 
 [Quick Start](#quick-start) · [Features](#what-engram-does) · [Architecture](#architecture) · [API](#api-reference) · [CLI](#cli) · [SDK](#typescript-sdk) · [MCP](#mcp-server) · [Deploy](#deployment)
 
