@@ -8,7 +8,7 @@ Memory, personality, reasoning, and trust in a single self-hosted system that le
 
 [![Version](https://img.shields.io/badge/version-5.11.0-gold.svg)](CHANGELOG.md) [![License](https://img.shields.io/badge/License-Elastic--2.0-blue.svg)](LICENSE) [![Node](https://img.shields.io/badge/node-%3E%3D22-green.svg)](https://nodejs.org) [![Docker](https://img.shields.io/badge/docker-compose-blue.svg)](docker-compose.yml)
 
-![Engram memory graph visualization](tools/preview-full.png)
+![Engram memory graph visualization](tools/gui-demo.gif)
 
 [Quick Start](#quick-start) · [Features](#what-engram-does) · [Architecture](#architecture) · [API](#api-reference) · [CLI](#cli) · [SDK](#typescript-sdk) · [MCP](#mcp-server) · [Deploy](#deployment)
 
@@ -16,17 +16,7 @@ Memory, personality, reasoning, and trust in a single self-hosted system that le
 
 ---
 
-<!-- Terminal demo: replace with SVG recording when available -->
-```
-$ engram-cli store "The auth service runs on port 9091" --category discovery
-Stored memory #847 (discovery)
-
-$ engram-cli search "where does auth run"
-#847 [discovery] 0.94 : The auth service runs on port 9091
-
-$ engram-cli context "setting up SSO"
-7 memories across 3 categories. Top: #847 (discovery), #203 (decision), #91 (reference)
-```
+![Engram CLI demo](tools/cli-demo.gif)
 
 ---
 
