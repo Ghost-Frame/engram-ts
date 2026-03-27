@@ -98,18 +98,88 @@
 
   // ── Textures ───────────────────────────────────────────
 
-  function createGlowTexture(THREE: any) {
+  function createOrganismTexture(THREE: any, seed: number) {
+    const size = 128;
     const c = document.createElement('canvas');
-    c.width = 64; c.height = 64;
+    c.width = size; c.height = size;
     const ctx = c.getContext('2d')!;
-    const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    g.addColorStop(0, 'rgba(255,255,255,1)');
-    g.addColorStop(0.15, 'rgba(255,255,255,0.85)');
-    g.addColorStop(0.4, 'rgba(255,255,255,0.35)');
-    g.addColorStop(0.7, 'rgba(255,255,255,0.1)');
-    g.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, 64, 64);
+    const cx = size / 2, cy = size / 2;
+
+    // Outer corona / atmosphere
+    const corona = ctx.createRadialGradient(cx, cy, 0, cx, cy, cx);
+    corona.addColorStop(0, 'rgba(255,255,255,0)');
+    corona.addColorStop(0.55, 'rgba(255,255,255,0)');
+    corona.addColorStop(0.7, 'rgba(255,255,255,0.06)');
+    corona.addColorStop(0.85, 'rgba(255,255,255,0.03)');
+    corona.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = corona;
+    ctx.fillRect(0, 0, size, size);
+
+    // Membrane - soft outer ring
+    ctx.beginPath();
+    ctx.arc(cx, cy, 28, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Inner organelles - tiny bright dots scattered inside
+    const rng = (n: number) => {
+      let s = seed + n;
+      s = ((s * 1103515245 + 12345) & 0x7fffffff);
+      return (s % 1000) / 1000;
+    };
+    const organelleCount = 4 + Math.floor(rng(0) * 6);
+    for (let i = 0; i < organelleCount; i++) {
+      const angle = rng(i * 3 + 1) * Math.PI * 2;
+      const dist = 6 + rng(i * 3 + 2) * 16;
+      const ox = cx + Math.cos(angle) * dist;
+      const oy = cy + Math.sin(angle) * dist;
+      const r = 1 + rng(i * 3 + 3) * 2.5;
+      const og = ctx.createRadialGradient(ox, oy, 0, ox, oy, r);
+      og.addColorStop(0, `rgba(255,255,255,${0.6 + rng(i * 5) * 0.4})`);
+      og.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = og;
+      ctx.beginPath();
+      ctx.arc(ox, oy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Nucleus - bright core with strong glow
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, 18);
+    core.addColorStop(0, 'rgba(255,255,255,1)');
+    core.addColorStop(0.15, 'rgba(255,255,255,0.95)');
+    core.addColorStop(0.35, 'rgba(255,255,255,0.6)');
+    core.addColorStop(0.6, 'rgba(255,255,255,0.25)');
+    core.addColorStop(0.8, 'rgba(255,255,255,0.1)');
+    core.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = core;
+    ctx.fillRect(0, 0, size, size);
+
+    // Inner filaments - curved lines like internal structure
+    ctx.globalAlpha = 0.2;
+    for (let i = 0; i < 3; i++) {
+      const startAngle = rng(i * 7 + 10) * Math.PI * 2;
+      const arcLen = 0.5 + rng(i * 7 + 11) * 1.5;
+      const arcDist = 10 + rng(i * 7 + 12) * 14;
+      ctx.beginPath();
+      ctx.arc(cx, cy, arcDist, startAngle, startAngle + arcLen);
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // Clip to circle -- eliminates square sprite boundary artifacts
+    // Without this, sub-pixel alpha residue in corners gets amplified by bloom
+    ctx.globalCompositeOperation = 'destination-in';
+    const mask = ctx.createRadialGradient(cx, cy, 0, cx, cy, cx);
+    mask.addColorStop(0, 'rgba(255,255,255,1)');
+    mask.addColorStop(0.85, 'rgba(255,255,255,1)');
+    mask.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = mask;
+    ctx.fillRect(0, 0, size, size);
+    ctx.globalCompositeOperation = 'source-over';
+
     return new THREE.CanvasTexture(c);
   }
 
@@ -120,8 +190,8 @@
     const g = ctx.createRadialGradient(32, 32, 18, 32, 32, 32);
     g.addColorStop(0, 'rgba(255,255,255,0)');
     g.addColorStop(0.6, 'rgba(255,255,255,0)');
-    g.addColorStop(0.78, 'rgba(255,215,0,0.7)');
-    g.addColorStop(0.88, 'rgba(255,215,0,0.3)');
+    g.addColorStop(0.78, 'rgba(255,215,0,0.15)');
+    g.addColorStop(0.88, 'rgba(255,215,0,0.06)');
     g.addColorStop(1, 'rgba(255,215,0,0)');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, 64, 64);
@@ -139,7 +209,7 @@
   function getNodeOpacity(node: GNode): number {
     if (highlightNodes.has(node) || searchHighlights.has(node.id)) return 1.0;
     const decay = node.decay_score ?? 5;
-    return Math.max(0.25, Math.min(1.0, decay / 7));
+    return Math.max(0.5, Math.min(1.0, decay / 6));
   }
 
   function getLinkColor(link: GLink): string {
@@ -316,9 +386,9 @@
   $effect(() => {
     if (!graphInstance) return;
     if (clusterEnabled && Object.keys(clusterCentroids).length) {
-      graphInstance.d3Force('clusterX', makeClusterForce(clusterCentroids, 'x', 0.12));
-      graphInstance.d3Force('clusterY', makeClusterForce(clusterCentroids, 'y', 0.12));
-      graphInstance.d3Force('clusterZ', makeClusterForce(clusterCentroids, 'z', 0.12));
+      graphInstance.d3Force('clusterX', makeClusterForce(clusterCentroids, 'x', 0.03));
+      graphInstance.d3Force('clusterY', makeClusterForce(clusterCentroids, 'y', 0.03));
+      graphInstance.d3Force('clusterZ', makeClusterForce(clusterCentroids, 'z', 0.03));
     } else {
       graphInstance.d3Force('clusterX', null);
       graphInstance.d3Force('clusterY', null);
@@ -382,6 +452,14 @@
         }
       });
 
+      // Top-200 strongest edges get persistent flow particles (Layer 2)
+      const particleEdges = new Set<GLink>(
+        [...graphData.edges]
+          .filter((l: GLink) => (l.weight ?? 0) >= 0.5)
+          .sort((a: GLink, b: GLink) => (b.weight ?? 0) - (a.weight ?? 0))
+          .slice(0, 200)
+      );
+
       // Compute cluster centroids using Fibonacci sphere
       const clusterIds = new Set<string>();
       graphData.nodes.forEach((n: GNode) => clusterIds.add(String(n.community_id ?? n.category ?? 'default')));
@@ -397,8 +475,13 @@
         };
       });
 
-      const glowTexture = createGlowTexture(THREE);
       const ringTexture = createRingTexture(THREE);
+
+      // Pre-generate a pool of organism textures (8 variants, reused across nodes)
+      const organismTextures = Array.from({ length: 8 }, (_, i) => createOrganismTexture(THREE, i * 137));
+
+      // Track breathing phase per node for animation
+      const breathPhases = new Map<string, number>();
 
       // ── Initialize Force Graph ────────────────────────
 
@@ -411,17 +494,21 @@
         .linkSource('source')
         .linkTarget('target')
 
-        // Custom galaxy-orb nodes
+        // Living organism nodes
         .nodeThreeObject((node: any) => {
           const n = node as GNode;
-          const baseSize = Math.max(3, (n.importance || 5) * 1.5 + (n.size || 0) * 0.3);
+          const baseSize = Math.max(4, (n.importance || 5) * 1.8 + (n.size || 0) * 0.4);
+          const idNum = parseInt(n.id.replace(/\D/g, '') || '0');
+
+          // Each node gets a texture variant based on its ID
+          const tex = organismTextures[idNum % organismTextures.length];
+          breathPhases.set(n.id, (idNum * 0.7) % (Math.PI * 2));
 
           const material = new THREE.SpriteMaterial({
-            map: glowTexture,
+            map: tex,
             color: new THREE.Color(getNodeColor(n)),
             transparent: true,
             opacity: getNodeOpacity(n),
-            blending: THREE.AdditiveBlending,
             depthWrite: false,
           });
           const sprite = new THREE.Sprite(material);
@@ -434,12 +521,11 @@
             const ringMat = new THREE.SpriteMaterial({
               map: ringTexture,
               transparent: true,
-              opacity: 0.6,
-              blending: THREE.AdditiveBlending,
+              opacity: 0.15,
               depthWrite: false,
             });
             const ring = new THREE.Sprite(ringMat);
-            ring.scale.set(baseSize * 1.8, baseSize * 1.8, baseSize * 1.8);
+            ring.scale.set(baseSize * 1.15, baseSize * 1.15, baseSize * 1.15);
             group.add(ring);
             return group;
           }
@@ -447,15 +533,54 @@
           return sprite;
         })
 
-        // Edges: invisible by default, visible on hover
-        .linkWidth((link: any) => highlightLinks.has(link) ? Math.max(0.5, (link.weight ?? 0.5) * 3) : 0)
-        .linkOpacity((link: any) => highlightLinks.has(link) ? Math.max(0.3, link.weight ?? 0.5) : 0)
-        .linkColor((link: any) => highlightLinks.has(link) ? getLinkColor(link) : 'rgba(0,0,0,0)')
+        // Breathing animation -- nodes gently pulse like living cells
+        .onEngineTick(() => {
+          const t = performance.now() * 0.001;
+          nodeSprites.forEach((entry, id) => {
+            const phase = breathPhases.get(id) ?? 0;
+            const breathScale = 1 + Math.sin(t * 0.8 + phase) * 0.08;
+            const size = entry.baseSize * breathScale;
+            const isHovered = highlightNodes.has(nodeMap.get(id)!);
+            const scale = isHovered ? size * 1.3 : size;
+            entry.sprite.scale.set(scale, scale, scale);
+          });
+        })
 
-        // Neural particles on highlighted links
-        .linkDirectionalParticles((link: any) => highlightLinks.has(link) ? 4 : 0)
-        .linkDirectionalParticleWidth(2.5)
-        .linkDirectionalParticleSpeed((link: any) => 0.004 * (link.weight ?? 0.5))
+        // Layer 1: Faint static edges (topology always visible)
+        // Layer 2: Flow trail particles on strong connections
+        // Layer 3: Hover amplification
+        .linkWidth((link: any) => {
+          if (highlightLinks.has(link)) return Math.max(0.5, (link.weight ?? 0.5) * 2);
+          if ((link.weight ?? 0) >= weightThreshold) return 0.15;
+          return 0;
+        })
+        .linkOpacity((link: any) => {
+          if (highlightLinks.has(link)) return Math.max(0.3, (link.weight ?? 0.5) * 0.8);
+          if (hoverNode && !highlightLinks.has(link)) return 0.04;
+          if ((link.weight ?? 0) >= weightThreshold) return 0.05 + (link.weight ?? 0) * 0.12;
+          return 0;
+        })
+        .linkColor((link: any) => {
+          if (highlightLinks.has(link)) return getLinkColor(link);
+          if ((link.weight ?? 0) >= weightThreshold) return getLinkColor(link);
+          return 'rgba(0,0,0,0)';
+        })
+
+        // Flow trail particles (Layer 2 + Layer 3 doubling)
+        .linkDirectionalParticles((link: any) => {
+          if (highlightLinks.has(link)) {
+            return Math.floor((link.weight ?? 0.5) * 6) * 2;
+          }
+          if (particleEdges.has(link)) {
+            return Math.floor((link.weight ?? 0.5) * 6);
+          }
+          return 0;
+        })
+        .linkDirectionalParticleWidth((link: any) => {
+          if (highlightLinks.has(link)) return 2.5 + (link.weight ?? 0.5) * 2;
+          return 1.5 + (link.weight ?? 0.5) * 2;
+        })
+        .linkDirectionalParticleSpeed((link: any) => 0.002 + (link.weight ?? 0.5) * 0.006)
         .linkDirectionalParticleColor((link: any) => getParticleColor(link))
 
         // Interactions
@@ -465,8 +590,8 @@
           if (!showSearchResults) closePanel();
         })
 
-        .warmupTicks(80)
-        .cooldownTicks(200);
+        .warmupTicks(150)
+        .cooldownTicks(400);
 
       graphInstance = graph;
 
@@ -476,18 +601,35 @@
       // Bloom post-processing
       const bloomPass = new UnrealBloomPass(
         new THREE.Vector2(window.innerWidth, window.innerHeight),
-        2.0, 1, 0.1
+        1.3, 0.5, 0.12
       );
       graph.postProcessingComposer().addPass(bloomPass);
 
-      // Cluster forces
-      graph.d3Force('clusterX', makeClusterForce(clusterCentroids, 'x', 0.12));
-      graph.d3Force('clusterY', makeClusterForce(clusterCentroids, 'y', 0.12));
-      graph.d3Force('clusterZ', makeClusterForce(clusterCentroids, 'z', 0.12));
+      // Cluster forces (gentle -- let topology dominate, clusters just hint)
+      graph.d3Force('clusterX', makeClusterForce(clusterCentroids, 'x', 0.03));
+      graph.d3Force('clusterY', makeClusterForce(clusterCentroids, 'y', 0.03));
+      graph.d3Force('clusterZ', makeClusterForce(clusterCentroids, 'z', 0.03));
 
-      // Tune default forces
-      graph.d3Force('charge')?.strength(-80);
-      graph.d3Force('link')?.distance(40);
+      // Force tuning: tree-like branching structure
+      // Extreme repulsion forces branches apart
+      graph.d3Force('charge')?.strength(-800).distanceMax(1500);
+      // Only strong connections create pull -- weak ones contribute nothing
+      // This lets unrelated clusters fly apart and form branches
+      graph.d3Force('link')
+        ?.distance((link: any) => {
+          const w = link.weight ?? 0.3;
+          if (w > 0.7) return 8;
+          if (w > 0.5) return 25;
+          return 400;
+        })
+        .strength((link: any) => {
+          const w = link.weight ?? 0.3;
+          if (w > 0.7) return 1.5;
+          if (w > 0.5) return 0.5;
+          return 0;  // weak links exert ZERO force -- they're visual only
+        });
+      // Minimal center gravity -- just prevent flying to infinity
+      graph.d3Force('center')?.strength(0.005);
 
       // Resize
       resizeHandler = () => graph.width(window.innerWidth).height(window.innerHeight);
@@ -521,7 +663,7 @@
   {#if loading}
     <div class="absolute inset-0 flex items-center justify-center z-50 bg-[#000003]">
       <div class="text-center">
-        <div class="w-12 h-12 border-2 border-indigo-500/30 border-t-indigo-400 rounded-full animate-spin mx-auto mb-4"></div>
+        <div class="w-12 h-12 border-2 border-teal-500/30 border-t-teal-400 rounded-full animate-spin mx-auto mb-4"></div>
         <p class="text-gray-500 text-sm">Loading memory graph...</p>
       </div>
     </div>
@@ -546,7 +688,7 @@
         <span class="text-xs">Back</span>
       </a>
 
-      <span class="text-sm font-bold tracking-widest bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent shrink-0">ENGRAM</span>
+      <span class="text-sm font-bold tracking-widest bg-gradient-to-r from-teal-300 to-cyan-400 bg-clip-text text-transparent shrink-0">ENGRAM</span>
 
       <form class="flex-1 max-w-md" onsubmit={(e) => { e.preventDefault(); handleSearch(); }}>
         <div class="relative">
@@ -554,7 +696,7 @@
             type="text"
             bind:value={searchQuery}
             placeholder="Search memories..."
-            class="w-full px-4 py-2 pl-9 bg-white/5 border border-white/10 rounded-lg text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500/50 transition-all"
+            class="w-full px-4 py-2 pl-9 bg-white/5 border border-white/10 rounded-lg text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-teal-500/50 transition-all"
           />
           <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
         </div>
@@ -572,7 +714,7 @@
     <!-- Controls (bottom-left) -->
     <div class="absolute bottom-5 left-5 z-50 flex flex-col gap-3 p-4 rounded-xl glass-panel">
       <div>
-        <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">Edge Weight</div>
+        <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">Edge Floor</div>
         <div class="flex items-center gap-2">
           <input
             type="range" min="0" max="1" step="0.05"
@@ -584,15 +726,15 @@
       </div>
 
       <button onclick={() => showLabels = !showLabels} class="flex items-center gap-2 group">
-        <div class="w-7 h-4 rounded-full relative transition-colors {showLabels ? 'bg-indigo-500/60' : 'bg-gray-700'}">
-          <div class="absolute left-0.5 top-0.5 w-3 h-3 rounded-full transition-all {showLabels ? 'translate-x-3 bg-indigo-300' : 'bg-gray-400'}"></div>
+        <div class="w-7 h-4 rounded-full relative transition-colors {showLabels ? 'bg-teal-500/60' : 'bg-gray-700'}">
+          <div class="absolute left-0.5 top-0.5 w-3 h-3 rounded-full transition-all {showLabels ? 'translate-x-3 bg-teal-300' : 'bg-gray-400'}"></div>
         </div>
         <span class="text-[10px] text-gray-500 group-hover:text-gray-400 transition-colors">Labels</span>
       </button>
 
       <button onclick={() => clusterEnabled = !clusterEnabled} class="flex items-center gap-2 group">
-        <div class="w-7 h-4 rounded-full relative transition-colors {clusterEnabled ? 'bg-indigo-500/60' : 'bg-gray-700'}">
-          <div class="absolute left-0.5 top-0.5 w-3 h-3 rounded-full transition-all {clusterEnabled ? 'translate-x-3 bg-indigo-300' : 'bg-gray-400'}"></div>
+        <div class="w-7 h-4 rounded-full relative transition-colors {clusterEnabled ? 'bg-teal-500/60' : 'bg-gray-700'}">
+          <div class="absolute left-0.5 top-0.5 w-3 h-3 rounded-full transition-all {clusterEnabled ? 'translate-x-3 bg-teal-300' : 'bg-gray-400'}"></div>
         </div>
         <span class="text-[10px] text-gray-500 group-hover:text-gray-400 transition-colors">Clusters</span>
       </button>
@@ -667,7 +809,7 @@
                 <div>
                   <div class="text-[10px] text-gray-600 mb-1">Decay</div>
                   <div class="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                    <div class="h-full bg-purple-500/60 rounded-full transition-all" style="width: {Math.min(100, ((selectedMemory.decay_score ?? 0) / Math.max(1, selectedMemory.importance)) * 100)}%"></div>
+                    <div class="h-full bg-teal-500/60 rounded-full transition-all" style="width: {Math.min(100, ((selectedMemory.decay_score ?? 0) / Math.max(1, selectedMemory.importance)) * 100)}%"></div>
                   </div>
                   <div class="text-[10px] text-gray-500 mt-0.5">{selectedMemory.decay_score?.toFixed(2) ?? 'N/A'}</div>
                 </div>
@@ -689,7 +831,7 @@
                   <h4 class="text-[10px] text-gray-600 uppercase tracking-wider mb-2">Tags</h4>
                   <div class="flex flex-wrap gap-1.5">
                     {#each selectedMemory.tags as tag}
-                      <span class="px-2 py-0.5 rounded-md text-[10px] bg-indigo-500/10 text-indigo-400/80 border border-indigo-500/10">{tag}</span>
+                      <span class="px-2 py-0.5 rounded-md text-[10px] bg-teal-500/10 text-teal-400/80 border border-teal-500/10">{tag}</span>
                     {/each}
                   </div>
                 </div>
@@ -721,7 +863,7 @@
                   <div class="relative ml-2 pl-4 border-l border-gray-800 space-y-3">
                     {#each selectedMemory.version_chain as ver}
                       <div class="relative">
-                        <div class="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full border-2 {ver.is_latest ? 'bg-indigo-400 border-indigo-400' : 'bg-gray-800 border-gray-700'}"></div>
+                        <div class="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full border-2 {ver.is_latest ? 'bg-teal-400 border-teal-400' : 'bg-gray-800 border-gray-700'}"></div>
                         <div class="text-[10px] text-gray-600">v{ver.version} {ver.is_latest ? '(latest)' : ''}</div>
                         <p class="text-[11px] text-gray-500 line-clamp-2 mt-0.5">{ver.content}</p>
                       </div>
@@ -799,7 +941,7 @@
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: #818cf8;
+    background: #2dd4bf;
     cursor: pointer;
   }
 
@@ -807,7 +949,7 @@
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: #818cf8;
+    background: #2dd4bf;
     border: none;
     cursor: pointer;
   }

@@ -1,7 +1,9 @@
 import { writable, derived } from 'svelte/store';
 
 const BASE_URL = typeof window !== 'undefined'
-  ? `${window.location.protocol}//${window.location.host}`
+  ? (window.location.port === '4200'
+    ? ''
+    : '/api')
   : 'http://127.0.0.1:4200';
 
 export const apiKey = writable<string>(
