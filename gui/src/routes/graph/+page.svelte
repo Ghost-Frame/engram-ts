@@ -638,6 +638,7 @@
         .cooldownTicks(400);
 
       graphInstance = graph;
+      (window as any).__graph = graph;
 
       // Star field
       addStarField(THREE, graph.scene());
