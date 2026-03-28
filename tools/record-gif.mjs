@@ -259,7 +259,7 @@ result = subprocess.run([
     "-framerate", str(fps),
     "-i", os.path.join(frames_dir, "frame_%04d.png"),
     "-i", palette_path,
-    "-filter_complex", "[0:v][1:v]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle",
+    "-filter_complex", "[0:v][1:v]paletteuse=dither=floyd_steinberg:diff_mode=rectangle",
     "-loop", "0",
     output
 ], capture_output=True, text=True)
