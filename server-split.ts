@@ -12,7 +12,8 @@ import { existsSync, copyFileSync, statSync, unlinkSync, readdirSync, writeFileS
 import { resolve } from "path";
 
 // Config
-import { PORT, HOST, OPEN_ACCESS, CORS_ORIGIN, ALLOWED_IPS, CONSOLIDATION_INTERVAL, FORGET_SWEEP_INTERVAL, PKG_VERSION, BACKUP_DIR, BACKUP_RETENTION_DAYS, BACKUP_SCHEDULE_HOURS, DATA_DIR } from "./src/config/index.ts";
+import { PORT, HOST, OPEN_ACCESS, CORS_ORIGIN, ALLOWED_IPS, CONSOLIDATION_INTERVAL, FORGET_SWEEP_INTERVAL, PKG_VERSION, BACKUP_DIR, BACKUP_RETENTION_DAYS, BACKUP_SCHEDULE_HOURS, DATA_DIR, ENGRAM_SKILL_DIRS } from "./src/config/index.ts";
+import { syncSkills } from "./src/skills/index.ts";
 import { log } from "./src/config/logger.ts";
 
 // Pre-migration schema backup (Phase 6.2)
@@ -297,6 +298,15 @@ server.listen(PORT, HOST, () => {
     try { unlinkSync(CRASH_SENTINEL); } catch {}
   }, 120000);
 });
+
+// Skill directory sync (fire-and-forget, does not block startup)
+if (ENGRAM_SKILL_DIRS.length > 0) {
+  syncSkills(ENGRAM_SKILL_DIRS).then(r => {
+    log.info({ msg: "startup_skill_sync", synced: r.synced, errors: r.errors.length });
+  }).catch(e => {
+    log.warn({ msg: "startup_skill_sync_failed", error: e?.message });
+  });
+}
 
 // ============================================================================
 // WAL CHECKPOINT (every 5 minutes)

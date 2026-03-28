@@ -56,6 +56,13 @@ export const LLM_API_KEY = process.env.LLM_API_KEY || "";
 export const LLM_MODEL = process.env.LLM_MODEL || "gemini-2.5-flash";
 export const LLM_STRATEGY = (process.env.LLM_STRATEGY || "fallback") as "fallback" | "round-robin";
 
+export const ENGRAM_SKILL_DIRS: string[] = (process.env.ENGRAM_SKILL_DIRS || "")
+  .split(",")
+  .map(d => d.trim())
+  .filter(Boolean);
+export const OPENSPACE_API_KEY = process.env.OPENSPACE_API_KEY || "";
+export const OPENSPACE_API_URL = process.env.OPENSPACE_API_URL || "https://api.openspace.dev";
+
 export interface LLMProvider { url: string; key: string; model: string; name: string }
 
 // Build provider list: primary + up to 9 additional providers (LLM_PROVIDER_2..10 or legacy LLM_FALLBACK1..2)

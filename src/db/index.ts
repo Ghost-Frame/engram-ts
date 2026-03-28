@@ -1998,6 +1998,158 @@ export const cleanupOldUsage = db.prepare(
 );
 
 // ============================================================================
+// v6.0 -- Skills registry (OpenSpace native integration)
+// ============================================================================
+
+migrate(`
+  CREATE TABLE IF NOT EXISTS skill_records (
+    skill_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    path TEXT NOT NULL,
+    content TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT 'workflow',
+    origin TEXT NOT NULL DEFAULT 'imported',
+    generation INTEGER NOT NULL DEFAULT 0,
+    lineage_change_summary TEXT,
+    creator_id TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    total_selections INTEGER NOT NULL DEFAULT 0,
+    total_applied INTEGER NOT NULL DEFAULT 0,
+    total_completions INTEGER NOT NULL DEFAULT 0,
+    embedding BLOB,
+    first_seen TEXT NOT NULL DEFAULT (datetime('now')),
+    last_updated TEXT NOT NULL DEFAULT (datetime('now'))
+  )
+`);
+
+migrate(`ALTER TABLE skill_records ADD COLUMN ${VECTOR_COL} FLOAT32(${EMBEDDING_DIM})`);
+migrate(`CREATE INDEX IF NOT EXISTS idx_skill_records_vec ON skill_records(libsql_vector_idx(${VECTOR_COL}))`);
+migrate(`CREATE INDEX IF NOT EXISTS idx_skill_records_name ON skill_records(name)`);
+migrate(`CREATE INDEX IF NOT EXISTS idx_skill_records_category ON skill_records(category)`);
+migrate(`CREATE INDEX IF NOT EXISTS idx_skill_records_active ON skill_records(is_active) WHERE is_active = 1`);
+
+migrate(`
+  CREATE TABLE IF NOT EXISTS skill_lineage_parents (
+    skill_id TEXT NOT NULL REFERENCES skill_records(skill_id) ON DELETE CASCADE,
+    parent_skill_id TEXT NOT NULL,
+    PRIMARY KEY (skill_id, parent_skill_id)
+  )
+`);
+
+migrate(`
+  CREATE TABLE IF NOT EXISTS skill_tags (
+    skill_id TEXT NOT NULL REFERENCES skill_records(skill_id) ON DELETE CASCADE,
+    tag TEXT NOT NULL,
+    PRIMARY KEY (skill_id, tag)
+  )
+`);
+migrate(`CREATE INDEX IF NOT EXISTS idx_skill_tags_tag ON skill_tags(tag)`);
+
+migrate(`
+  CREATE VIRTUAL TABLE IF NOT EXISTS skills_fts USING fts5(
+    name, description, content,
+    content='skill_records',
+    content_rowid='rowid',
+    tokenize='porter unicode61'
+  )
+`);
+
+migrate(`CREATE TRIGGER IF NOT EXISTS skills_fts_ai AFTER INSERT ON skill_records BEGIN
+  INSERT INTO skills_fts(rowid, name, description, content)
+  VALUES (new.rowid, new.name, new.description, new.content);
+END`);
+
+migrate(`CREATE TRIGGER IF NOT EXISTS skills_fts_ad AFTER DELETE ON skill_records BEGIN
+  INSERT INTO skills_fts(skills_fts, rowid, name, description, content)
+  VALUES ('delete', old.rowid, old.name, old.description, old.content);
+END`);
+
+migrate(`CREATE TRIGGER IF NOT EXISTS skills_fts_au AFTER UPDATE ON skill_records BEGIN
+  INSERT INTO skills_fts(skills_fts, rowid, name, description, content)
+  VALUES ('delete', old.rowid, old.name, old.description, old.content);
+  INSERT INTO skills_fts(rowid, name, description, content)
+  VALUES (new.rowid, new.name, new.description, new.content);
+END`);
+
+// -- Skill prepared statements --
+
+export const upsertSkill = db.prepare(`
+  INSERT INTO skill_records (skill_id, name, description, path, content, category, origin, generation, lineage_change_summary, creator_id, first_seen, last_updated)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+  ON CONFLICT(skill_id) DO UPDATE SET
+    name = excluded.name,
+    description = excluded.description,
+    path = excluded.path,
+    content = excluded.content,
+    last_updated = datetime('now')
+`);
+
+export const getSkillById = db.prepare(`SELECT * FROM skill_records WHERE skill_id = ?`);
+export const getSkillByPath = db.prepare(`SELECT * FROM skill_records WHERE path = ? AND is_active = 1 LIMIT 1`);
+
+export const listSkillsStmt = db.prepare(`
+  SELECT skill_id, name, description, path, category, origin, is_active,
+    total_selections, total_applied, total_completions, first_seen, last_updated
+  FROM skill_records WHERE is_active = 1
+  ORDER BY last_updated DESC LIMIT ?
+`);
+
+export const searchSkillsFTSStmt = db.prepare(`
+  SELECT sr.skill_id, sr.name, sr.description, sr.path, sr.category, sr.origin,
+    rank as fts_rank
+  FROM skills_fts f
+  JOIN skill_records sr ON f.rowid = sr.rowid
+  WHERE skills_fts MATCH ? AND sr.is_active = 1
+  ORDER BY rank
+  LIMIT ?
+`);
+
+export const getAllSkillEmbeddingsStmt = db.prepare(`
+  SELECT skill_id, name, description, embedding
+  FROM skill_records WHERE embedding IS NOT NULL AND is_active = 1
+`);
+
+export const updateSkillEmbeddingStmt = db.prepare(
+  `UPDATE skill_records SET embedding = ? WHERE skill_id = ?`
+);
+
+// writeSkillVec: separate from writeVec (which is integer-keyed for memories)
+export function writeSkillVec(skillId: string, emb: Float32Array): void {
+  try {
+    db.prepare(`UPDATE skill_records SET ${VECTOR_COL} = vector(?) WHERE skill_id = ?`)
+      .run(embeddingToVectorJSON(emb), skillId);
+  } catch (e: any) {
+    log.warn({ msg: "skill_vec_write_failed", skill_id: skillId, error: e?.message });
+  }
+}
+
+export const updateSkillContentStmt = db.prepare(`
+  UPDATE skill_records SET content = ?, name = ?, description = ?, last_updated = datetime('now')
+  WHERE skill_id = ?
+`);
+
+export const incrementSkillSelectionsStmt = db.prepare(
+  `UPDATE skill_records SET total_selections = total_selections + 1 WHERE skill_id = ?`
+);
+
+export const softDeleteSkillStmt = db.prepare(
+  `UPDATE skill_records SET is_active = 0, last_updated = datetime('now') WHERE skill_id = ?`
+);
+
+export const insertSkillTagStmt = db.prepare(
+  `INSERT OR IGNORE INTO skill_tags (skill_id, tag) VALUES (?, ?)`
+);
+
+export const getSkillTagsStmt = db.prepare(
+  `SELECT tag FROM skill_tags WHERE skill_id = ?`
+);
+
+export const insertSkillParentStmt = db.prepare(
+  `INSERT OR IGNORE INTO skill_lineage_parents (skill_id, parent_skill_id) VALUES (?, ?)`
+);
+
+// ============================================================================
 // SCHEMA UTILITIES (Phase 6.1)
 // ============================================================================
 
@@ -2035,6 +2187,7 @@ export function getExpectedTables(): string[] {
     "causal_chains", "causal_links", "reconsolidations", "temporal_patterns",
     "jobs", "scheduler_leases", "schema_versions",
     "rate_limits", "tenant_quotas",
+    "skill_records", "skill_lineage_parents", "skill_tags", "skills_fts",
   ];
 }
 
@@ -2087,3 +2240,5 @@ migrate(`
     END;
   END;
 `);
+
+// (v6.0 skills migrations are above, before prepared statements)

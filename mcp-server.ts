@@ -34,6 +34,18 @@ async function engram(path: string, method = "GET", body?: unknown) {
   return res.json() as Promise<any>;
 }
 
+async function engramWithTimeout(path: string, method = "GET", body?: unknown, timeout = 8000) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (ENGRAM_API_KEY) headers["Authorization"] = `Bearer ${ENGRAM_API_KEY}`;
+  const res = await fetch(`${ENGRAM_URL}${path}`, {
+    method, headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(timeout),
+  });
+  if (!res.ok) throw new Error(`Engram ${method} ${path} -> ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
 const server = new Server(
   { name: "engram", version: "5.11.0" },
   { capabilities: { tools: {} } },
@@ -339,6 +351,60 @@ const TOOLS: ToolDefinition[] = [
       properties: {},
     },
   },
+  {
+    name: "skill_search",
+    description: "Search for skills across local registry and cloud community. Hybrid BM25 + semantic search. Use to find relevant skills before executing a task.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query (natural language or keywords)" },
+        source: { type: "string", enum: ["all", "local", "cloud"], description: "Search scope (default: all)" },
+        limit: { type: "number", description: "Max results (default: 20)" },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "skill_fix",
+    description: "Fix a broken skill's SKILL.md using LLM-driven patching. Provide the skill ID and a specific description of what to fix.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        skill_id: { type: "string", description: "Skill ID (the UUID from .skill_id sidecar)" },
+        direction: { type: "string", description: "What is broken and how to fix it. Be specific." },
+      },
+      required: ["skill_id", "direction"],
+    },
+  },
+  {
+    name: "skill_upload",
+    description: "Upload a local skill to the OpenSpace cloud community. Requires OPENSPACE_API_KEY configured on the Engram server.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        skill_dir: { type: "string", description: "Absolute path to skill directory (must contain SKILL.md)" },
+        visibility: { type: "string", enum: ["public", "private"], description: "Visibility (default: public)" },
+        origin: { type: "string", description: "Override origin type" },
+        parent_skill_ids: { type: "array", items: { type: "string" }, description: "Override parent skill IDs for lineage tracking" },
+        tags: { type: "array", items: { type: "string" }, description: "Override tags" },
+        change_summary: { type: "string", description: "Override change summary" },
+      },
+      required: ["skill_dir"],
+    },
+  },
+  {
+    name: "skill_execute",
+    description: "Execute a task with skill-augmented LLM guidance. Searches local + cloud skills, feeds top matches as context, returns a guided response with attribution.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task: { type: "string", description: "The task instruction (natural language)" },
+        skill_dirs: { type: "array", items: { type: "string" }, description: "Additional skill directories to register before searching" },
+        search_scope: { type: "string", enum: ["all", "local"], description: "Skill search scope (default: all)" },
+      },
+      required: ["task"],
+    },
+  },
 ];
 
 // Sign the tool manifest at startup â€” clients can verify tools haven't been poisoned
@@ -574,6 +640,33 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       case "structural_memory_graph": {
         const result = await engram("/structural/memory-graph");
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      }
+
+      case "skill_search": {
+        const { query, source = "all", limit = 20 } = args;
+        const result = await engram("/skills/search", "POST", { query, source, limit });
+        const results: any[] = result.results ?? [];
+        if (results.length === 0) return { content: [{ type: "text", text: "No skills found." }] };
+        const text = results
+          .map((s: any) => `[${s.source}] ${s.name} (${s.skill_id})\n  ${s.description}`)
+          .join("\n\n");
+        return { content: [{ type: "text", text: `${results.length} skills found:\n\n${text}` }] };
+      }
+      case "skill_fix": {
+        const { skill_id, direction } = args;
+        const result = await engram(`/skills/${encodeURIComponent(skill_id)}/fix`, "POST", { direction });
+        return { content: [{ type: "text", text: `Fixed skill ${result.skill_id} (${result.name}). Patched content:\n\n${result.content}` }] };
+      }
+      case "skill_upload": {
+        const { skill_dir, visibility = "public", ...rest } = args;
+        const result = await engram("/skills/upload", "POST", { skill_dir, visibility, ...rest });
+        return { content: [{ type: "text", text: `Uploaded skill ${result.skill_id}${result.url ? ` -- ${result.url}` : ""}` }] };
+      }
+      case "skill_execute": {
+        const { task, skill_dirs, search_scope = "all" } = args;
+        const result = await engramWithTimeout("/skills/execute", "POST", { task, skill_dirs, search_scope }, 120_000) as any;
+        const skills = (result.skills_used ?? []).join(", ");
+        return { content: [{ type: "text", text: `${result.response}\n\n---\nSkills used: ${skills || "none"}` }] };
       }
 
       default:

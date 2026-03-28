@@ -3,6 +3,9 @@
 
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 const BASE = process.env.ENGRAM_URL || "http://127.0.0.1:4201";
 
@@ -447,6 +450,89 @@ describe("FSRS", () => {
     });
     assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
     assert.equal(data.id, testMemId);
+  });
+});
+
+// ============================================================================
+// SKILLS
+// ============================================================================
+describe("Skills API", () => {
+  let tmpSkillDir;
+  let skillDir;
+
+  before(() => {
+    tmpSkillDir = mkdtempSync(join(tmpdir(), "engram-skills-test-"));
+    skillDir = join(tmpSkillDir, "test-skill");
+    mkdirSync(skillDir);
+    writeFileSync(join(skillDir, "SKILL.md"), [
+      "---",
+      "name: Test Skill",
+      "description: A skill for testing",
+      "category: workflow",
+      "---",
+      "# Test Skill",
+      "",
+      "Do the thing.",
+    ].join("\n"));
+  });
+
+  after(() => {
+    rmSync(tmpSkillDir, { recursive: true, force: true });
+  });
+
+  it("POST /skills/sync with valid dir syncs skills", async () => {
+    const { status, data } = await api("/skills/sync", {
+      method: "POST",
+      body: { dirs: [tmpSkillDir] },
+    });
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
+    assert.ok(data.synced >= 1, `Expected synced >= 1, got ${data.synced}`);
+  });
+
+  it("GET /skills returns skill list", async () => {
+    const { status, data } = await api("/skills");
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
+    assert.ok(Array.isArray(data.skills));
+    assert.ok(typeof data.count === "number");
+  });
+
+  it("POST /skills/search with valid query returns results shape", async () => {
+    const { status, data } = await api("/skills/search", {
+      method: "POST",
+      body: { query: "test", source: "local" },
+    });
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
+    assert.ok(Array.isArray(data.results));
+    assert.ok(typeof data.count === "number");
+  });
+
+  it("POST /skills/search with empty query returns 400", async () => {
+    const { status } = await api("/skills/search", {
+      method: "POST",
+      body: { query: "" },
+    });
+    assert.equal(status, 400);
+  });
+
+  it("POST /skills/sync with no dirs returns 400 when no global dirs configured", async () => {
+    const { status } = await api("/skills/sync", {
+      method: "POST",
+      body: { dirs: [] },
+    });
+    assert.ok([200, 400].includes(status), `expected 200 or 400, got ${status}`);
+  });
+
+  it("GET /skills/:unknownId returns 404", async () => {
+    const { status } = await api("/skills/does-not-exist__imp_00000000");
+    assert.equal(status, 404);
+  });
+
+  it("POST /skills/upload without API key returns 503", async () => {
+    const { status } = await api("/skills/upload", {
+      method: "POST",
+      body: { skill_dir: skillDir },
+    });
+    assert.ok([400, 503].includes(status), `expected 400 or 503, got ${status}`);
   });
 });
 
