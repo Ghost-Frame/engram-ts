@@ -97,7 +97,7 @@ import { crossEncoderRerank, isRerankerReady } from "../reranker/index.ts";
 import { enqueueJob, getJobStats, listFailedJobs, countFailedJobs, listPendingJobs, listRunningJobs, retryFailedJob, purgeFailedJobs } from "../jobs/index.ts";
 import { fastExtractFacts } from "../intelligence/extraction.ts";
 import { runConsolidationSweep, consolidateCluster } from "../intelligence/consolidation.ts";
-import { extractPersonalitySignals, synthesizePersonalityProfile, getCachedProfile } from "../intelligence/personality.ts";
+import { extractPersonalitySignals, synthesizePersonalityProfile, getCachedProfile, getProfileForInjection, queueResynthesisIfStale } from "../intelligence/personality.ts";
 import { getPersonalitySignalCount } from "../db/index.ts";
 
 // Platform
@@ -2542,6 +2542,7 @@ Only include pairs that are actual contradictions.`;
         const doIncludePreferences = include_preferences !== false && depth >= 2;
         const doIncludeStructuredFacts = include_structured_facts !== false && depth >= 2;
         const doIncludeWorkingMemory = include_working_memory !== false && depth >= 3;
+        const doIncludePersonality = depth >= 2;
         const workingMemorySession = typeof body.session === "string" && body.session.trim() ? body.session.trim() : null;
 
         const estimateTokens = (text: string) => Math.ceil(text.length / 4);
@@ -2848,6 +2849,25 @@ Only include pairs that are actual contradictions.`;
           } catch {}
         }
 
+        // Intelligence Layer: Personality Profile
+        let personalityBlockTokens = 0;
+        if (doIncludePersonality) {
+          try {
+            const pp = getProfileForInjection(auth.user_id);
+            if (pp) {
+              if (pp.isStale) queueResynthesisIfStale(auth.user_id);
+              const profileText = pp.profile;
+              const tokens = estimateTokens(profileText);
+              // Cap personality at 10% of budget to leave room for memories
+              if (tokens <= tokenBudget * 0.10) {
+                contextParts.push("## Personality\n" + profileText);
+                personalityBlockTokens = tokens;
+                usedTokens += tokens;
+              }
+            }
+          } catch {}
+        }
+
         // Intelligence Layer: User Preferences
         if (doIncludePreferences) {
           try {
@@ -2961,6 +2981,7 @@ Only include pairs that are actual contradictions.`;
             linked: linkedBlocks.length,
             recent: recentBlocks.length,
             inference: inferenceBlocks.length,
+            personality: personalityBlockTokens > 0 ? 1 : 0,
           },
           timing,
         });
@@ -4401,6 +4422,16 @@ Return JSON:
 
         try { recordUsage.run(auth.user_id, "memory.recall", 1, null); } catch {}
 
+        // Personality profile injection (cached, never blocks on LLM)
+        let personalityProfile: string | null = null;
+        try {
+          const pp = getProfileForInjection(auth.user_id);
+          if (pp) {
+            personalityProfile = pp.profile;
+            if (pp.isStale) queueResynthesisIfStale(auth.user_id);
+          }
+        } catch {}
+
         return json({
           // Standard Engram format
           memories: sorted.map(s => ({
@@ -4427,6 +4458,7 @@ Return JSON:
             source: s.memory.source, score: s.score, createdAt: s.memory.created_at,
           })),
           ...(workingMemory ? { working_memory: workingMemory } : {}),
+          personality_profile: personalityProfile,
           count: sorted.length,
         });
       } catch (e: any) {

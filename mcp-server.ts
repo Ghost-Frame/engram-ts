@@ -381,9 +381,12 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         });
         const memories: any[] = result.memories ?? [];
         if (memories.length === 0) return { content: [{ type: "text", text: "No memories found." }] };
-        const text = memories
+        let text = memories
           .map((m) => `[${m.category}] (id:${m.id}, source:${m.source ?? "unknown"}) ${m.content}`)
           .join("\n\n");
+        if (result.personality_profile) {
+          text = `## Personality\n${result.personality_profile}\n\n---\n\n${text}`;
+        }
         return { content: [{ type: "text", text }] };
       }
 

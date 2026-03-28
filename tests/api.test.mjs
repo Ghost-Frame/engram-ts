@@ -80,6 +80,43 @@ describe("Recall", () => {
 });
 
 // ============================================================================
+// PERSONALITY IN RECALL
+// ============================================================================
+describe("Recall personality injection", () => {
+  it("POST /recall response has personality_profile field", async () => {
+    const { status, data } = await api("/recall", {
+      method: "POST",
+      body: { query: "personality test" },
+    });
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
+    assert.ok("personality_profile" in data, "response should include personality_profile key");
+  });
+});
+
+// ============================================================================
+// PERSONALITY IN CONTEXT
+// ============================================================================
+describe("Context personality injection", () => {
+  it("POST /context at depth 2+ includes personality in breakdown", async () => {
+    const { status, data } = await api("/context", {
+      method: "POST",
+      body: { query: "personality context test", depth: 2, max_tokens: 4000 },
+    });
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
+    assert.ok("personality" in data.breakdown, "breakdown should include personality count");
+  });
+
+  it("POST /context at depth 1 does NOT include personality", async () => {
+    const { status, data } = await api("/context", {
+      method: "POST",
+      body: { query: "personality context test", depth: 1, max_tokens: 2000 },
+    });
+    assert.ok(status === 200 || status === 201, `expected 2xx, got ${status}`);
+    assert.equal(data.breakdown.personality, 0, "depth 1 should have 0 personality blocks");
+  });
+});
+
+// ============================================================================
 // SCRATCHPAD
 // ============================================================================
 describe("Scratchpad", () => {

@@ -1861,6 +1861,10 @@ export const getCachedPersonalityProfile = db.prepare(
   `SELECT * FROM personality_profiles WHERE user_id = ? AND is_stale = 0`
 );
 
+export const getAnyPersonalityProfile = db.prepare(
+  `SELECT profile, is_stale FROM personality_profiles WHERE user_id = ?`
+);
+
 export const upsertPersonalityProfile = db.prepare(
   `INSERT INTO personality_profiles (user_id, profile, signal_count, is_stale, updated_at)
    VALUES (?, ?, ?, 0, datetime('now'))

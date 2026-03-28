@@ -86,7 +86,7 @@ import { withLease, releaseAllLeases, INSTANCE_ID } from "./src/jobs/scheduler.t
 
 // Extraction + Personality (for job handlers)
 import { extractFacts, processExtractionResult } from "./src/llm/index.ts";
-import { extractPersonalitySignals } from "./src/intelligence/personality.ts";
+import { extractPersonalitySignals, synthesizePersonalityProfile } from "./src/intelligence/personality.ts";
 import { cosineSimilarity, getCachedEmbeddings } from "./src/embeddings/index.ts";
 import { LLM_API_KEY } from "./src/config/index.ts";
 
@@ -197,6 +197,18 @@ registerJobHandler("post_store", async (payload) => {
     }
   } catch (e: any) {
     log.warn({ msg: "post_store_graph_analysis_failed", error: e.message });
+  }
+});
+
+registerJobHandler("profile_resynthesize", async (payload) => {
+  const { userId } = payload;
+  if (!userId) return;
+  try {
+    await synthesizePersonalityProfile(userId);
+    log.info({ msg: "profile_resynthesized_bg", userId });
+  } catch (e: any) {
+    log.warn({ msg: "profile_resynthesize_failed", userId, error: e.message });
+    throw e;
   }
 });
 

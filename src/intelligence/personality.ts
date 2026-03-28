@@ -10,9 +10,11 @@ import {
   getPersonalitySignals,
   getPersonalitySignalCount,
   getCachedPersonalityProfile,
+  getAnyPersonalityProfile,
   upsertPersonalityProfile,
   invalidatePersonalityProfile,
 } from "../db/index.ts";
+import { enqueueJob } from "../jobs/index.ts";
 
 // --- Types ---
 
@@ -218,4 +220,22 @@ export function getCachedProfile(userId: number): string | null {
 
 export function invalidateProfile(userId: number): void {
   invalidatePersonalityProfile.run(userId);
+}
+
+export function getProfileForInjection(userId: number): { profile: string; isStale: boolean } | null {
+  const row = getAnyPersonalityProfile.get(userId) as { profile: string; is_stale: number } | undefined;
+  if (!row) return null;
+  return { profile: row.profile, isStale: !!row.is_stale };
+}
+
+const resynthPending = new Set<number>();
+
+export function queueResynthesisIfStale(userId: number): void {
+  if (resynthPending.has(userId)) return;
+  resynthPending.add(userId);
+  try {
+    enqueueJob("profile_resynthesize", { userId }, 2);
+  } finally {
+    setTimeout(() => resynthPending.delete(userId), 60_000);
+  }
 }
