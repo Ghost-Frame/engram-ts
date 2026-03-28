@@ -32,7 +32,7 @@ FSRS-6 spaced repetition with power-law forgetting. Hybrid search fuses vector s
 
 ### Personality
 
-Extracts preferences, values, motivations, decisions, emotions, and identity markers from conversations. Your agent does not just remember what happened. It understands who it is talking to.
+Extracts preferences, values, motivations, decisions, emotions, and identity markers from conversations. Synthesized personality profiles are automatically injected into `/recall` and `/context` responses, so every agent interaction is personality-aware without configuration.
 
 ### Reasoning
 
@@ -198,8 +198,8 @@ Use `X-Space: space-name` (or `X-Engram-Space`) to scope operations to a named m
 |--------|------|-------------|
 | `POST` | `/store` | Store a memory |
 | `POST` | `/search` | RRF search across vector, FTS5, personality, and graph channels |
-| `POST` | `/recall` | Contextual recall (agent-optimized) |
-| `POST` | `/context` | Smart context builder (token-budget RAG with depth 1/2/3) |
+| `POST` | `/recall` | Contextual recall with auto-injected personality profile |
+| `POST` | `/context` | Smart context builder (token-budget RAG with depth 1/2/3, personality at depth 2+) |
 | `GET` | `/list` | List recent memories |
 | `GET` | `/profile` | User profile (static facts + recent) |
 | `GET` | `/graph` | Full memory graph (nodes + edges) |
