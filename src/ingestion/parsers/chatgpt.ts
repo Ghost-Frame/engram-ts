@@ -115,7 +115,7 @@ async function* parseConversations(
 }
 
 export const chatgptParser: Parser = {
-  name: "chatgpt-export",
+  name: "chatgpt",
 
   detect(input: Buffer | string): boolean {
     const raw = toString(input);

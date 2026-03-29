@@ -67,7 +67,7 @@ async function* parseConversations(
 }
 
 export const claudeParser: Parser = {
-  name: "claude-export",
+  name: "claude",
 
   detect(input: Buffer | string): boolean {
     const raw = toString(input);
