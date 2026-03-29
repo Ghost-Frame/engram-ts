@@ -46,13 +46,17 @@ Execution signing, guardrails, trust scoring, and full audit trails. Every recor
 
 Seven standalone microservices absorbed into Engram as native modules. Agent registry (Soma), task tracking (Chiasm), event bus (Axon), workflow orchestration (Loom), quality evaluation (Thymus), action logging (Broca), and structural analysis (OpenSpace). Same database, same auth, zero new dependencies.
 
+### Eidolon (Companion Intelligence Layer)
+
+[Eidolon](https://github.com/zanfiel/eidolon) pairs with Engram to add proactive agent awareness. Action gating blocks dangerous operations before they execute. A living prompt injects relevant memory context into every agent session. Credential scrubbing prevents secrets from leaking into prompts. Engram is the memory. Eidolon is the guardian that acts on it.
+
 ---
 
 ## Quick Start
 
 ```bash
 # Docker (recommended)
-git clone https://github.com/zanfiel/engram.git && cd engram
+git clone https://codeberg.org/GhostFrame/engram.git && cd engram
 cp .env.example .env  # set ENGRAM_GUI_PASSWORD
 docker compose up -d
 
@@ -540,11 +544,11 @@ for (const mem of pending.pending) {
 <details>
 <summary><strong>MCP Server</strong></summary>
 
-Transport: JSON-RPC 2.0 over stdio. The MCP server connects to a running Engram instance via HTTP.
+Transport: JSON-RPC 2.0 over stdio. The MCP server connects to a running Engram instance via HTTP. Works with any MCP-compatible client.
 
-### Claude Desktop Setup
+### Setup
 
-Add to `claude_desktop_config.json`:
+The MCP server entry is the same across all clients. Add it to your client's MCP configuration:
 
 ```json
 {
@@ -560,6 +564,18 @@ Add to `claude_desktop_config.json`:
   }
 }
 ```
+
+Where to put this depends on your client:
+
+| Client | Config Location |
+|--------|----------------|
+| Claude Desktop | `claude_desktop_config.json` |
+| Claude Code | `.mcp.json` in project root or `~/.claude/settings.json` |
+| Cursor | `.cursor/mcp.json` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` |
+| VS Code (Copilot) | `.vscode/mcp.json` |
+| OpenCode | `~/.config/opencode/agents.json` MCP section |
+| Any stdio MCP client | Consult your client's docs for MCP server config format |
 
 ### Available Tools
 
@@ -660,7 +676,7 @@ All tools support signed tool manifests for integrity verification when `ENGRAM_
 ### Docker (Recommended)
 
 ```bash
-git clone https://github.com/zanfiel/engram.git && cd engram
+git clone https://codeberg.org/GhostFrame/engram.git && cd engram
 cp .env.example .env  # set ENGRAM_GUI_PASSWORD
 docker compose up -d
 ```
@@ -744,7 +760,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 <div align="center">
 
-[engram.lol](https://engram.lol) · [GitHub](https://github.com/zanfiel/engram) · [Issues](https://github.com/zanfiel/engram/issues) · [Changelog](CHANGELOG.md)
+[engram.lol](https://engram.lol) · [Codeberg](https://codeberg.org/GhostFrame/engram) · [Eidolon](https://github.com/zanfiel/eidolon) · [Issues](https://codeberg.org/GhostFrame/engram/issues) · [Changelog](CHANGELOG.md)
 
 Elastic License 2.0
 
