@@ -70,7 +70,7 @@ import {
 
 // Embeddings
 import {
-  embed, cosineSimilarity, getCachedEmbeddings, addToEmbeddingCache,
+  embed, embedWithChunking, cosineSimilarity, getCachedEmbeddings, addToEmbeddingCache,
   invalidateEmbeddingCache, removeFromEmbeddingCache, demoteFromLatestCache,
   embeddingToBuffer, bufferToEmbedding, embeddingToVectorJSON,
   graphCache, setGraphCache, episodeCache, refreshEmbeddingCache, embeddingCacheLatest,
@@ -347,7 +347,7 @@ async function backfillEmbeddings(batchSize: number = 50, userId?: number): Prom
   let count = 0;
   for (const mem of missing) {
     try {
-      const emb = await embed(mem.content);
+      const emb = await embedWithChunking(mem.content);
       updateMemoryEmbedding.run(embeddingToBuffer(emb), mem.id);
       try { updateMemoryVec.run(embeddingToVectorJSON(emb), mem.id); } catch {}
       count++;
@@ -903,7 +903,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
               ).all(...importedIds) as Array<{ id: number; content: string }>;
               for (const mem of rows) {
                 try {
-                  const emb = await embed(mem.content);
+                  const emb = await embedWithChunking(mem.content);
                   updateMemoryEmbedding.run(embeddingToBuffer(emb), mem.id);
                   writeVec(mem.id, emb);
                   addToEmbeddingCache({ id: mem.id, user_id: auth.user_id, content: mem.content, category: (mem as any).category ?? "general", importance: (mem as any).importance ?? 5, embedding: emb, is_static: !!((mem as any).is_static), source_count: (mem as any).source_count ?? 1, is_latest: true, is_forgotten: false } as any);
@@ -1504,7 +1504,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
                 const result = insertMemory.get(content, "discovery", agent, null, 5, null, 1, 1, null, null, 1, 0, 0, null, null, 0, model, auth.user_id, auth.space_id || null) as { id: number; created_at: string };
                 summaryId = result.id;
                 try {
-                  const emb = await embed(content);
+                  const emb = await embedWithChunking(content);
                   updateMemoryEmbedding.run(embeddingToBuffer(emb), summaryId);
                   try { updateMemoryVec.run(embeddingToVectorJSON(emb), summaryId); } catch {}
                   addToEmbeddingCache({ id: summaryId, embedding: emb, content, category: "discovery", importance: 5, is_static: 0, source_count: 1, user_id: auth.user_id, is_latest: 1, is_forgotten: 0 } as any);
@@ -1588,7 +1588,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
 
           // Embed async
           try {
-            const emb = await embed(content);
+            const emb = await embedWithChunking(content);
             updateMemoryEmbedding.run(embeddingToBuffer(emb), newId);
             try { updateMemoryVec.run(embeddingToVectorJSON(emb), newId); } catch {}
             addToEmbeddingCache({ id: newId, embedding: emb, content, category, importance: 5, is_static: 0, source_count: 1, user_id: auth.user_id, is_latest: 1, is_forgotten: 0 } as any);
@@ -1606,7 +1606,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
             promoted.push(newId);
 
             try {
-              const emb = await embed(content);
+              const emb = await embedWithChunking(content);
               updateMemoryEmbedding.run(embeddingToBuffer(emb), newId);
               try { updateMemoryVec.run(embeddingToVectorJSON(emb), newId); } catch {}
               addToEmbeddingCache({ id: newId, embedding: emb, content, category, importance: 5, is_static: 0, source_count: 1, user_id: auth.user_id, is_latest: 1, is_forgotten: 0 } as any);
@@ -1674,7 +1674,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
         const newId = result.id;
 
         try {
-          const emb = await embed(content);
+          const emb = await embedWithChunking(content);
           updateMemoryEmbedding.run(embeddingToBuffer(emb), newId);
           try { updateMemoryVec.run(embeddingToVectorJSON(emb), newId); } catch {}
           addToEmbeddingCache({ id: newId, embedding: emb, content, category: "discovery", importance: 5, is_static: 0, source_count: 1, user_id: auth.user_id, is_latest: 1, is_forgotten: 0 } as any);
@@ -1797,7 +1797,7 @@ If no meaningful facts, return {"facts": []}`;
           let embBuffer: Buffer | null = null;
           let embArray: Float32Array | null = null;
           try {
-            embArray = await embed(fact.content.trim());
+            embArray = await embedWithChunking(fact.content.trim());
             embBuffer = embeddingToBuffer(embArray);
           } catch {}
 
@@ -2051,7 +2051,7 @@ Return JSON:
             let embBuffer: Buffer | null = null;
             let embArray: Float32Array | null = null;
             try {
-              embArray = await embed(fact.content.trim());
+              embArray = await embedWithChunking(fact.content.trim());
               embBuffer = embeddingToBuffer(embArray);
             } catch {}
 
@@ -2317,7 +2317,7 @@ Only include pairs that are actual contradictions.`;
 
           let embBuffer: Buffer | null = null;
           let embArray: Float32Array | null = null;
-          try { embArray = await embed(merged.content); embBuffer = embeddingToBuffer(embArray); } catch {}
+          try { embArray = await embedWithChunking(merged.content); embBuffer = embeddingToBuffer(embArray); } catch {}
 
           const result = insertMemory.get(
             merged.content, merged.category || memA.category, "contradiction-merge", null,
@@ -3106,7 +3106,7 @@ Return JSON:
         // Also store the reflection as a memory for future recall
         let embBuffer: Buffer | null = null;
         let embArray: Float32Array | null = null;
-        try { embArray = await embed(result.reflection); embBuffer = embeddingToBuffer(embArray); } catch {}
+        try { embArray = await embedWithChunking(result.reflection); embBuffer = embeddingToBuffer(embArray); } catch {}
 
         const reflectionMem = insertMemory.get(
           `[Reflection: ${period}ly, ${periodStartStr.substring(0, 10)} to ${periodEndStr.substring(0, 10)}] ${result.reflection}`,
@@ -3317,7 +3317,7 @@ Return JSON:
         let embBuffer: Buffer | null = null;
         let embArray: Float32Array | null = null;
         try {
-          embArray = await embed(content.trim());
+          embArray = await embedWithChunking(content.trim());
           embBuffer = embeddingToBuffer(embArray);
         } catch (e: any) {
           log.warn({ msg: "embedding_failed_storing_without", error: e.message });
@@ -3495,7 +3495,7 @@ Return JSON:
         let embBuffer: Buffer | null = null;
         let embArray: Float32Array | null = null;
         try {
-          embArray = await embed(correction);
+          embArray = await embedWithChunking(correction);
           embBuffer = embeddingToBuffer(embArray);
         } catch (e: any) {
           log.warn({ msg: "correction_embed_failed", error: e.message });
@@ -4127,7 +4127,7 @@ Return JSON:
         let embBuffer: Buffer | null = null;
         let embArray: Float32Array | null = null;
         try {
-          embArray = await embed(newContent.trim());
+          embArray = await embedWithChunking(newContent.trim());
           embBuffer = embeddingToBuffer(embArray);
         } catch (e: any) {
           log.warn({ msg: "embedding_failed_update", error: e.message });
@@ -4833,7 +4833,7 @@ Return JSON:
         }
         let embBuffer: Buffer | null = null;
         try {
-          const embArray = await embed(body.content.trim());
+          const embArray = await embedWithChunking(body.content.trim());
           embBuffer = embeddingToBuffer(embArray);
           const result = insertMemory.get(
             body.content.trim(), body.category || "general", "gui", null,
@@ -4875,7 +4875,7 @@ Return JSON:
         // Re-embed if content changed
         if (body.content !== undefined) {
           try {
-            const emb = await embed(body.content.trim());
+            const emb = await embedWithChunking(body.content.trim());
             updateMemoryEmbedding.run(embeddingToBuffer(emb), id); try { updateMemoryVec.run(embeddingToVectorJSON(emb), id); } catch {}
           } catch {}
         }
@@ -5000,7 +5000,7 @@ Return JSON:
         const textToEmbed = summary || body.title || body.conversation?.substring(0, 500) || "";
         if (textToEmbed) {
           try {
-            const embArray = await embed(textToEmbed);
+            const embArray = await embedWithChunking(textToEmbed);
             updateEpisodeEmbedding.run(embeddingToBuffer(embArray), ep.id);
             try { updateEpisodeVec.run(embeddingToVectorJSON(embArray), ep.id); } catch {}
             refreshEmbeddingCache();
@@ -5093,7 +5093,7 @@ Return JSON:
         // Re-embed if summary changed
         if (body.summary) {
           try {
-            const embArray = await embed(body.summary);
+            const embArray = await embedWithChunking(body.summary);
             updateEpisodeEmbedding.run(embeddingToBuffer(embArray), id);
             try { updateEpisodeVec.run(embeddingToVectorJSON(embArray), id); } catch {}
             refreshEmbeddingCache();
@@ -5168,7 +5168,7 @@ Return JSON:
 
         // Embed the summary
         try {
-          const embArray = await embed(summary);
+          const embArray = await embedWithChunking(summary);
           updateEpisodeEmbedding.run(embeddingToBuffer(embArray), episodeId);
           try { updateEpisodeVec.run(embeddingToVectorJSON(embArray), episodeId); } catch {}
           refreshEmbeddingCache();
@@ -5857,7 +5857,7 @@ ${memoryBlock}
               );
               // Re-embed on content change
               try {
-                const emb = await embed(mem.content);
+                const emb = await embedWithChunking(mem.content);
                 updateMemoryEmbedding.run(embeddingToBuffer(emb), existing.id); try { updateMemoryVec.run(embeddingToVectorJSON(emb), existing.id); } catch {}
               } catch {}
               updated++;
@@ -5869,7 +5869,7 @@ ${memoryBlock}
             let embBuffer: Buffer | null = null;
             let embArray: Float32Array | null = null;
             try {
-              embArray = await embed(mem.content);
+              embArray = await embedWithChunking(mem.content);
               embBuffer = embeddingToBuffer(embArray);
             } catch {}
             const result = insertMemory.get(
@@ -5987,7 +5987,7 @@ If no meaningful inferences, return {"derived": []}`;
           let embBuffer: Buffer | null = null;
           let embArray: Float32Array | null = null;
           try {
-            embArray = await embed(d.content.trim());
+            embArray = await embedWithChunking(d.content.trim());
             embBuffer = embeddingToBuffer(embArray);
           } catch {}
 
@@ -6049,7 +6049,7 @@ If no meaningful inferences, return {"derived": []}`;
           let embBuffer: Buffer | null = null;
           let embArray: Float32Array | null = null;
           try {
-            embArray = await embed(content.trim());
+            embArray = await embedWithChunking(content.trim());
             embBuffer = embeddingToBuffer(embArray);
           } catch {}
 
@@ -6122,7 +6122,7 @@ If no meaningful inferences, return {"derived": []}`;
           let embBuffer: Buffer | null = null;
           let embArray: Float32Array | null = null;
           try {
-            embArray = await embed(content.trim());
+            embArray = await embedWithChunking(content.trim());
             embBuffer = embeddingToBuffer(embArray);
           } catch {}
 
@@ -7078,7 +7078,7 @@ If no meaningful inferences, return {"derived": []}`;
         // Re-embed if content changed
         if (body.content?.trim()) {
           try {
-            const emb = await embed(body.content.trim());
+            const emb = await embedWithChunking(body.content.trim());
             updateMemoryEmbedding.run(embeddingToBuffer(emb), id);
             try { updateMemoryVec.run(embeddingToVectorJSON(emb), id); } catch {}
           } catch {}
@@ -7875,7 +7875,7 @@ If no meaningful inferences, return {"derived": []}`;
           ) as { id: number };
           db.prepare("UPDATE memories SET tags = ?, sync_id = ?, confidence = 1.0, status = 'approved' WHERE id = ?")
             .run(JSON.stringify([`url:${fetchUrl.slice(0, 200)}`]), syncId, res.id);
-          embed(content.slice(0, 8000)).then(emb => { if (emb) updateMemoryEmbedding.run(embeddingToBuffer(emb), res.id); }).catch(() => {});
+          embedWithChunking(content.slice(0, 8000)).then(emb => { if (emb) updateMemoryEmbedding.run(embeddingToBuffer(emb), res.id); }).catch(() => {});
           cachedId = res.id;
         } catch { /* cache failure is non-fatal */ }
       }
@@ -8004,7 +8004,7 @@ If no meaningful inferences, return {"derived": []}`;
           const tagsArr = [cacheTag, `source:${resolvedFrom}`, ...(version ? [`version:${version}`] : [])];
           db.prepare("UPDATE memories SET tags = ?, sync_id = ?, confidence = 1.0, status = 'approved' WHERE id = ?")
             .run(JSON.stringify(tagsArr), syncId, res.id);
-          embed(content.slice(0, 8000)).then(emb => { if (emb) updateMemoryEmbedding.run(embeddingToBuffer(emb), res.id); }).catch(() => {});
+          embedWithChunking(content.slice(0, 8000)).then(emb => { if (emb) updateMemoryEmbedding.run(embeddingToBuffer(emb), res.id); }).catch(() => {});
           memoryId = res.id;
           log.info({ msg: "docs_cached", library: libKey, id: res.id, source: resolvedFrom, rid: requestId });
         } catch { /* cache failure non-fatal */ }
@@ -8042,7 +8042,7 @@ If no meaningful inferences, return {"derived": []}`;
       db.prepare("UPDATE memories SET tags = ?, sync_id = ?, confidence = 1.0, status = 'approved' WHERE id = ?")
         .run(JSON.stringify(tags), syncId, res.id);
       if (simhashResult.simhash) storeSimHash(res.id, simhashResult.simhash);
-      embed(content).then(emb => { if (emb) updateMemoryEmbedding.run(embeddingToBuffer(emb), res.id); }).catch(() => {});
+      embedWithChunking(content).then(emb => { if (emb) updateMemoryEmbedding.run(embeddingToBuffer(emb), res.id); }).catch(() => {});
       log.info({ msg: "error_stored", type: errType, severity: errSeverity, id: res.id, rid: requestId });
       return json({ stored: true, id: res.id, type: errType, severity: errSeverity });
     }

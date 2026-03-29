@@ -134,7 +134,7 @@ export function sweepExpiredMemories(userId?: number): number {
 }
 
 /** Backfill embeddings for memories missing them */
-import { embed, addToEmbeddingCache, embeddingToBuffer, bufferToEmbedding } from "../embeddings/index.ts";
+import { embed, embedWithChunking, addToEmbeddingCache, embeddingToBuffer, bufferToEmbedding } from "../embeddings/index.ts";
 import { updateMemoryEmbedding, getNoEmbeddingForUser, getMemory, countNoEmbeddingForUser } from "../db/index.ts";
 import { autoLink } from "../memory/search.ts";
 
@@ -145,7 +145,7 @@ export async function backfillEmbeddings(batchSize: number = 50, userId?: number
   let count = 0;
   for (const mem of missing) {
     try {
-      const emb = await embed(mem.content);
+      const emb = await embedWithChunking(mem.content);
       updateMemoryEmbedding.run(embeddingToBuffer(emb), mem.id);
       try { updateMemoryVec.run(embeddingToVectorJSON(emb), mem.id); } catch {}
       count++;

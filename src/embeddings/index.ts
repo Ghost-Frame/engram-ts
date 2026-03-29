@@ -5,12 +5,14 @@
 
 import {
   EMBEDDING_PROVIDER, EMBEDDING_MODEL, EMBEDDING_DIM, EMBEDDING_MAX_SEQ,
+  EMBEDDING_CHUNK_ENABLED, EMBEDDING_CHUNK_MAX_CHARS, EMBEDDING_CHUNK_OVERLAP_CHARS, EMBEDDING_CHUNK_MAX_CHUNKS,
   MODEL_DIR, ONNX_MODEL_FILE, MODEL_URLS,
   GOOGLE_API_KEY, GOOGLE_CLOUD_LOCATION,
   ANN_PREFILTER_THRESHOLD, ANN_CANDIDATE_MULTIPLIER,
   COLD_STORAGE_DAYS, COLD_STORAGE_MIN_MEMORIES,
 } from "../config/index.ts";
 import { log, opsCounters } from "../config/logger.ts";
+import { chunkText } from "./chunking.ts";
 import { withSpan } from "../tracing.ts";
 import { db, writeVec, updateEpisodeVec, rebuildVectorIndex } from "../db/index.ts";
 import { getVertexAccessToken, getProjectId } from "../auth/google-auth.ts";
@@ -274,6 +276,48 @@ export async function embed(text: string): Promise<Float32Array> {
   });
 }
 
+/**
+ * Embed with chunking support for long text.
+ * Short text (<= maxChars) passes through to embed() with zero overhead.
+ * Long text is split into overlapping chunks, each embedded separately,
+ * then combined via length-weighted mean pooling + L2 normalization.
+ */
+export async function embedWithChunking(text: string): Promise<Float32Array> {
+  if (!EMBEDDING_CHUNK_ENABLED || text.length <= EMBEDDING_CHUNK_MAX_CHARS) {
+    return embed(text);
+  }
+
+  const chunks = chunkText(text, EMBEDDING_CHUNK_MAX_CHARS, EMBEDDING_CHUNK_OVERLAP_CHARS, EMBEDDING_CHUNK_MAX_CHUNKS);
+  if (chunks.length <= 1) return embed(chunks[0] || text);
+
+  // Embed all chunks
+  const embeddings: Float32Array[] = [];
+  const weights: number[] = [];
+  for (const chunk of chunks) {
+    const emb = await embed(chunk);
+    embeddings.push(emb);
+    weights.push(chunk.length);
+  }
+
+  // Weighted mean pooling by chunk length
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+  const dim = embeddings[0].length;
+  const pooled = new Float32Array(dim);
+  for (let i = 0; i < embeddings.length; i++) {
+    const w = weights[i] / totalWeight;
+    const emb = embeddings[i];
+    for (let j = 0; j < dim; j++) pooled[j] += emb[j] * w;
+  }
+
+  // L2 normalize
+  let norm = 0;
+  for (let j = 0; j < dim; j++) norm += pooled[j] * pooled[j];
+  norm = Math.sqrt(norm);
+  if (norm > 0) for (let j = 0; j < dim; j++) pooled[j] /= norm;
+
+  return pooled;
+}
+
 export function getEmbeddingProviderInfo(): { provider: string; model: string; dim: number } {
   return { provider: EMBEDDING_PROVIDER, model: EMBEDDING_MODEL, dim: EMBEDDING_DIM };
 }
@@ -458,7 +502,7 @@ export async function reembedAll(
   // Re-embed memories in batches
   for (const mem of allMems) {
     try {
-      const emb = await embed(mem.content.substring(0, 8192));
+      const emb = await embedWithChunking(mem.content.substring(0, 8192));
       updateMemEmb.run(embeddingToBuffer(emb), mem.id);
       writeVec(mem.id, emb);
     } catch (e: any) {

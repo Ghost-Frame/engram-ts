@@ -25,6 +25,10 @@ export const EMBEDDING_PROVIDER = (process.env.ENGRAM_EMBEDDING_PROVIDER || "loc
 export const EMBEDDING_MODEL = process.env.ENGRAM_EMBEDDING_MODEL || (EMBEDDING_PROVIDER === "local" ? "BAAI/bge-large-en-v1.5" : "text-embedding-005");
 export const EMBEDDING_DIM = Number(process.env.ENGRAM_EMBEDDING_DIM || (EMBEDDING_PROVIDER === "local" ? 1024 : 768));
 export const EMBEDDING_MAX_SEQ = 512;
+export const EMBEDDING_CHUNK_ENABLED = process.env.ENGRAM_CHUNK_EMBEDDINGS !== "0";
+export const EMBEDDING_CHUNK_MAX_CHARS = Number(process.env.ENGRAM_CHUNK_MAX_CHARS || 1440);
+export const EMBEDDING_CHUNK_OVERLAP_CHARS = Number(process.env.ENGRAM_CHUNK_OVERLAP_CHARS || 160);
+export const EMBEDDING_CHUNK_MAX_CHUNKS = Number(process.env.ENGRAM_CHUNK_MAX_CHUNKS || 6);
 export const MODEL_DIR = resolve(DATA_DIR, "models", "bge-large-en-v1.5");
 export const ONNX_MODEL_FILE = process.env.ENGRAM_EMBEDDING_FP32 === "1" ? "model.onnx" : "model_quantized.onnx";
 export const MODEL_URLS: Record<string, string> = {
