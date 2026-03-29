@@ -48,7 +48,7 @@ Seven standalone microservices absorbed into Engram as native modules. Agent reg
 
 ### Eidolon (Companion Intelligence Layer)
 
-[Eidolon](https://github.com/zanfiel/eidolon) pairs with Engram to add proactive agent awareness. Action gating blocks dangerous operations before they execute. A living prompt injects relevant memory context into every agent session. Credential scrubbing prevents secrets from leaking into prompts. Engram is the memory. Eidolon is the guardian that acts on it.
+[Eidolon](https://codeberg.org/GhostFrame/eidolon) pairs with Engram to add proactive agent awareness. Action gating blocks dangerous operations before they execute. A living prompt injects relevant memory context into every agent session. Credential scrubbing prevents secrets from leaking into prompts. Engram is the memory. Eidolon is the guardian that acts on it.
 
 ---
 
@@ -470,7 +470,7 @@ Engram ships a full CLI that wraps the HTTP API. Zero external dependencies. Use
 ### Install
 
 ```bash
-npm install -g @zanfiel/engram
+npm install -g @ghostframe/engram
 ```
 
 ### Configuration
@@ -514,7 +514,7 @@ All commands support `--json` for raw API output and `--quiet` for minimal outpu
 <summary><strong>TypeScript SDK</strong></summary>
 
 ```typescript
-import { Engram } from "@zanfiel/engram/sdk";
+import { Engram } from "@ghostframe/engram/sdk";
 
 const engram = new Engram({ url: "http://localhost:4200", apiKey: "eg_..." });
 
@@ -760,7 +760,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 <div align="center">
 
-[engram.lol](https://engram.lol) · [Codeberg](https://codeberg.org/GhostFrame/engram) · [Eidolon](https://github.com/zanfiel/eidolon) · [Issues](https://codeberg.org/GhostFrame/engram/issues) · [Changelog](CHANGELOG.md)
+[engram.lol](https://engram.lol) · [Codeberg](https://codeberg.org/GhostFrame/engram) · [Eidolon](https://codeberg.org/GhostFrame/eidolon) · [Issues](https://codeberg.org/GhostFrame/engram/issues) · [Changelog](CHANGELOG.md)
 
 Elastic License 2.0
 

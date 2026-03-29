@@ -6,7 +6,7 @@ Thanks for your interest in contributing to Engram! This document provides guide
 
 ```bash
 # Clone the repo
-git clone https://github.com/zanfiel/engram.git
+git clone https://codeberg.org/GhostFrame/engram.git
 cd engram
 
 # Install dependencies
