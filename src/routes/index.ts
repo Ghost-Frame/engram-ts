@@ -107,6 +107,9 @@ import { getPersonalitySignalCount } from "../db/index.ts";
 import { emitWebhookEvent } from "../platform/webhooks.ts";
 import { buildDigestPayload, sendDigestWebhook, calculateNextSend, processScheduledDigests } from "../platform/digest.ts";
 
+// Ingestion
+import { chunkDocument } from "../ingestion/chunker.ts";
+
 // Helpers
 import { securityHeaders, json, errorResponse, safeError, sanitizeFTS, isPrivateHostname } from "../helpers/index.ts";
 
@@ -1963,35 +1966,11 @@ If no meaningful facts, return {"facts": []}`;
           ingestSource = source || "text";
         }
 
-        // Truncate to ~12K chars for LLM context
-        const MAX_INGEST = 12000;
-        const truncated = rawText.length > MAX_INGEST;
-        if (truncated) rawText = rawText.substring(0, MAX_INGEST);
-
         // --- Chunk into segments for extraction ---
-        const CHUNK_SIZE = 3000;
-        const CHUNK_OVERLAP = 200;
-        const chunks: string[] = [];
-        if (rawText.length <= CHUNK_SIZE) {
-          chunks.push(rawText);
-        } else {
-          let pos = 0;
-          while (pos < rawText.length) {
-            let end = Math.min(pos + CHUNK_SIZE, rawText.length);
-            // Try to break at paragraph or sentence boundary
-            if (end < rawText.length) {
-              const paraBreak = rawText.lastIndexOf("\n\n", end);
-              if (paraBreak > pos + CHUNK_SIZE * 0.5) end = paraBreak;
-              else {
-                const sentBreak = rawText.lastIndexOf(". ", end);
-                if (sentBreak > pos + CHUNK_SIZE * 0.5) end = sentBreak + 1;
-              }
-            }
-            chunks.push(rawText.substring(pos, end));
-            pos = end > pos ? end - CHUNK_OVERLAP : end + 1;
-            if (pos >= rawText.length) break;
-          }
-        }
+        const truncated = false;
+        const doc = { title, text: rawText, metadata: {}, source: ingestSource };
+        const chunked = chunkDocument(doc, { max_chunk_size: 3000, overlap: 200 });
+        const chunks = chunked.map(c => c.text);
 
         // --- Extract facts from each chunk ---
         const allFacts: Array<{ id: number; content: string; category: string }> = [];
