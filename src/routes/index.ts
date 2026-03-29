@@ -6146,6 +6146,94 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
+    // BULK INGEST — POST /import/bulk
+    // Async document ingestion pipeline: parse, chunk, embed, store.
+    // ========================================================================
+
+    if (url.pathname === "/import/bulk" && method === "POST") {
+      if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
+      try {
+        const body = await req.json() as any;
+        const { text, url: ingestUrl, format, mode, source, category, project_id, episode_id } = body;
+
+        if (!text && !ingestUrl) {
+          return errorResponse("Provide 'text' (string) or 'url' (string)");
+        }
+
+        let input: Buffer | string = "";
+        let meta: { extension?: string; mime?: string } = {};
+
+        // URL fetching with SSRF protection
+        if (ingestUrl) {
+          if (typeof ingestUrl !== "string" || !ingestUrl.match(/^https?:\/\//)) {
+            return errorResponse("url must be a valid http/https URL");
+          }
+          try {
+            const parsedUrl = new URL(ingestUrl);
+            const hn = parsedUrl.hostname.toLowerCase();
+            if (hn === "localhost" || hn === "127.0.0.1" || hn === "::1" || hn === "0.0.0.0" ||
+                hn.startsWith("10.") || hn.startsWith("192.168.") || hn.startsWith("172.16.") ||
+                hn.startsWith("172.17.") || hn.startsWith("172.18.") || hn.startsWith("172.19.") ||
+                hn.startsWith("172.2") || hn.startsWith("172.30.") || hn.startsWith("172.31.") ||
+                hn.endsWith(".local") || hn.endsWith(".internal") || hn.startsWith("100.64.") ||
+                hn.startsWith("169.254.") || hn.startsWith("fc") || hn.startsWith("fd") || hn === "[::1]") {
+              return errorResponse("Ingest URL cannot point to private/internal addresses", 400);
+            }
+          } catch { return errorResponse("Invalid ingest URL", 400); }
+          try {
+            const resp = await fetch(ingestUrl, {
+              headers: { "User-Agent": "Engram/4.4 (memory ingest)" },
+              redirect: "follow",
+              signal: AbortSignal.timeout(15000),
+            });
+            if (!resp.ok) return errorResponse(`Fetch failed: ${resp.status} ${resp.statusText}`, 502);
+            const contentType = resp.headers.get("content-type") || "";
+            input = await resp.text();
+            // Pass MIME type to detect format correctly
+            meta = { mime: contentType.split(";")[0].trim() };
+          } catch (fetchErr: any) {
+            return errorResponse(`Fetch error: ${fetchErr.message}`, 502);
+          }
+        }
+
+        if (text) {
+          if (typeof text !== "string" || text.trim().length === 0) {
+            return errorResponse("text must be a non-empty string");
+          }
+          input = text;
+        }
+
+        const { ingestAsync } = await import("../ingestion/index.ts");
+
+        const result = ingestAsync(input, {
+          mode: mode || "extract",
+          format: format || undefined,
+          source: source || "import",
+          category: category || "general",
+          userId: auth.user_id,
+          spaceId: auth.space_id || null,
+          projectId: project_id,
+          episodeId: episode_id,
+        }, meta);
+
+        // Fire and forget the async work
+        result.promise.catch((err: any) => {
+          log.error({ msg: "bulk_ingest_failed", job_id: result.job_id, error: err.message });
+        });
+
+        return json({
+          job_id: result.job_id,
+          chiasm_task_id: result.chiasm_task_id,
+          status: "processing",
+          axon_channel: "ingestion",
+          subscribe: "/axon/events?channel=ingestion",
+        }, 202);
+      } catch (e: any) {
+        return safeError("import/bulk", e);
+      }
+    }
+
+    // ========================================================================
     // MEMORY GRAPH — v4.3
     // ========================================================================
 
