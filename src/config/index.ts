@@ -20,16 +20,26 @@ export const PORT = Number(process.env.ENGRAM_PORT || process.env.ZANMEMORY_PORT
 export const HOST = process.env.ENGRAM_HOST || process.env.ZANMEMORY_HOST || "0.0.0.0";
 
 // Embedding config -- pluggable provider
-// Provider: "local" = ONNX BGE-large (default), "google" = Google AI Studio, "vertex" = Vertex AI
-export const EMBEDDING_PROVIDER = (process.env.ENGRAM_EMBEDDING_PROVIDER || "local") as "local" | "google" | "vertex";
-export const EMBEDDING_MODEL = process.env.ENGRAM_EMBEDDING_MODEL || (EMBEDDING_PROVIDER === "local" ? "BAAI/bge-large-en-v1.5" : "text-embedding-005");
+// Provider: "local" = ONNX (default), "openai" = OpenAI-compatible API (Ollama, LM Studio, TEI, etc.)
+//           "google" = Google AI Studio, "vertex" = Vertex AI
+export const EMBEDDING_PROVIDER = (process.env.ENGRAM_EMBEDDING_PROVIDER || "local") as "local" | "openai" | "google" | "vertex";
+export const EMBEDDING_MODEL = process.env.ENGRAM_EMBEDDING_MODEL || (
+  EMBEDDING_PROVIDER === "local" ? "BAAI/bge-large-en-v1.5" :
+  EMBEDDING_PROVIDER === "openai" ? "nomic-embed-text" :
+  "text-embedding-005"
+);
 export const EMBEDDING_DIM = Number(process.env.ENGRAM_EMBEDDING_DIM || (EMBEDDING_PROVIDER === "local" ? 1024 : 768));
-export const EMBEDDING_MAX_SEQ = 512;
+export const EMBEDDING_MAX_SEQ = Number(process.env.ENGRAM_EMBEDDING_MAX_SEQ || 512);
 export const EMBEDDING_CHUNK_ENABLED = process.env.ENGRAM_CHUNK_EMBEDDINGS !== "0";
 export const EMBEDDING_CHUNK_MAX_CHARS = Number(process.env.ENGRAM_CHUNK_MAX_CHARS || 1440);
 export const EMBEDDING_CHUNK_OVERLAP_CHARS = Number(process.env.ENGRAM_CHUNK_OVERLAP_CHARS || 160);
 export const EMBEDDING_CHUNK_MAX_CHUNKS = Number(process.env.ENGRAM_CHUNK_MAX_CHUNKS || 6);
-export const MODEL_DIR = resolve(DATA_DIR, "models", "bge-large-en-v1.5");
+// OpenAI-compatible embedding API (used when EMBEDDING_PROVIDER=openai)
+export const EMBEDDING_API_URL = (process.env.ENGRAM_EMBEDDING_URL || "http://localhost:11434").replace(/\/$/, "");
+export const EMBEDDING_API_KEY = process.env.ENGRAM_EMBEDDING_API_KEY || "";
+// Local ONNX model dir -- set ENGRAM_MODEL_DIR to use a custom model; files must already exist there
+export const CUSTOM_MODEL_DIR = process.env.ENGRAM_MODEL_DIR ? resolve(process.env.ENGRAM_MODEL_DIR) : null;
+export const MODEL_DIR = CUSTOM_MODEL_DIR || resolve(DATA_DIR, "models", "bge-large-en-v1.5");
 export const ONNX_MODEL_FILE = process.env.ENGRAM_EMBEDDING_FP32 === "1" ? "model.onnx" : "model_quantized.onnx";
 export const MODEL_URLS: Record<string, string> = {
   "tokenizer.json": "https://huggingface.co/Xenova/bge-large-en-v1.5/resolve/main/tokenizer.json",

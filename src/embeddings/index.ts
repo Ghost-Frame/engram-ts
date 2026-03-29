@@ -6,7 +6,8 @@
 import {
   EMBEDDING_PROVIDER, EMBEDDING_MODEL, EMBEDDING_DIM, EMBEDDING_MAX_SEQ,
   EMBEDDING_CHUNK_ENABLED, EMBEDDING_CHUNK_MAX_CHARS, EMBEDDING_CHUNK_OVERLAP_CHARS, EMBEDDING_CHUNK_MAX_CHUNKS,
-  MODEL_DIR, ONNX_MODEL_FILE, MODEL_URLS,
+  EMBEDDING_API_URL, EMBEDDING_API_KEY,
+  MODEL_DIR, ONNX_MODEL_FILE, MODEL_URLS, CUSTOM_MODEL_DIR,
   GOOGLE_API_KEY, GOOGLE_CLOUD_LOCATION,
   ANN_PREFILTER_THRESHOLD, ANN_CANDIDATE_MULTIPLIER,
   COLD_STORAGE_DAYS, COLD_STORAGE_MIN_MEMORIES,
@@ -96,6 +97,34 @@ async function vertexEmbed(text: string): Promise<Float32Array> {
 }
 
 // ============================================================================
+// OPENAI-COMPATIBLE EMBEDDINGS -- Any server exposing /v1/embeddings
+// Works with: Ollama, LM Studio, text-embeddings-inference, LocalAI, vLLM, etc.
+// ============================================================================
+
+async function openaiEmbed(text: string): Promise<Float32Array> {
+  const resp = await fetch(`${EMBEDDING_API_URL}/v1/embeddings`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(EMBEDDING_API_KEY ? { "Authorization": `Bearer ${EMBEDDING_API_KEY}` } : {}),
+    },
+    body: JSON.stringify({ model: EMBEDDING_MODEL, input: text }),
+  });
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`OpenAI-compatible embedding failed (${resp.status}): ${err}`);
+  }
+  const data = await resp.json() as { data: Array<{ embedding: number[] }> };
+  const vec = new Float32Array(data.data[0].embedding);
+  // L2 normalize
+  let norm = 0;
+  for (let i = 0; i < vec.length; i++) norm += vec[i] * vec[i];
+  norm = Math.sqrt(norm);
+  if (norm > 0) for (let i = 0; i < vec.length; i++) vec[i] /= norm;
+  return vec;
+}
+
+// ============================================================================
 // LOCAL ONNX EMBEDDINGS -- Worker thread implementation
 // ONNX inference runs in a dedicated Worker thread to avoid blocking the
 // main event loop. The main thread sends text, the worker returns Float32Array.
@@ -127,6 +156,8 @@ async function ensureModelFiles(): Promise<void> {
   for (const file of needed) {
     const dest = resolve(MODEL_DIR, file);
     if (existsSync(dest)) continue;
+    // Custom model dir: files must be placed there manually -- no auto-download
+    if (CUSTOM_MODEL_DIR) throw new Error(`Model file missing from custom ENGRAM_MODEL_DIR: ${dest}`);
     const url = MODEL_URLS[file];
     log.info({ msg: "downloading_model_file", file, url });
     const res = await fetch(url);
@@ -243,6 +274,11 @@ export async function initEmbedder(): Promise<void> {
     const t0 = Date.now();
     await vertexEmbed("warmup");
     log.info({ msg: "embedding_provider_ready", provider: "vertex", model: EMBEDDING_MODEL, dim: EMBEDDING_DIM, project: getProjectId(), warmup_ms: Date.now() - t0 });
+  } else if (EMBEDDING_PROVIDER === "openai") {
+    // Warmup call to verify the server is reachable
+    const t0 = Date.now();
+    await openaiEmbed("warmup");
+    log.info({ msg: "embedding_provider_ready", provider: "openai", url: EMBEDDING_API_URL, model: EMBEDDING_MODEL, dim: EMBEDDING_DIM, warmup_ms: Date.now() - t0 });
   } else {
     throw new Error(`Unknown embedding provider: ${EMBEDDING_PROVIDER}`);
   }
@@ -264,6 +300,7 @@ export async function embed(text: string): Promise<Float32Array> {
     let result: Float32Array;
     switch (EMBEDDING_PROVIDER) {
       case "local": result = await localEmbed(text); break;
+      case "openai": result = await openaiEmbed(text); break;
       case "google": result = await googleEmbed(text); break;
       case "vertex": result = await vertexEmbed(text); break;
       default: throw new Error(`Unknown embedding provider: ${EMBEDDING_PROVIDER}`);
