@@ -24,11 +24,11 @@ export const HOST = process.env.ENGRAM_HOST || process.env.ZANMEMORY_HOST || "0.
 //           "google" = Google AI Studio, "vertex" = Vertex AI
 export const EMBEDDING_PROVIDER = (process.env.ENGRAM_EMBEDDING_PROVIDER || "local") as "local" | "openai" | "google" | "vertex";
 export const EMBEDDING_MODEL = process.env.ENGRAM_EMBEDDING_MODEL || (
-  EMBEDDING_PROVIDER === "local" ? "BAAI/bge-large-en-v1.5" :
+  EMBEDDING_PROVIDER === "local" ? "Alibaba-NLP/gte-Qwen2-1.5B-instruct" :
   EMBEDDING_PROVIDER === "openai" ? "nomic-embed-text" :
   "text-embedding-005"
 );
-export const EMBEDDING_DIM = Number(process.env.ENGRAM_EMBEDDING_DIM || (EMBEDDING_PROVIDER === "local" ? 1024 : 768));
+export const EMBEDDING_DIM = Number(process.env.ENGRAM_EMBEDDING_DIM || (EMBEDDING_PROVIDER === "local" ? 1536 : 768));
 export const EMBEDDING_MAX_SEQ = Number(process.env.ENGRAM_EMBEDDING_MAX_SEQ || 512);
 export const EMBEDDING_CHUNK_ENABLED = process.env.ENGRAM_CHUNK_EMBEDDINGS !== "0";
 export const EMBEDDING_CHUNK_MAX_CHARS = Number(process.env.ENGRAM_CHUNK_MAX_CHARS || 1440);
@@ -39,12 +39,12 @@ export const EMBEDDING_API_URL = (process.env.ENGRAM_EMBEDDING_URL || "http://lo
 export const EMBEDDING_API_KEY = process.env.ENGRAM_EMBEDDING_API_KEY || "";
 // Local ONNX model dir -- set ENGRAM_MODEL_DIR to use a custom model; files must already exist there
 export const CUSTOM_MODEL_DIR = process.env.ENGRAM_MODEL_DIR ? resolve(process.env.ENGRAM_MODEL_DIR) : null;
-export const MODEL_DIR = CUSTOM_MODEL_DIR || resolve(DATA_DIR, "models", "bge-large-en-v1.5");
+export const MODEL_DIR = CUSTOM_MODEL_DIR || resolve(DATA_DIR, "models", "gte-Qwen2-1.5B-instruct");
 export const ONNX_MODEL_FILE = process.env.ENGRAM_EMBEDDING_FP32 === "1" ? "model.onnx" : "model_quantized.onnx";
 export const MODEL_URLS: Record<string, string> = {
-  "tokenizer.json": "https://huggingface.co/Xenova/bge-large-en-v1.5/resolve/main/tokenizer.json",
-  "model_quantized.onnx": "https://huggingface.co/Xenova/bge-large-en-v1.5/resolve/main/onnx/model_quantized.onnx",
-  "model.onnx": "https://huggingface.co/Xenova/bge-large-en-v1.5/resolve/main/onnx/model.onnx",
+  "tokenizer.json": "https://huggingface.co/Xenova/gte-Qwen2-1.5B-instruct/resolve/main/tokenizer.json",
+  "model_quantized.onnx": "https://huggingface.co/Xenova/gte-Qwen2-1.5B-instruct/resolve/main/onnx/model_quantized.onnx",
+  "model.onnx": "https://huggingface.co/Xenova/gte-Qwen2-1.5B-instruct/resolve/main/onnx/model.onnx",
 };
 
 // Google Cloud / Vertex AI config
