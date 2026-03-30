@@ -17,57 +17,54 @@ const { modelDir, onnxModelFile, maxSeq, intraOpNumThreads } = workerData as {
 };
 
 // ============================================================================
-// TOKENIZER (SentencePiece/XLM-R, copied from reranker/index.ts)
+// TOKENIZER (ByteLevel BPE, BERT-style pair encoding for IBM Granite reranker)
 // ============================================================================
 
-class SentencePieceTokenizer {
+function buildBytesToUnicode(): Map<number, string> {
+  const bs: number[] = [];
+  const cs: number[] = [];
+  for (let i = 33; i <= 126; i++) { bs.push(i); cs.push(i); }
+  for (let i = 161; i <= 172; i++) { bs.push(i); cs.push(i); }
+  for (let i = 174; i <= 255; i++) { bs.push(i); cs.push(i); }
+  let n = 0;
+  for (let b = 0; b < 256; b++) {
+    if (!bs.includes(b)) { bs.push(b); cs.push(256 + n); n++; }
+  }
+  const map = new Map<number, string>();
+  for (let i = 0; i < bs.length; i++) map.set(bs[i], String.fromCharCode(cs[i]));
+  return map;
+}
+
+const GPT2_SPLIT_RE = /(?:'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+)/gu;
+
+class ByteLevelBPETokenizer {
   private vocab: Map<string, number>;
-  private unigramScores: Map<string, number>;
-  private unigramByFirstChar: Map<string, string[]>;
   private mergeRanks: Map<string, number>;
-  private bosId: number;
-  private eosId: number;
+  private bytesToUnicode: Map<number, string>;
+  private clsId: number;
+  private sepId: number;
   private unkId: number;
-  private modelType: "bpe" | "unigram";
 
   constructor(path: string) {
     const raw = JSON.parse(readFileSync(path, "utf-8"));
     const model = raw.model;
-    this.vocab = new Map();
-    this.unigramScores = new Map();
-    this.unigramByFirstChar = new Map();
-    this.mergeRanks = new Map();
 
-    if (model.type === "Unigram") {
-      this.modelType = "unigram";
-      const vocabEntries = model.vocab as Array<[string, number]>;
-      for (let i = 0; i < vocabEntries.length; i++) {
-        const [token, score] = vocabEntries[i];
-        this.vocab.set(token, i);
-        this.unigramScores.set(token, Number(score) || 0);
-        if (!token || token.startsWith("<")) continue;
-        const first = token[0];
-        const bucket = this.unigramByFirstChar.get(first) || [];
-        bucket.push(token);
-        this.unigramByFirstChar.set(first, bucket);
-      }
-      for (const bucket of this.unigramByFirstChar.values()) {
-        bucket.sort((a, b) => b.length - a.length);
-      }
-      this.unkId = model.unk_id ?? 3;
-    } else {
-      this.modelType = "bpe";
-      this.vocab = new Map(Object.entries(model.vocab) as [string, number][]);
-      if (model.merges) {
-        for (let i = 0; i < model.merges.length; i++) {
-          this.mergeRanks.set(model.merges[i], i);
-        }
-      }
-      this.unkId = this.vocab.get("<unk>") ?? 3;
+    this.vocab = new Map(Object.entries(model.vocab) as [string, number][]);
+    for (const t of (raw.added_tokens || [])) {
+      this.vocab.set(t.content, t.id);
     }
 
-    this.bosId = this.vocab.get("<s>") ?? 0;
-    this.eosId = this.vocab.get("</s>") ?? 2;
+    this.clsId = this.vocab.get("[CLS]") ?? 50281;
+    this.sepId = this.vocab.get("[SEP]") ?? 50282;
+    this.unkId = this.vocab.get("<unk>") ?? 0;
+
+    this.mergeRanks = new Map();
+    for (let i = 0; i < model.merges.length; i++) {
+      const [a, b] = model.merges[i] as [string, string];
+      this.mergeRanks.set(a + "\x00" + b, i);
+    }
+
+    this.bytesToUnicode = buildBytesToUnicode();
   }
 
   private bpe(symbols: string[]): string[] {
@@ -76,7 +73,7 @@ class SentencePieceTokenizer {
       let bestRank = Infinity;
       let bestIdx = -1;
       for (let i = 0; i < symbols.length - 1; i++) {
-        const rank = this.mergeRanks.get(symbols[i] + " " + symbols[i + 1]);
+        const rank = this.mergeRanks.get(symbols[i] + "\x00" + symbols[i + 1]);
         if (rank !== undefined && rank < bestRank) { bestRank = rank; bestIdx = i; }
       }
       if (bestIdx === -1) break;
@@ -92,65 +89,18 @@ class SentencePieceTokenizer {
     return symbols;
   }
 
-  private tokenizeUnigram(text: string): number[] {
-    const best = new Float64Array(text.length + 1);
-    best.fill(Number.NEGATIVE_INFINITY);
-    best[text.length] = 0;
-
-    const nextId = new Int32Array(text.length + 1);
-    const nextLen = new Int32Array(text.length + 1);
-
-    for (let i = text.length - 1; i >= 0; i--) {
-      const first = text[i];
-      const bucket = this.unigramByFirstChar.get(first) || [];
-      let bestScore = Number.NEGATIVE_INFINITY;
-      let bestTokenId = this.unkId;
-      let bestTokenLen = 1;
-
-      for (const token of bucket) {
-        if (!text.startsWith(token, i)) continue;
-        const tokenId = this.vocab.get(token);
-        if (tokenId == null) continue;
-        const nextIndex = i + token.length;
-        if (best[nextIndex] === Number.NEGATIVE_INFINITY) continue;
-        const score = (this.unigramScores.get(token) ?? -20) + best[nextIndex];
-        if (score > bestScore) {
-          bestScore = score;
-          bestTokenId = tokenId;
-          bestTokenLen = token.length;
-        }
-      }
-
-      if (bestScore === Number.NEGATIVE_INFINITY) {
-        best[i] = (this.unigramScores.get("<unk>") ?? -20) + best[i + 1];
-        nextId[i] = this.unkId;
-        nextLen[i] = 1;
-      } else {
-        best[i] = bestScore;
-        nextId[i] = bestTokenId;
-        nextLen[i] = bestTokenLen;
-      }
-    }
-
+  private tokenize(text: string): number[] {
+    const preTokens = text.normalize("NFC").match(GPT2_SPLIT_RE) || [];
     const ids: number[] = [];
-    let index = 0;
-    while (index < text.length) {
-      const tokenId = nextId[index] || this.unkId;
-      const tokenLen = nextLen[index] || 1;
-      ids.push(tokenId);
-      index += tokenLen;
+    for (const word of preTokens) {
+      const bytes = Buffer.from(word, "utf8");
+      const encoded = [...bytes].map(b => this.bytesToUnicode.get(b) ?? "?").join("");
+      const pieces = this.bpe([...encoded]);
+      for (const piece of pieces) {
+        ids.push(this.vocab.get(piece) ?? this.unkId);
+      }
     }
     return ids;
-  }
-
-  private tokenize(text: string): number[] {
-    text = text.normalize("NFKC");
-    text = "\u2581" + text.replace(/\s+/g, "\u2581").trimStart();
-    if (this.modelType === "unigram") {
-      return this.tokenizeUnigram(text);
-    }
-    const tokens = this.bpe([...text]);
-    return tokens.map(t => this.vocab.get(t) ?? this.unkId);
   }
 
   encodePair(query: string, document: string): {
@@ -158,8 +108,8 @@ class SentencePieceTokenizer {
   } {
     const qIds = this.tokenize(query);
     const dIds = this.tokenize(document);
-    // XLM-R pair: <s> query </s></s> document </s> (4 special tokens)
-    const maxContent = maxSeq - 4;
+    // Granite pair: [CLS] query [SEP] document [SEP] (3 special tokens)
+    const maxContent = maxSeq - 3;
     const qBudget = Math.min(qIds.length, Math.ceil(maxContent * 0.3));
     const dBudget = Math.min(dIds.length, maxContent - qBudget);
     const tQ = qIds.slice(0, qBudget);
@@ -167,14 +117,13 @@ class SentencePieceTokenizer {
 
     const input_ids = new BigInt64Array(maxSeq);
     const attention_mask = new BigInt64Array(maxSeq);
-    const token_type_ids = new BigInt64Array(maxSeq);
+    const token_type_ids = new BigInt64Array(maxSeq); // all zeros
     let p = 0;
-    input_ids[p] = BigInt(this.bosId); attention_mask[p++] = 1n;
+    input_ids[p] = BigInt(this.clsId); attention_mask[p++] = 1n;
     for (const id of tQ) { input_ids[p] = BigInt(id); attention_mask[p++] = 1n; }
-    input_ids[p] = BigInt(this.eosId); attention_mask[p++] = 1n;
-    input_ids[p] = BigInt(this.eosId); attention_mask[p++] = 1n;
+    input_ids[p] = BigInt(this.sepId); attention_mask[p++] = 1n;
     for (const id of tD) { input_ids[p] = BigInt(id); attention_mask[p++] = 1n; }
-    input_ids[p] = BigInt(this.eosId); attention_mask[p++] = 1n;
+    input_ids[p] = BigInt(this.sepId); attention_mask[p++] = 1n;
     return { input_ids, attention_mask, token_type_ids };
   }
 }
@@ -184,11 +133,11 @@ class SentencePieceTokenizer {
 // ============================================================================
 
 let session: ort.InferenceSession | null = null;
-let tok: SentencePieceTokenizer | null = null;
+let tok: ByteLevelBPETokenizer | null = null;
 let hasTokenTypeIds = false;
 
 async function init(): Promise<void> {
-  tok = new SentencePieceTokenizer(resolve(modelDir, "tokenizer.json"));
+  tok = new ByteLevelBPETokenizer(resolve(modelDir, "tokenizer.json"));
   session = await ort.InferenceSession.create(resolve(modelDir, onnxModelFile), {
     executionProviders: ["cpu"],
     graphOptimizationLevel: "all" as any,

@@ -1,4 +1,4 @@
-FROM node:22-slim
+FROM node:25-slim
 
 LABEL org.opencontainers.image.title="Engram" \
       org.opencontainers.image.description="Persistent memory system for AI agents" \
@@ -17,6 +17,7 @@ RUN npm ci --omit=dev 2>/dev/null || npm install --omit=dev
 # Copy app files
 COPY server-split.ts ./
 COPY src/ ./src/
+COPY sign/ ./sign/
 COPY engram-gui.html engram-login.html ./
 
 # Data volume

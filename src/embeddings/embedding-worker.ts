@@ -19,126 +19,116 @@ const { modelDir, onnxModelFile, embeddingDim, embeddingMaxSeq, intraOpNumThread
 };
 
 // ============================================================================
-// TOKENIZER (same as main thread implementation)
+// TOKENIZER (SentencePiece Unigram for bge-m3, XLM-R format)
 // ============================================================================
 
-class BertWordPieceTokenizer {
+class SentencePieceUnigramTokenizer {
   private vocab: Map<string, number>;
+  private unigramScores: Map<string, number>;
+  private unigramByFirstChar: Map<string, string[]>;
+  private bosId: number;
+  private eosId: number;
   private unkId: number;
-  private clsId: number;
-  private sepId: number;
-  private maxCharsPerWord: number;
-  private prefix: string;
 
   constructor(tokenizerJsonPath: string) {
     const raw = JSON.parse(readFileSync(tokenizerJsonPath, "utf-8"));
     const model = raw.model;
-    this.vocab = new Map(Object.entries(model.vocab) as [string, number][]);
-    this.unkId = this.vocab.get("[UNK]") ?? 100;
-    this.clsId = this.vocab.get("[CLS]") ?? 101;
-    this.sepId = this.vocab.get("[SEP]") ?? 102;
-    this.maxCharsPerWord = model.max_input_chars_per_word ?? 100;
-    this.prefix = model.continuing_subword_prefix ?? "##";
-  }
+    this.vocab = new Map();
+    this.unigramScores = new Map();
+    this.unigramByFirstChar = new Map();
 
-  private normalize(text: string): string {
-    let out = "";
-    for (const ch of text) {
-      const cp = ch.codePointAt(0)!;
-      if (cp === 0 || cp === 0xFFFD || isControl(cp)) continue;
-      if (cp === 0x09 || cp === 0x0A || cp === 0x0D) { out += " "; continue; }
-      if (isCJK(cp)) { out += ` ${ch} `; continue; }
-      out += ch;
+    const vocabEntries = model.vocab as Array<[string, number]>;
+    for (let i = 0; i < vocabEntries.length; i++) {
+      const [token, score] = vocabEntries[i];
+      this.vocab.set(token, i);
+      this.unigramScores.set(token, Number(score) || 0);
+      if (!token || token.startsWith("<") || token.startsWith("\u2581<")) continue;
+      const first = token[0];
+      const bucket = this.unigramByFirstChar.get(first) || [];
+      bucket.push(token);
+      this.unigramByFirstChar.set(first, bucket);
     }
-    return out.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  }
-
-  private preTokenize(text: string): string[] {
-    const tokens: string[] = [];
-    let current = "";
-    for (const ch of text) {
-      if (/\s/.test(ch)) {
-        if (current) { tokens.push(current); current = ""; }
-      } else if (isPunct(ch)) {
-        if (current) { tokens.push(current); current = ""; }
-        tokens.push(ch);
-      } else {
-        current += ch;
-      }
+    for (const bucket of this.unigramByFirstChar.values()) {
+      bucket.sort((a, b) => b.length - a.length);
     }
-    if (current) tokens.push(current);
-    return tokens;
+
+    // Added tokens override vocab positions
+    for (const t of (raw.added_tokens || [])) {
+      this.vocab.set(t.content, t.id);
+    }
+
+    this.bosId = this.vocab.get("<s>") ?? 0;
+    this.eosId = this.vocab.get("</s>") ?? 2;
+    this.unkId = model.unk_id ?? 3;
   }
 
-  private wordPiece(word: string): number[] {
-    if (word.length > this.maxCharsPerWord) return [this.unkId];
-    const ids: number[] = [];
-    let start = 0;
-    while (start < word.length) {
-      let end = word.length;
-      let matched = false;
-      while (start < end) {
-        const sub = (start > 0 ? this.prefix : "") + word.slice(start, end);
-        const id = this.vocab.get(sub);
-        if (id !== undefined) {
-          ids.push(id);
-          start = end;
-          matched = true;
-          break;
+  private tokenizeUnigram(text: string): number[] {
+    const best = new Float64Array(text.length + 1);
+    best.fill(Number.NEGATIVE_INFINITY);
+    best[text.length] = 0;
+    const nextId = new Int32Array(text.length + 1);
+    const nextLen = new Int32Array(text.length + 1);
+
+    for (let i = text.length - 1; i >= 0; i--) {
+      const first = text[i];
+      const bucket = this.unigramByFirstChar.get(first) || [];
+      let bestScore = Number.NEGATIVE_INFINITY;
+      let bestTokenId = this.unkId;
+      let bestTokenLen = 1;
+
+      for (const token of bucket) {
+        if (!text.startsWith(token, i)) continue;
+        const tokenId = this.vocab.get(token);
+        if (tokenId == null) continue;
+        const nextIndex = i + token.length;
+        if (best[nextIndex] === Number.NEGATIVE_INFINITY) continue;
+        const score = (this.unigramScores.get(token) ?? -20) + best[nextIndex];
+        if (score > bestScore) {
+          bestScore = score;
+          bestTokenId = tokenId;
+          bestTokenLen = token.length;
         }
-        end--;
       }
-      if (!matched) return [this.unkId];
+
+      if (bestScore === Number.NEGATIVE_INFINITY) {
+        best[i] = (this.unigramScores.get("<unk>") ?? -20) + best[i + 1];
+        nextId[i] = this.unkId;
+        nextLen[i] = 1;
+      } else {
+        best[i] = bestScore;
+        nextId[i] = bestTokenId;
+        nextLen[i] = bestTokenLen;
+      }
+    }
+
+    const ids: number[] = [];
+    let index = 0;
+    while (index < text.length) {
+      ids.push(nextId[index] || this.unkId);
+      index += nextLen[index] || 1;
     }
     return ids;
   }
 
   encode(text: string, maxLen: number = embeddingMaxSeq): {
-    input_ids: BigInt64Array; attention_mask: BigInt64Array; token_type_ids: BigInt64Array;
+    input_ids: BigInt64Array; attention_mask: BigInt64Array;
   } {
-    const normalized = this.normalize(text);
-    const words = this.preTokenize(normalized);
-    const tokenIds: number[] = [];
-    for (const w of words) {
-      if (tokenIds.length >= maxLen - 2) break;
-      const wp = this.wordPiece(w);
-      for (const id of wp) {
-        if (tokenIds.length >= maxLen - 2) break;
-        tokenIds.push(id);
-      }
-    }
-    const seqLen = tokenIds.length + 2;
+    // Metaspace: prepend ▁, replace whitespace runs with ▁
+    const normalized = "\u2581" + text.normalize("NFKC").replace(/\s+/g, "\u2581").trimStart();
+    const tokenIds = this.tokenizeUnigram(normalized);
+
+    // XLM-R single: <s> tokens </s>
+    const maxContent = maxLen - 2;
+    const toks = tokenIds.slice(0, maxContent);
+
     const input_ids = new BigInt64Array(maxLen);
     const attention_mask = new BigInt64Array(maxLen);
-    const token_type_ids = new BigInt64Array(maxLen);
-    input_ids[0] = BigInt(this.clsId);
-    attention_mask[0] = 1n;
-    for (let i = 0; i < tokenIds.length; i++) {
-      input_ids[i + 1] = BigInt(tokenIds[i]);
-      attention_mask[i + 1] = 1n;
-    }
-    input_ids[seqLen - 1] = BigInt(this.sepId);
-    attention_mask[seqLen - 1] = 1n;
-    return { input_ids, attention_mask, token_type_ids };
+    let p = 0;
+    input_ids[p] = BigInt(this.bosId); attention_mask[p++] = 1n;
+    for (const id of toks) { input_ids[p] = BigInt(id); attention_mask[p++] = 1n; }
+    input_ids[p] = BigInt(this.eosId); attention_mask[p++] = 1n;
+    return { input_ids, attention_mask };
   }
-}
-
-function isControl(cp: number): boolean {
-  return (cp >= 0x00 && cp <= 0x1F && cp !== 0x09 && cp !== 0x0A && cp !== 0x0D) || (cp >= 0x7F && cp <= 0x9F);
-}
-
-function isCJK(cp: number): boolean {
-  return (cp >= 0x4E00 && cp <= 0x9FFF) || (cp >= 0x3400 && cp <= 0x4DBF) ||
-    (cp >= 0x20000 && cp <= 0x2A6DF) || (cp >= 0x2A700 && cp <= 0x2B73F) ||
-    (cp >= 0x2B740 && cp <= 0x2B81F) || (cp >= 0x2B820 && cp <= 0x2CEAF) ||
-    (cp >= 0xF900 && cp <= 0xFAFF) || (cp >= 0x2F800 && cp <= 0x2FA1F);
-}
-
-const PUNCT_RE = /[\p{P}\p{S}]/u;
-function isPunct(ch: string): boolean {
-  const cp = ch.codePointAt(0)!;
-  if ((cp >= 33 && cp <= 47) || (cp >= 58 && cp <= 64) || (cp >= 91 && cp <= 96) || (cp >= 123 && cp <= 126)) return true;
-  return PUNCT_RE.test(ch);
 }
 
 // ============================================================================
@@ -146,38 +136,50 @@ function isPunct(ch: string): boolean {
 // ============================================================================
 
 let session: ort.InferenceSession | null = null;
-let tokenizer: BertWordPieceTokenizer | null = null;
+let tokenizer: SentencePieceUnigramTokenizer | null = null;
+let hasTokenTypeIds = false;
 
 async function init(): Promise<void> {
-  tokenizer = new BertWordPieceTokenizer(resolve(modelDir, "tokenizer.json"));
+  tokenizer = new SentencePieceUnigramTokenizer(resolve(modelDir, "tokenizer.json"));
   session = await ort.InferenceSession.create(resolve(modelDir, onnxModelFile), {
     executionProviders: ["cpu"],
     graphOptimizationLevel: "all" as any,
     intraOpNumThreads,
   });
+  hasTokenTypeIds = session.inputNames.includes("token_type_ids");
 }
 
 async function embed(text: string): Promise<Float32Array> {
   if (!session || !tokenizer) throw new Error("Worker not initialized");
-  const { input_ids, attention_mask, token_type_ids } = tokenizer.encode(text);
-  const feeds = {
+  const { input_ids, attention_mask } = tokenizer.encode(text);
+  const feeds: Record<string, ort.Tensor> = {
     input_ids: new ort.Tensor("int64", input_ids, [1, embeddingMaxSeq]),
     attention_mask: new ort.Tensor("int64", attention_mask, [1, embeddingMaxSeq]),
-    token_type_ids: new ort.Tensor("int64", token_type_ids, [1, embeddingMaxSeq]),
   };
+  if (hasTokenTypeIds) {
+    feeds.token_type_ids = new ort.Tensor("int64", new BigInt64Array(embeddingMaxSeq), [1, embeddingMaxSeq]);
+  }
   const results = await session.run(feeds);
   const outputName = session.outputNames[0];
-  const hidden = results[outputName].data as Float32Array;
-  // Mean pool over non-padding tokens
+  const output = results[outputName];
+  const hidden = output.data as Float32Array;
+
+  // If output is already pooled (2D: [1, dim]), use directly
   const pooled = new Float32Array(embeddingDim);
-  let maskSum = 0;
-  for (let i = 0; i < embeddingMaxSeq; i++) {
-    if (attention_mask[i] === 0n) continue;
-    maskSum++;
-    const offset = i * embeddingDim;
-    for (let d = 0; d < embeddingDim; d++) pooled[d] += hidden[offset + d];
+  if (output.dims.length === 2) {
+    pooled.set(hidden.subarray(0, embeddingDim));
+  } else {
+    // Mean pool over non-padding tokens from last_hidden_state [1, seq, dim]
+    let maskSum = 0;
+    for (let i = 0; i < embeddingMaxSeq; i++) {
+      if (attention_mask[i] === 0n) continue;
+      maskSum++;
+      const offset = i * embeddingDim;
+      for (let d = 0; d < embeddingDim; d++) pooled[d] += hidden[offset + d];
+    }
+    for (let d = 0; d < embeddingDim; d++) pooled[d] /= maskSum;
   }
-  for (let d = 0; d < embeddingDim; d++) pooled[d] /= maskSum;
+
   // L2 normalize
   let norm = 0;
   for (let d = 0; d < embeddingDim; d++) norm += pooled[d] * pooled[d];

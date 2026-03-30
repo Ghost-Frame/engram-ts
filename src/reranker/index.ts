@@ -1,6 +1,6 @@
 // ============================================================================
 // CROSS-ENCODER RERANKER - ONNX-based for search result re-ranking
-// Model: bge-reranker-base (XLM-RoBERTa, SentencePiece tokenizer)
+// Model: granite-embedding-reranker-english-r2 (IBM Granite, ByteLevel BPE tokenizer)
 // ONNX inference runs in a dedicated Worker thread to avoid blocking the
 // main event loop.
 // ============================================================================
@@ -17,14 +17,12 @@ const DATA_DIR = process.env.ENGRAM_DATA_DIR
   ? resolve(process.env.ENGRAM_DATA_DIR)
   : resolve(import.meta.dirname || ".", "../../data");
 export const CROSS_ENCODER_ENABLED = process.env.ENGRAM_CROSS_ENCODER !== "0";
-const CROSS_ENCODER_DIR = resolve(DATA_DIR, "models", "bge-reranker-base");
+const CROSS_ENCODER_DIR = resolve(DATA_DIR, "models", "granite-embedding-reranker-english-r2");
 const CROSS_ENCODER_MAX_SEQ = Number(process.env.ENGRAM_RERANKER_MAX_SEQ || 512);
-const CROSS_ENCODER_FP32 = process.env.ENGRAM_RERANKER_FP32 === "1";
-const CROSS_ENCODER_ONNX = CROSS_ENCODER_FP32 ? "model.onnx" : "model_quantized.onnx";
+const CROSS_ENCODER_ONNX = "model_quantized.onnx";
 const CROSS_ENCODER_URLS: Record<string, string> = {
-  "tokenizer.json": "https://huggingface.co/Xenova/bge-reranker-base/resolve/main/tokenizer.json",
-  "model_quantized.onnx": "https://huggingface.co/Xenova/bge-reranker-base/resolve/main/onnx/model_quantized.onnx",
-  "model.onnx": "https://huggingface.co/Xenova/bge-reranker-base/resolve/main/onnx/model.onnx",
+  "tokenizer.json": "https://huggingface.co/keisuke-miyako/granite-embedding-reranker-english-r2-onnx-int8/resolve/main/tokenizer.json",
+  "model_quantized.onnx": "https://huggingface.co/keisuke-miyako/granite-embedding-reranker-english-r2-onnx-int8/resolve/main/model_quantized.onnx",
 };
 
 // ============================================================================
@@ -144,7 +142,7 @@ export async function initReranker(): Promise<void> {
   }
   try {
     const t0 = Date.now();
-    log.info({ msg: "loading_cross_encoder", model: "bge-reranker-base" });
+    log.info({ msg: "loading_cross_encoder", model: "granite-embedding-reranker-english-r2" });
     await ensureRerankerFiles();
     await spawnRerankerWorker();
     log.info({ msg: "cross_encoder_loaded", mode: "worker_thread", ms: Date.now() - t0 });
