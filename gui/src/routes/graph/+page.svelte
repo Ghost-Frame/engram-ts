@@ -94,7 +94,7 @@
   const CATEGORY_FALLBACK: Record<string, string> = {
     general: '#4fc3f7', decision: '#ba68c8', task: '#81c784',
     state: '#ff8a65', discovery: '#64b5f6', reference: '#f06292',
-    issue: '#e57373', preference: '#fff176',
+    issue: '#e57373', preference: '#fff176', credential: '#7986cb',
   };
 
   // ── Textures ───────────────────────────────────────────
@@ -203,8 +203,9 @@
 
   function getNodeColor(node: GNode): string {
     if (searchHighlights.has(node.id)) return '#ffd700';
+    if (node.category && CATEGORY_FALLBACK[node.category]) return CATEGORY_FALLBACK[node.category];
     if (node.community_id != null) return COMMUNITY_COLORS[node.community_id % COMMUNITY_COLORS.length];
-    return CATEGORY_FALLBACK[node.category] || '#4fc3f7';
+    return '#4fc3f7';
   }
 
   function getNodeOpacity(node: GNode): number {
@@ -404,6 +405,10 @@
         if (highlightLinks.has(link)) return getLinkColor(link);
         if ((link.weight ?? 0) >= wt) return getLinkColor(link);
         return 'rgba(0,0,0,0)';
+      })
+      .linkVisibility((link: any) => {
+        if (highlightLinks.has(link)) return true;
+        return (link.weight ?? 0) >= wt;
       });
   });
 
@@ -428,10 +433,9 @@
 
   onMount(async () => {
     try {
-      const [FG3D, THREE, { UnrealBloomPass }] = await Promise.all([
+      const [FG3D, THREE] = await Promise.all([
         import('3d-force-graph'),
         import('three'),
-        import('three/examples/jsm/postprocessing/UnrealBloomPass.js'),
       ]);
       const ForceGraph3D = FG3D.default;
       threeRef = THREE;
@@ -512,7 +516,7 @@
 
       const graph = ForceGraph3D()(container)
         .graphData({ nodes: graphData.nodes, links: graphData.edges })
-        .backgroundColor('#000003')
+        .backgroundColor('#0a0a0a')
         .showNavInfo(false)
         .nodeLabel(() => '')
         .nodeVal((n: any) => (n as GNode).importance || 5)
@@ -640,15 +644,15 @@
       graphInstance = graph;
       (window as any).__graph = graph;
 
+      // Force canvas background to near-black (belt-and-suspenders with backgroundColor)
+      const canvas = graph.renderer().domElement;
+      canvas.style.backgroundColor = '#0a0a0a';
+
       // Star field
       addStarField(THREE, graph.scene());
 
-      // Bloom post-processing
-      const bloomPass = new UnrealBloomPass(
-        new THREE.Vector2(window.innerWidth, window.innerHeight),
-        1.3, 0.5, 0.12
-      );
-      graph.postProcessingComposer().addPass(bloomPass);
+      // Bloom removed -- scattered light from 800+ nodes was turning #0a0a0a background grey
+      // To re-enable with selective bloom, use threshold >= 0.9 and strength <= 0.2
 
       // Cluster forces (gentle -- let topology dominate, clusters just hint)
       graph.d3Force('clusterX', makeClusterForce(clusterCentroids, 'x', 0.03));
@@ -701,12 +705,12 @@
 
 <!-- ── Template ─────────────────────────────────────────── -->
 
-<div class="fixed inset-0 z-40 bg-[#000003] overflow-hidden">
+<div class="fixed inset-0 z-40 bg-[#0a0a0a] overflow-hidden">
   <div bind:this={container} class="w-full h-full"></div>
 
   <!-- Loading -->
   {#if loading}
-    <div class="absolute inset-0 flex items-center justify-center z-50 bg-[#000003]">
+    <div class="absolute inset-0 flex items-center justify-center z-50 bg-[#0a0a0a]">
       <div class="text-center">
         <div class="w-12 h-12 border-2 border-teal-500/30 border-t-teal-400 rounded-full animate-spin mx-auto mb-4"></div>
         <p class="text-gray-500 text-sm">Loading memory graph...</p>
@@ -716,7 +720,7 @@
 
   <!-- Error -->
   {#if loadError}
-    <div class="absolute inset-0 flex items-center justify-center z-50 bg-[#000003]">
+    <div class="absolute inset-0 flex items-center justify-center z-50 bg-[#0a0a0a]">
       <div class="bg-red-900/20 border border-red-800/50 rounded-xl p-6 max-w-md text-center">
         <p class="text-red-400 text-sm mb-2">Failed to load graph</p>
         <p class="text-red-300/60 text-xs font-mono">{loadError}</p>
@@ -942,7 +946,7 @@
 
 <style>
   .topbar-gradient {
-    background: linear-gradient(to bottom, rgba(0,0,3,0.85) 0%, rgba(0,0,3,0) 100%);
+    background: linear-gradient(to bottom, rgba(10,10,10,0.85) 0%, rgba(10,10,10,0) 100%);
   }
 
   .glass-panel {

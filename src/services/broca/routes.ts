@@ -6,6 +6,7 @@
 import { db } from "../../db/index.ts";
 import { log } from "../../config/logger.ts";
 import { json, errorResponse } from "../../helpers/index.ts";
+import { getContext } from "../../middleware/auth.ts";
 import { bounded } from "../types.ts";
 import { parseJsonFields, parseJsonFieldsAll } from "../helpers.ts";
 import { publish } from "../axon/bus.ts";
@@ -28,7 +29,8 @@ export async function handleBrocaRoutes(
   // -- POST /broca/actions -- Log an action --
 
   if (sub === "/actions" && method === "POST") {
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     const { agent, service, action, payload } = body;
     if (!agent || typeof agent !== "string") return errorResponse("agent required", 400, requestId);
     if (!service || typeof service !== "string") return errorResponse("service required", 400, requestId);
@@ -153,7 +155,8 @@ export async function handleBrocaRoutes(
   // -- POST /broca/narrate -- Bulk narrate --
 
   if (sub === "/narrate" && method === "POST") {
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     const ids = body.ids;
     if (!Array.isArray(ids) || ids.length === 0) return errorResponse("ids array required", 400, requestId);
     if (ids.length > 50) return errorResponse("Maximum 50 IDs per request", 400, requestId);
@@ -190,7 +193,8 @@ export async function handleBrocaRoutes(
   // -- POST /broca/ask -- NL query --
 
   if (sub === "/ask" && method === "POST") {
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     const question = body.question;
     if (!question || typeof question !== "string") return errorResponse("question required", 400, requestId);
     if (question.length > 2000) return errorResponse("question too long (max 2000 chars)", 400, requestId);

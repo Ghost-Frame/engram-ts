@@ -4,6 +4,7 @@
 // ============================================================================
 
 import { json, errorResponse } from "../../helpers/index.ts";
+import { getContext } from "../../middleware/auth.ts";
 import { bounded } from "../types.ts";
 import {
   listTasks, getTask, createTask, updateTask, deleteTask,
@@ -35,7 +36,8 @@ export async function handleChiasmRoutes(
   }
 
   if (path === "/tasks" && method === "POST") {
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     const { agent, project, title, summary } = body;
     if (!agent || !project || !title) return errorResponse("agent, project, and title are required", 400, requestId);
     if (typeof agent !== "string" || typeof project !== "string" || typeof title !== "string") {
@@ -61,7 +63,8 @@ export async function handleChiasmRoutes(
   }
 
   if (taskMatch && method === "PATCH") {
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     const taskId = parseInt(taskMatch[1], 10);
     const existing = getTask(taskId);
     if (!existing) return errorResponse("Task not found", 404, requestId);

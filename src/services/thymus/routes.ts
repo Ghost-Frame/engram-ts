@@ -4,6 +4,7 @@
 // ============================================================================
 
 import { json, errorResponse } from "../../helpers/index.ts";
+import { getContext } from "../../middleware/auth.ts";
 import { bounded } from "../types.ts";
 import {
   createRubric, getRubric, getRubricName, listRubrics, updateRubric, deleteRubric,
@@ -32,7 +33,8 @@ export async function handleThymusRoutes(
   }
 
   if (sub === "/rubrics" && method === "POST") {
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     const { name, description, criteria } = body;
     if (!name || typeof name !== "string") return errorResponse("name required", 400, requestId);
     if (!criteria || !Array.isArray(criteria)) return errorResponse("criteria (array) required", 400, requestId);
@@ -53,7 +55,8 @@ export async function handleThymusRoutes(
   }
 
   if (rubricMatch && method === "PATCH") {
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     const rubric = updateRubric(parseInt(rubricMatch[1], 10), body);
     if (!rubric) return errorResponse("Rubric not found", 404, requestId);
     return json(rubric);
@@ -68,7 +71,8 @@ export async function handleThymusRoutes(
   // -- Evaluations --
 
   if (sub === "/evaluate" && method === "POST") {
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     const { rubric_id, agent, subject, input, output, scores, notes, evaluator } = body;
     if (!rubric_id || typeof rubric_id !== "number") return errorResponse("rubric_id (number) required", 400, requestId);
     if (!agent || typeof agent !== "string") return errorResponse("agent required", 400, requestId);
@@ -111,7 +115,8 @@ export async function handleThymusRoutes(
   // -- Metrics --
 
   if (sub === "/metrics" && method === "POST") {
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     const { agent, metric, value, tags } = body;
     if (!agent || typeof agent !== "string") return errorResponse("agent required", 400, requestId);
     if (!metric || typeof metric !== "string") return errorResponse("metric required", 400, requestId);

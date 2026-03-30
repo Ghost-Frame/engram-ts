@@ -107,6 +107,9 @@ import { getPersonalitySignalCount } from "../db/index.ts";
 import { emitWebhookEvent } from "../platform/webhooks.ts";
 import { buildDigestPayload, sendDigestWebhook, calculateNextSend, processScheduledDigests } from "../platform/digest.ts";
 
+// Ingestion
+import { chunkDocument } from "../ingestion/chunker.ts";
+
 // Helpers
 import { securityHeaders, json, errorResponse, safeError, sanitizeFTS, isPrivateHostname } from "../helpers/index.ts";
 
@@ -1963,35 +1966,11 @@ If no meaningful facts, return {"facts": []}`;
           ingestSource = source || "text";
         }
 
-        // Truncate to ~12K chars for LLM context
-        const MAX_INGEST = 12000;
-        const truncated = rawText.length > MAX_INGEST;
-        if (truncated) rawText = rawText.substring(0, MAX_INGEST);
-
         // --- Chunk into segments for extraction ---
-        const CHUNK_SIZE = 3000;
-        const CHUNK_OVERLAP = 200;
-        const chunks: string[] = [];
-        if (rawText.length <= CHUNK_SIZE) {
-          chunks.push(rawText);
-        } else {
-          let pos = 0;
-          while (pos < rawText.length) {
-            let end = Math.min(pos + CHUNK_SIZE, rawText.length);
-            // Try to break at paragraph or sentence boundary
-            if (end < rawText.length) {
-              const paraBreak = rawText.lastIndexOf("\n\n", end);
-              if (paraBreak > pos + CHUNK_SIZE * 0.5) end = paraBreak;
-              else {
-                const sentBreak = rawText.lastIndexOf(". ", end);
-                if (sentBreak > pos + CHUNK_SIZE * 0.5) end = sentBreak + 1;
-              }
-            }
-            chunks.push(rawText.substring(pos, end));
-            pos = end > pos ? end - CHUNK_OVERLAP : end + 1;
-            if (pos >= rawText.length) break;
-          }
-        }
+        const truncated = false;
+        const doc = { title, text: rawText, metadata: {}, source: ingestSource };
+        const chunked = chunkDocument(doc, { max_chunk_size: 3000, overlap: 200 });
+        const chunks = chunked.map(c => c.text);
 
         // --- Extract facts from each chunk ---
         const allFacts: Array<{ id: number; content: string; category: string }> = [];
@@ -6142,6 +6121,94 @@ If no meaningful inferences, return {"derived": []}`;
         return json({ imported, skipped, source: "supermemory" });
       } catch (e: any) {
         return safeError("Supermemory import", e);
+      }
+    }
+
+    // ========================================================================
+    // BULK INGEST — POST /import/bulk
+    // Async document ingestion pipeline: parse, chunk, embed, store.
+    // ========================================================================
+
+    if (url.pathname === "/import/bulk" && method === "POST") {
+      if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
+      try {
+        const body = await req.json() as any;
+        const { text, url: ingestUrl, format, mode, source, category, project_id, episode_id } = body;
+
+        if (!text && !ingestUrl) {
+          return errorResponse("Provide 'text' (string) or 'url' (string)");
+        }
+
+        let input: Buffer | string = "";
+        let meta: { extension?: string; mime?: string } = {};
+
+        // URL fetching with SSRF protection
+        if (ingestUrl) {
+          if (typeof ingestUrl !== "string" || !ingestUrl.match(/^https?:\/\//)) {
+            return errorResponse("url must be a valid http/https URL");
+          }
+          try {
+            const parsedUrl = new URL(ingestUrl);
+            const hn = parsedUrl.hostname.toLowerCase();
+            if (hn === "localhost" || hn === "127.0.0.1" || hn === "::1" || hn === "0.0.0.0" ||
+                hn.startsWith("10.") || hn.startsWith("192.168.") || hn.startsWith("172.16.") ||
+                hn.startsWith("172.17.") || hn.startsWith("172.18.") || hn.startsWith("172.19.") ||
+                hn.startsWith("172.2") || hn.startsWith("172.30.") || hn.startsWith("172.31.") ||
+                hn.endsWith(".local") || hn.endsWith(".internal") || hn.startsWith("100.64.") ||
+                hn.startsWith("169.254.") || hn.startsWith("fc") || hn.startsWith("fd") || hn === "[::1]") {
+              return errorResponse("Ingest URL cannot point to private/internal addresses", 400);
+            }
+          } catch { return errorResponse("Invalid ingest URL", 400); }
+          try {
+            const resp = await fetch(ingestUrl, {
+              headers: { "User-Agent": "Engram/4.4 (memory ingest)" },
+              redirect: "follow",
+              signal: AbortSignal.timeout(15000),
+            });
+            if (!resp.ok) return errorResponse(`Fetch failed: ${resp.status} ${resp.statusText}`, 502);
+            const contentType = resp.headers.get("content-type") || "";
+            input = await resp.text();
+            // Pass MIME type to detect format correctly
+            meta = { mime: contentType.split(";")[0].trim() };
+          } catch (fetchErr: any) {
+            return errorResponse(`Fetch error: ${fetchErr.message}`, 502);
+          }
+        }
+
+        if (text) {
+          if (typeof text !== "string" || text.trim().length === 0) {
+            return errorResponse("text must be a non-empty string");
+          }
+          input = text;
+        }
+
+        const { ingestAsync } = await import("../ingestion/index.ts");
+
+        const result = ingestAsync(input, {
+          mode: mode || "extract",
+          format: format || undefined,
+          source: source || "import",
+          category: category || "general",
+          userId: auth.user_id,
+          spaceId: auth.space_id || null,
+          projectId: project_id,
+          episodeId: episode_id,
+        }, meta);
+
+        // Fire and forget the async work
+        result.promise.catch((err: any) => {
+          log.error({ msg: "bulk_ingest_failed", job_id: result.job_id, error: err.message });
+        });
+
+        return json({
+          job_id: result.job_id,
+          chiasm_task_id: result.chiasm_task_id,
+          status: "processing",
+          axon_channel: "ingestion",
+          subscribe: "/axon/events?channel=ingestion",
+        }, 202);
+      } catch (e: any) {
+        return safeError("import/bulk", e);
       }
     }
 

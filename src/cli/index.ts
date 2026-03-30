@@ -2,7 +2,7 @@
 import { parseArgs } from "node:util";
 import { readFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, extname, basename } from "node:path";
 
 // ---------------------------------------------------------------------------
 // ANSI color helpers (only when stdout is a TTY)
@@ -413,6 +413,137 @@ async function cmdStats(cfg: Config) {
   }
 }
 
+async function cmdIngest(cfg: Config, args: string[], opts: Record<string, string | boolean | undefined>) {
+  const filePath = args[0];
+  if (!filePath) die("Usage: engram-cli ingest <path> [options]");
+
+  if (!existsSync(filePath)) die(`File not found: ${filePath}`);
+
+  const mode = String(opts["mode"] ?? "extract");
+  if (mode !== "extract" && mode !== "raw") {
+    die("--mode must be 'extract' or 'raw'");
+  }
+
+  const ext = extname(filePath).toLowerCase();
+  const filename = basename(filePath);
+
+  // Determine format: explicit override, otherwise auto-detect from extension
+  const formatOpt = opts["format"] ? String(opts["format"]) : undefined;
+  const autoFormat: Record<string, string> = {
+    ".txt": "text",
+    ".md": "markdown",
+    ".markdown": "markdown",
+    ".html": "html",
+    ".htm": "html",
+    ".json": "json",
+    ".csv": "csv",
+    ".pdf": "pdf",
+    ".docx": "docx",
+    ".doc": "docx",
+    ".zip": "zip",
+  };
+  const format = formatOpt ?? autoFormat[ext] ?? "text";
+
+  const binaryFormats = new Set(["pdf", "docx", "doc", "zip"]);
+  const isBinary = binaryFormats.has(ext.slice(1)) || (formatOpt !== undefined && binaryFormats.has(formatOpt));
+
+  const source = opts["source"] ? String(opts["source"]) : filename;
+  const category = String(opts["category"] ?? "general");
+  const showProgress = !!opts["progress"];
+
+  let bodyObj: Record<string, unknown>;
+
+  if (isBinary) {
+    const buf = readFileSync(filePath);
+    const encoded = buf.toString("base64");
+    bodyObj = { text: encoded, encoding: "base64", format, mode, source, category };
+  } else {
+    const text = readFileSync(filePath, "utf8");
+    bodyObj = { text, format, mode, source, category };
+  }
+
+  if (!cfg.quiet) {
+    process.stdout.write(dim(`Ingesting ${filename} (format: ${format}, mode: ${mode})...\n`));
+  }
+
+  const result = await api(cfg, "POST", "/import/bulk", bodyObj) as Record<string, unknown>;
+
+  if (cfg.json) {
+    process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+    return;
+  }
+
+  const jobId = result["job_id"] ?? result["id"] ?? "?";
+  const chiasmTaskId = result["chiasm_task_id"] ?? result["task_id"] ?? undefined;
+  const status = result["status"] ?? "submitted";
+
+  process.stdout.write(green(`Ingest job submitted`) + "\n");
+  process.stdout.write(`  ${bold("Job ID:")}    ${cyan(String(jobId))}\n`);
+  if (chiasmTaskId !== undefined) {
+    process.stdout.write(`  ${bold("Task ID:")}   ${cyan(String(chiasmTaskId))}\n`);
+  }
+  process.stdout.write(`  ${bold("Status:")}    ${String(status)}\n`);
+
+  if (!showProgress) return;
+
+  // Poll /axon/events?channel=ingestion until ingest.completed or ingest.error
+  if (!cfg.quiet) {
+    process.stdout.write(dim("\nWatching ingestion progress (Ctrl+C to stop)...\n"));
+  }
+
+  const pollInterval = 2000;
+  const maxPolls = 150; // 5 minutes max
+  let polls = 0;
+  let lastEventId: string | undefined;
+
+  while (polls < maxPolls) {
+    await new Promise<void>((resolve) => setTimeout(resolve, pollInterval));
+    polls++;
+
+    const params = new URLSearchParams({ channel: "ingestion", limit: "20" });
+    if (lastEventId) params.set("after", lastEventId);
+
+    let events: unknown[];
+    try {
+      const eventsResult = await api(cfg, "GET", `/axon/events?${params.toString()}`) as unknown;
+      events = Array.isArray(eventsResult)
+        ? eventsResult
+        : ((eventsResult as Record<string, unknown>)["events"] as unknown[] ?? []);
+    } catch {
+      // transient error -- keep polling
+      continue;
+    }
+
+    for (const ev of events) {
+      const event = ev as Record<string, unknown>;
+      const evType = String(event["type"] ?? "");
+      const payload = (event["payload"] ?? {}) as Record<string, unknown>;
+      lastEventId = String(event["id"] ?? lastEventId ?? "");
+
+      // Filter to events matching our job
+      const evJobId = payload["job_id"] ?? payload["id"];
+      if (evJobId !== undefined && String(evJobId) !== String(jobId)) continue;
+
+      if (evType === "ingest.progress" || evType === "ingest.update") {
+        const pct = payload["percent"] !== undefined ? ` ${cyan(String(payload["percent"]) + "%")}` : "";
+        const msg = payload["message"] ? ` ${String(payload["message"])}` : "";
+        process.stdout.write(`  ${yellow("progress")}${pct}${msg}\n`);
+      } else if (evType === "ingest.completed" || evType === "ingest.done") {
+        const stored = payload["stored"] ?? payload["memories_stored"] ?? payload["count"];
+        const storedStr = stored !== undefined ? ` (${stored} memories stored)` : "";
+        process.stdout.write(green(`  Ingestion complete`) + storedStr + "\n");
+        return;
+      } else if (evType === "ingest.error" || evType === "ingest.failed") {
+        const errMsg = payload["error"] ?? payload["message"] ?? "unknown error";
+        process.stderr.write(red(`  Ingestion failed: ${String(errMsg)}`) + "\n");
+        process.exit(1);
+      }
+    }
+  }
+
+  process.stdout.write(yellow("  Timed out waiting for completion. Job may still be running.\n"));
+}
+
 // ---------------------------------------------------------------------------
 // Help text
 // ---------------------------------------------------------------------------
@@ -431,6 +562,7 @@ ${bold("Commands:")}
   ${cyan("delete <id>")}         Delete a memory
   ${cyan("health")}              Check server health
   ${cyan("stats")}               Show statistics
+  ${cyan("ingest <path>")}       Ingest a file into memory
 
 ${bold("Global Options:")}
   ${yellow("--url <url>")}         Engram server URL (env: ENGRAM_URL)
@@ -505,6 +637,9 @@ async function main() {
       context: { type: "string" },
       // forget
       reason: { type: "string" },
+      // ingest
+      format: { type: "string" },
+      progress: { type: "boolean" },
     },
   });
 
@@ -556,6 +691,9 @@ async function main() {
         break;
       case "stats":
         await cmdStats(cfg);
+        break;
+      case "ingest":
+        await cmdIngest(cfg, restArgs, values as Record<string, string | boolean | undefined>);
         break;
       default:
         process.stderr.write(red(`Error: Unknown command '${command}'. Run with --help for usage.\n`));

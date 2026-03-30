@@ -4,6 +4,7 @@
 // ============================================================================
 
 import { json, errorResponse } from "../../helpers/index.ts";
+import { getContext } from "../../middleware/auth.ts";
 import { bounded } from "../types.ts";
 import {
   registerAgent, getAgent, listAgents, updateAgent, deregisterAgent,
@@ -32,7 +33,8 @@ export async function handleSomaRoutes(
   // -- Agents (fixed routes FIRST, before parameterized) --
 
   if (sub === "/agents" && method === "POST") {
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     const { name, type, description, capabilities, config } = body;
     if (!name || typeof name !== "string") return errorResponse("name required", 400, requestId);
     if (!type || typeof type !== "string") return errorResponse("type required", 400, requestId);
@@ -75,7 +77,8 @@ export async function handleSomaRoutes(
   }
 
   if (agentMatch && method === "PATCH") {
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     if (body.status !== undefined && !VALID_AGENT_STATUSES.has(body.status)) {
       return errorResponse(`Invalid status. Must be one of: ${[...VALID_AGENT_STATUSES].join(", ")}`, 400, requestId);
     }
@@ -93,7 +96,8 @@ export async function handleSomaRoutes(
   // POST /soma/agents/:id/heartbeat
   const hbMatch = sub.match(/^\/agents\/(\d+)\/heartbeat$/);
   if (hbMatch && method === "POST") {
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     if (body.status !== undefined && !VALID_AGENT_STATUSES.has(body.status)) {
       return errorResponse(`Invalid status. Must be one of: ${[...VALID_AGENT_STATUSES].join(", ")}`, 400, requestId);
     }
@@ -107,7 +111,8 @@ export async function handleSomaRoutes(
   if (logMatch && method === "POST") {
     const agentId = parseInt(logMatch[1], 10);
     if (!getAgent(agentId)) return errorResponse("Agent not found", 404, requestId);
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     if (!body.message || typeof body.message !== "string") return errorResponse("message required", 400, requestId);
     const entry = addLog(agentId, body);
     return json(entry, 201);
@@ -129,7 +134,8 @@ export async function handleSomaRoutes(
   }
 
   if (sub === "/groups" && method === "POST") {
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     const { name, description } = body;
     if (!name || typeof name !== "string") return errorResponse("name required", 400, requestId);
     try {
@@ -158,7 +164,8 @@ export async function handleSomaRoutes(
 
   // POST /soma/groups/:id/members
   if (membersMatch && method === "POST") {
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     const agentId = body.agent_id;
     if (!agentId || typeof agentId !== "number") return errorResponse("agent_id required", 400, requestId);
     const group = getGroupFn(parseInt(membersMatch[1], 10));

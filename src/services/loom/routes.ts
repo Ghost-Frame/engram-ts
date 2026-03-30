@@ -4,6 +4,7 @@
 // ============================================================================
 
 import { json, errorResponse } from "../../helpers/index.ts";
+import { getContext } from "../../middleware/auth.ts";
 import { bounded } from "../types.ts";
 import {
   createWorkflow, getWorkflow, getWorkflowByName, listWorkflows, updateWorkflow, deleteWorkflow,
@@ -32,7 +33,8 @@ export async function handleLoomRoutes(
   }
 
   if (sub === "/workflows" && method === "POST") {
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     const { name, description, steps } = body;
     if (!name || typeof name !== "string") return errorResponse("name required", 400, requestId);
     if (!Array.isArray(steps) || steps.length === 0) return errorResponse("steps array required", 400, requestId);
@@ -76,7 +78,8 @@ export async function handleLoomRoutes(
     const existing = getWorkflow(id);
     if (!existing) return errorResponse("Workflow not found", 404, requestId);
 
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     const updates: { name?: string; description?: string | null; steps?: any[] } = {};
     if (body.name !== undefined) updates.name = body.name;
     if (body.description !== undefined) updates.description = body.description;
@@ -99,7 +102,8 @@ export async function handleLoomRoutes(
   // -- Runs --
 
   if (sub === "/runs" && method === "POST") {
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     const { workflow_id, workflow_name, input } = body;
 
     let resolvedId: number | undefined;
@@ -167,7 +171,8 @@ export async function handleLoomRoutes(
 
   const stepCompleteMatch = sub.match(/^\/steps\/(\d+)\/complete$/);
   if (stepCompleteMatch && method === "POST") {
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     try {
       completeStep(parseInt(stepCompleteMatch[1], 10), body.output ?? {});
       return json({ ok: true });
@@ -178,7 +183,8 @@ export async function handleLoomRoutes(
 
   const stepFailMatch = sub.match(/^\/steps\/(\d+)\/fail$/);
   if (stepFailMatch && method === "POST") {
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     if (!body.error || typeof body.error !== "string") return errorResponse("error string required", 400, requestId);
     try {
       failStep(parseInt(stepFailMatch[1], 10), body.error);

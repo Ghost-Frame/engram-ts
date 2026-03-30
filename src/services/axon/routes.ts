@@ -4,6 +4,7 @@
 // ============================================================================
 
 import { json, errorResponse } from "../../helpers/index.ts";
+import { getContext } from "../../middleware/auth.ts";
 import { bounded } from "../types.ts";
 import {
   publish, getEvents, getEvent,
@@ -28,7 +29,8 @@ export async function handleAxonRoutes(
   // -- Publish --
 
   if (sub === "/publish" && method === "POST") {
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     const { channel, source, type, payload } = body;
     if (!channel || typeof channel !== "string") return errorResponse("channel required", 400, requestId);
     if (!source || typeof source !== "string") return errorResponse("source required", 400, requestId);
@@ -65,7 +67,8 @@ export async function handleAxonRoutes(
   }
 
   if (sub === "/channels" && method === "POST") {
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     const { name, description, retain_hours } = body;
     if (!name || typeof name !== "string") return errorResponse("name required", 400, requestId);
     try {
@@ -79,7 +82,8 @@ export async function handleAxonRoutes(
   // -- Subscriptions --
 
   if (sub === "/subscribe" && method === "POST") {
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     const { agent, channel, filter_type, webhook_url } = body;
     if (!agent || typeof agent !== "string") return errorResponse("agent required", 400, requestId);
     if (!channel || typeof channel !== "string") return errorResponse("channel required", 400, requestId);
@@ -92,7 +96,8 @@ export async function handleAxonRoutes(
   }
 
   if (sub === "/unsubscribe" && method === "POST") {
-    const body = await req.json().catch(() => ({})) as any;
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
     const { agent, channel } = body;
     if (!agent || typeof agent !== "string") return errorResponse("agent required", 400, requestId);
     if (!channel || typeof channel !== "string") return errorResponse("channel required", 400, requestId);

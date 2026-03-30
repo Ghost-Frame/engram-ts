@@ -57,10 +57,14 @@
     "graphology-shortest-path": "^2.1.0",
     "html-to-text": "^9.0.5",
     "libsql": "^0.5.22",
-    "onnxruntime-node": "^1.24.3"
+    "mammoth": "^1.12.0",
+    "onnxruntime-node": "^1.24.3",
+    "pdf-parse": "^2.4.5",
+    "yauzl": "^3.2.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/yauzl": "^2.10.3",
     "typescript": "^5",
     "vitest": "^4.1.0"
   },

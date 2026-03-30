@@ -169,12 +169,25 @@ section{padding:6rem 2rem}
 footer{text-align:center;padding:3rem 2rem;color:var(--muted);font-size:12px;border-top:1px solid rgba(255,255,255,0.04)}
 footer a{color:var(--dim)}
 
+/* Sponsor dropdown */
+.sponsor-wrap{position:relative}
+.sponsor-link{display:inline-flex;align-items:center;gap:5px;color:var(--dim);cursor:pointer}
+.sponsor-link .heart{color:var(--pink);font-size:12px;transition:transform 0.2s}
+.sponsor-wrap:hover .heart{transform:scale(1.3)}
+.sponsor-drop{display:none;position:absolute;top:calc(100% + 12px);right:0;background:var(--bg2);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px 0;min-width:170px;box-shadow:0 8px 32px rgba(0,0,0,0.4)}
+.sponsor-wrap:hover .sponsor-drop{display:block}
+.sponsor-drop a{display:flex;align-items:center;gap:8px;padding:8px 16px;font-size:12px;color:var(--dim);white-space:nowrap;transition:background 0.15s}
+.sponsor-drop a:hover{background:rgba(255,255,255,0.04);color:var(--text);text-decoration:none}
+.sponsor-drop a span.s-icon{width:16px;text-align:center;font-size:14px}
+
 @media(max-width:640px){
   .nav-toggle{display:block}
   nav .links{display:none;position:absolute;top:100%;left:0;right:0;flex-direction:column;gap:0;background:rgba(9,9,11,0.98);border-bottom:1px solid rgba(255,255,255,0.06);padding:1rem 2rem}
   nav .links.open{display:flex}
   nav .links a{padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.04)}
-
+  .sponsor-wrap{width:100%}
+  .sponsor-drop{position:static;display:none;border:none;box-shadow:none;padding:0 0 0 1rem;background:transparent}
+  .sponsor-wrap:hover .sponsor-drop{display:block}
 }
 @media(prefers-reduced-motion:reduce){
   .fade-up{opacity:1;transform:none;transition:none}
@@ -196,6 +209,13 @@ footer a{color:var(--dim)}
     <a href="#mcp">MCP</a>
     <a href="https://demo.engram.lol/">Demo</a>
     <a href="https://codeberg.org/GhostFrame/engram">Codeberg</a>
+    <div class="sponsor-wrap">
+      <span class="sponsor-link"><span class="heart">&#9829;</span> Sponsor</span>
+      <div class="sponsor-drop">
+        <a href="https://www.patreon.com/ZanEngram"><span class="s-icon">&#9829;</span> Patreon</a>
+        <a href="https://ko-fi.com/zanfiel10426"><span class="s-icon">&#9749;</span> Ko-fi</a>
+      </div>
+    </div>
   </div>
 </nav>
 
@@ -667,6 +687,7 @@ footer a{color:var(--dim)}
 
 <footer>
   <p><a href="https://codeberg.org/GhostFrame/engram/raw/branch/main/LICENSE"><img src="https://img.shields.io/badge/license-Elastic%202.0-blue" alt="Elastic License 2.0" style="vertical-align:middle"></a></p>
+  <p style="margin-top:8px"><a href="https://codeberg.org/GhostFrame/engram">Codeberg</a> &nbsp;·&nbsp; <a href="https://www.patreon.com/ZanEngram">Patreon</a> &nbsp;·&nbsp; <a href="https://ko-fi.com/zanfiel10426">Ko-fi</a></p>
 </footer>
 
 <script>
