@@ -55,6 +55,9 @@ export function canAccessOwnedRow(row: { user_id?: number } | null | undefined, 
 export function createAuthMiddleware(
   guiAuthed: (req: Request) => boolean,
 ): Middleware {
+  // Pre-auth paths: these bypass authentication entirely
+  const PRE_AUTH_PATHS = new Set(["/live", "/ready", "/health", "/metrics"]);
+
   return async (req: Request, _params: Params, next: () => Promise<Response>): Promise<Response> => {
     const requestStart = Date.now();
     opsCounters.request_count++;
@@ -72,6 +75,16 @@ export function createAuthMiddleware(
     // Maintenance mode
     if (maintenanceMode && url.pathname !== "/health" && url.pathname !== "/live") {
       return json({ error: "Service in maintenance", reason: maintenanceReason }, 503);
+    }
+
+    // Pre-auth routes: skip authentication, attach minimal context
+    if (PRE_AUTH_PATHS.has(url.pathname)) {
+      contextMap.set(req, {
+        auth: { user_id: 0, space_id: null, key_id: null, agent_id: null, scopes: ["read"], is_admin: false },
+        body: {},
+        url, method, clientIp, requestId, requestStart,
+      });
+      return next();
     }
 
     // Parse body
