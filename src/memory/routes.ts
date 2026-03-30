@@ -27,8 +27,11 @@ import { checkSimHashDuplicate, storeSimHash, boostDuplicate } from "./simhash.t
 import { hybridSearch } from "./search.ts";
 import type { FeedbackItem } from "./types.ts";
 import { MAX_CONTENT_SIZE, DEFAULT_IMPORTANCE } from "./types.ts";
-import { embed, embeddingToBuffer, addToEmbeddingCache, invalidateEmbeddingCache, getCachedEmbeddings, cosineSimilarity, embedWithChunking } from "../embeddings/index.ts";
-import { db, insertMemory, linkMemoryEntity, linkMemoryProject, recordUsage } from "../db/index.ts";
+import { embed, embeddingToBuffer, addToEmbeddingCache, invalidateEmbeddingCache, getCachedEmbeddings, cosineSimilarity, embedWithChunking, demoteFromLatestCache } from "../embeddings/index.ts";
+import { db, insertMemory, linkMemoryEntity, linkMemoryProject, recordUsage, markSuperseded, insertLink, getLinksForUser, writeVec } from "../db/index.ts";
+import { DB_PATH } from "../config/index.ts";
+import { statSync } from "node:fs";
+import { autoLink } from "./search.ts";
 import { insertEpisode, getEpisodeBySession, updateEpisodeForUser } from "../episodes/db.ts";
 import { fastExtractFacts } from "../intelligence/extraction.ts";
 import { emitWebhookEvent } from "../platform/webhooks.ts";
@@ -540,6 +543,128 @@ export function registerMemoryRoutes(router: Router): void {
     } catch (e: any) {
       return safeError('Backfill', e);
     }
+  });
+
+  // POST /memory/:id/update -- create a new version of an existing memory
+  router.post("/memory/:id/update", async (req, params) => {
+    const { auth, body, clientIp } = getContext(req);
+    if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
+    try {
+      const id = Number(params.id);
+      if (isNaN(id)) return errorResponse("Invalid id");
+      const existing = db.prepare("SELECT * FROM memories WHERE id = ?").get(id) as any;
+      if (!existing) return errorResponse("Not found", 404);
+      if (existing.user_id !== auth.user_id && !auth.is_admin) return errorResponse("Forbidden", 403);
+      if (existing.is_forgotten) return errorResponse("Cannot update a forgotten memory", 400);
+      const b = body as any;
+      const newContent = b?.content?.trim();
+      if (!newContent) return errorResponse("content is required and must be a non-empty string");
+      const category = b?.category || existing.category;
+      const imp = b?.importance ? Math.max(1, Math.min(10, Number(b.importance))) : existing.importance;
+
+      let embBuffer: Buffer | null = null;
+      let embArray: Float32Array | null = null;
+      try { embArray = await embed(newContent); embBuffer = embeddingToBuffer(embArray); }
+      catch (e: any) { log.warn({ msg: "embedding_failed_update", error: (e as any).message }); }
+
+      const rootId = existing.root_memory_id || existing.id;
+      const newVersion = (existing.version || 1) + 1;
+      markSuperseded.run(id);
+
+      const result = insertMemory.get(
+        newContent, category, existing.source, existing.session_id, imp, embBuffer,
+        newVersion, 1, id, rootId, existing.source_count || 1,
+        existing.is_static ? 1 : 0, 0, null, null, existing.is_inference ? 1 : 0,
+        existing.model || null, existing.user_id, existing.space_id || null
+      ) as { id: number; created_at: string };
+
+      db.prepare("UPDATE memories SET tags = ?, episode_id = ?, confidence = ? WHERE id = ?")
+        .run(existing.tags || null, existing.episode_id || null, existing.confidence ?? 1.0, result.id);
+      insertLink.run(result.id, id, 1.0, "updates");
+
+      let linked = 0;
+      if (embArray) { writeVec(result.id, embArray); linked = await autoLink(result.id, embArray, auth.user_id); }
+
+      demoteFromLatestCache(id);
+      return json({ updated: true, old_id: id, new_id: result.id, version: newVersion, root_id: rootId, linked, embedded: !!embBuffer });
+    } catch (e: any) { return safeError("Update", e); }
+  });
+
+  // GET /links/:id -- get links for a memory
+  router.get("/links/:id", async (req, params) => {
+    const { auth } = getContext(req);
+    const id = Number(params.id);
+    if (isNaN(id)) return errorResponse("Invalid id");
+    const mem = db.prepare("SELECT user_id FROM memories WHERE id = ?").get(id) as any;
+    if (!mem || (mem.user_id !== auth.user_id && !auth.is_admin)) return errorResponse("Not found", 404);
+    const links = getLinksForUser.all(id, auth.user_id, id, auth.user_id);
+    return json({ memory_id: id, links });
+  });
+
+  // GET /versions/:id -- get version chain for a memory
+  router.get("/versions/:id", async (req, params) => {
+    const { auth } = getContext(req);
+    const id = Number(params.id);
+    if (isNaN(id)) return errorResponse("Invalid id");
+    const mem = db.prepare("SELECT * FROM memories WHERE id = ?").get(id) as any;
+    if (!mem) return errorResponse("Not found", 404);
+    if (mem.user_id !== auth.user_id && !auth.is_admin) return errorResponse("Not found", 404);
+    const rootId = mem.root_memory_id || mem.id;
+    const chain = db.prepare(
+      `SELECT id, content, category, version, created_at, is_latest, parent_memory_id FROM memories
+       WHERE (root_memory_id = ? OR id = ?) AND user_id = ? ORDER BY version ASC`
+    ).all(rootId, rootId, auth.user_id);
+    return json({ root_id: rootId, chain });
+  });
+
+  // GET /stats -- user-scoped memory statistics
+  router.get("/stats", async (req) => {
+    const { auth } = getContext(req);
+    const uid = auth.user_id;
+    const memCount = db.prepare("SELECT COUNT(*) as count FROM memories WHERE user_id = ?").get(uid) as { count: number };
+    const embCount = db.prepare("SELECT COUNT(*) as count FROM memories WHERE user_id = ? AND embedding IS NOT NULL").get(uid) as { count: number };
+    const linkCount = db.prepare(`SELECT COUNT(*) as count FROM memory_links ml JOIN memories ms ON ms.id = ml.source_id JOIN memories mt ON mt.id = ml.target_id WHERE ms.user_id = ? AND mt.user_id = ?`).get(uid, uid) as { count: number };
+    const forgottenCount = db.prepare("SELECT COUNT(*) as count FROM memories WHERE user_id = ? AND is_forgotten = 1").get(uid) as { count: number };
+    const staticCount = db.prepare("SELECT COUNT(*) as count FROM memories WHERE user_id = ? AND is_static = 1 AND is_forgotten = 0").get(uid) as { count: number };
+    const dynamicCount = db.prepare("SELECT COUNT(*) as count FROM memories WHERE user_id = ? AND is_static = 0 AND is_forgotten = 0").get(uid) as { count: number };
+    const versionedCount = db.prepare("SELECT COUNT(*) as count FROM memories WHERE user_id = ? AND version > 1").get(uid) as { count: number };
+    const archivedCount = db.prepare("SELECT COUNT(*) as count FROM memories WHERE user_id = ? AND is_archived = 1 AND is_forgotten = 0").get(uid) as { count: number };
+    const categories = db.prepare("SELECT category, COUNT(*) as count FROM memories WHERE user_id = ? AND is_forgotten = 0 GROUP BY category ORDER BY count DESC").all(uid);
+    const dbSize = statSync(DB_PATH).size;
+    return json({
+      memories: { total: memCount.count, embedded: embCount.count, forgotten: forgottenCount.count, archived: archivedCount.count, static: staticCount.count, dynamic: dynamicCount.count, versioned: versionedCount.count, categories },
+      links: { total: linkCount.count },
+      db_size_mb: Math.round(dbSize / 1048576 * 100) / 100,
+    });
+  });
+
+  // GET /duplicates -- find near-duplicate memory clusters
+  router.get("/duplicates", async (req) => {
+    const { auth, url } = getContext(req);
+    try {
+      const threshold = Number(url.searchParams.get("threshold") || 0.85);
+      const limitParam = Math.min(Number(url.searchParams.get("limit") || 50), 200);
+      const allMems = getCachedEmbeddings(true, auth.user_id);
+      const clusters: Array<{ anchor: { id: number; content: string; category: string }; duplicates: Array<{ id: number; content: string; category: string; similarity: number }> }> = [];
+      const seen = new Set<number>();
+      for (let i = 0; i < allMems.length && clusters.length < limitParam; i++) {
+        if (seen.has(allMems[i].id)) continue;
+        const dupes: Array<{ id: number; content: string; category: string; similarity: number }> = [];
+        for (let j = i + 1; j < allMems.length; j++) {
+          if (seen.has(allMems[j].id)) continue;
+          const sim = cosineSimilarity(allMems[i].embedding, allMems[j].embedding);
+          if (sim >= threshold) {
+            dupes.push({ id: allMems[j].id, content: allMems[j].content.substring(0, 200), category: allMems[j].category, similarity: Math.round(sim * 1000) / 1000 });
+            seen.add(allMems[j].id);
+          }
+        }
+        if (dupes.length > 0) {
+          seen.add(allMems[i].id);
+          clusters.push({ anchor: { id: allMems[i].id, content: allMems[i].content.substring(0, 200), category: allMems[i].category }, duplicates: dupes });
+        }
+      }
+      return json({ clusters, total: clusters.length, threshold });
+    } catch (e: any) { return safeError("Duplicates", e); }
   });
 
 } // end registerMemoryRoutes

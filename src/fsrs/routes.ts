@@ -13,13 +13,13 @@ export function registerFsrsRoutes(router: Router): void {
 
   // POST /fsrs/review -- Record a review grade for a memory
   router.post("/fsrs/review", async (req) => {
-    const { auth } = getContext(req);
+    const { auth, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
     try {
-      const body = await req.json() as any;
-      const id = Number(body.id);
-      const grade = Number(body.grade || 3) as FSRSRating;
-      if (!id || grade < 1 || grade > 4) return errorResponse("id required, grade 1-4", 400);
+      const b = rawBody as any;
+      const id = Number(b?.id || b?.memory_id);
+      const grade = Number(b?.grade || 3) as FSRSRating;
+      if (!id || grade < 1 || grade > 4) return errorResponse("id (or memory_id) required, grade 1-4", 400);
       const mem = getMemoryWithoutEmbedding.get(id) as any;
       if (!canAccessOwnedRow(mem, auth)) return errorResponse("not found", 404);
       trackAccessWithFSRS(id, grade);
