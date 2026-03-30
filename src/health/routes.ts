@@ -22,12 +22,12 @@ import { securityHeaders } from "../helpers/index.ts";
 export function registerHealthRoutes(router: Router): void {
 
   // GET /live -- liveness probe (no auth required)
-  router.get("/live", (_req) => {
+  router.get("/live", async (_req) => {
     return json({ status: "ok" });
   });
 
   // GET /ready -- readiness probe: DB writable, embedding model loaded, LLM reachable
-  router.get("/ready", (_req) => {
+  router.get("/ready", async (_req) => {
     const checks: Record<string, boolean> = {};
     try { db.prepare("SELECT 1").get(); checks.db = true; } catch { checks.db = false; }
     try { checks.embeddings = isEmbedderReady(); } catch { checks.embeddings = false; }
@@ -37,7 +37,7 @@ export function registerHealthRoutes(router: Router): void {
   });
 
   // GET /health -- full health check (optional auth: unauthenticated gets minimal response)
-  router.get("/health", (req) => {
+  router.get("/health", async (req) => {
     log.debug({ msg: "req", method: "GET", path: "/health", status: 200, ip: getClientIp(req) });
     const healthAuth = getAuthOrDefault(req, guiAuthed);
     if (isAuthError(healthAuth)) {
@@ -179,7 +179,7 @@ export function registerHealthRoutes(router: Router): void {
   });
 
   // GET /metrics -- prometheus-format metrics (no auth required)
-  router.get("/metrics", (_req) => {
+  router.get("/metrics", async (_req) => {
     const stats = getJobStats();
     const memCount = db.prepare("SELECT COUNT(*) as c FROM memories WHERE is_forgotten = 0").get() as any;
     const embCount = db.prepare("SELECT COUNT(*) as c FROM memories WHERE embedding IS NOT NULL AND is_forgotten = 0").get() as any;
@@ -269,14 +269,14 @@ export function registerHealthRoutes(router: Router): void {
   });
 
   // GET /openapi.json -- OpenAPI spec
-  router.get("/openapi.json", (_req) => {
+  router.get("/openapi.json", async (_req) => {
     return new Response(JSON.stringify(getOpenAPISpec(), null, 2), {
       headers: securityHeaders({ "Content-Type": "application/json" }),
     });
   });
 
   // GET /api/examples -- API usage examples
-  router.get("/api/examples", (_req) => {
+  router.get("/api/examples", async (_req) => {
     return json({
       description: "Example request/response pairs for Engram API endpoints",
       examples: {

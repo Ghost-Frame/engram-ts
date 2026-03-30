@@ -17,7 +17,7 @@ import { log } from "../config/logger.ts";
 export function registerInboxRoutes(router: Router): void {
 
   // GET /inbox -- list inbox (pending) items
-  router.get("/inbox", (req) => {
+  router.get("/inbox", async (req) => {
     const { auth, url } = getContext(req);
     const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
     const offset = Number(url.searchParams.get("offset") || 0);
@@ -129,7 +129,7 @@ export function registerInboxRoutes(router: Router): void {
   });
 
   // GET /pending -- legacy alias for GET /inbox
-  router.get("/pending", (req) => {
+  router.get("/pending", async (req) => {
     const { auth, url } = getContext(req);
     log.warn({ msg: "deprecated_route", path: "/pending", use: "GET /inbox", user: auth.user_id });
     const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);

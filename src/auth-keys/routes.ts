@@ -130,7 +130,7 @@ export function registerAuthKeysRoutes(router: Router): void {
       const { key, prefix, hash } = generateApiKey();
       const name = body.name || "bootstrap-admin";
       insertBootstrapAdminKey(prefix, hash, name);
-      auditLog(1, "bootstrap", null, null, "first_admin_key_created", clientIp);
+      auditLog(1, "bootstrap", "", null, "first_admin_key_created", clientIp);
       try { unlinkSync(tokenFile); } catch {}
       return json({ key, name, scopes: "read,write,admin", user_id: 1, message: "First admin API key created. Save this key -- it cannot be retrieved again." }, 201);
     } catch (e: any) {

@@ -452,7 +452,7 @@ export async function assembleContext(
     if (cachedEmb) blockEmbeddings.push(cachedEmb.embedding);
   }
 
-  timing.semantic_ms = Date.now() - t0 - Object.values(timing).reduce((a, b) => a + (b || 0), 0);
+  timing.semantic_ms = Date.now() - t0 - Object.values(timing).reduce((a: number, b) => a + (b || 0), 0);
 
   // ---- Phase 2.5a: Version chain evolution ----
   const tEvolution = Date.now();
