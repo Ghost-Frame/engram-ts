@@ -20,9 +20,9 @@ export function registerSkillRoutes(router: Router): void {
 
   // POST /skills/sync
   router.post("/skills/sync", async (req) => {
-    const { requestId } = getContext(req);
+    const { requestId, body: rawBody } = getContext(req);
     try {
-      const body = await req.json().catch(() => ({})) as any;
+      const body = (rawBody || {}) as any;
       const dirs: string[] = Array.isArray(body?.dirs) && body.dirs.length
         ? body.dirs.map(String)
         : ENGRAM_SKILL_DIRS;
@@ -44,9 +44,9 @@ export function registerSkillRoutes(router: Router): void {
 
   // POST /skills/search
   router.post("/skills/search", async (req) => {
-    const { requestId } = getContext(req);
+    const { requestId, body: rawBody } = getContext(req);
     try {
-      const body = await req.json().catch(() => ({})) as any;
+      const body = (rawBody || {}) as any;
       const query = String(body?.query || "").trim();
       if (!query) return errorResponse("query is required", 400, requestId);
       const limit = Math.min(Number(body?.limit || 20), 100);
@@ -71,10 +71,10 @@ export function registerSkillRoutes(router: Router): void {
 
   // POST /skills/upload
   router.post("/skills/upload", async (req) => {
-    const { requestId } = getContext(req);
+    const { requestId, body: rawBody } = getContext(req);
     if (!OPENSPACE_API_KEY) return errorResponse("OPENSPACE_API_KEY not configured", 503, requestId);
     try {
-      const body = await req.json().catch(() => ({})) as any;
+      const body = (rawBody || {}) as any;
       const skill_dir = String(body?.skill_dir || "").trim();
       if (!skill_dir) return errorResponse("skill_dir is required", 400, requestId);
       const row = getSkillByPath.get(skill_dir) as any;
@@ -92,10 +92,10 @@ export function registerSkillRoutes(router: Router): void {
 
   // POST /skills/execute
   router.post("/skills/execute", async (req) => {
-    const { requestId } = getContext(req);
+    const { requestId, body: rawBody } = getContext(req);
     if (!isLLMAvailable()) return errorResponse("No LLM configured", 503, requestId);
     try {
-      const body = await req.json().catch(() => ({})) as any;
+      const body = (rawBody || {}) as any;
       const task = String(body?.task || "").trim();
       if (!task) return errorResponse("task is required", 400, requestId);
       const extraDirs: string[] = Array.isArray(body?.skill_dirs) ? body.skill_dirs.map(String) : [];
@@ -152,11 +152,11 @@ export function registerSkillRoutes(router: Router): void {
 
   // POST /skills/:name/fix
   router.post("/skills/:name/fix", async (req, params) => {
-    const { requestId } = getContext(req);
+    const { requestId, body: rawBody } = getContext(req);
     if (!isLLMAvailable()) return errorResponse("No LLM configured", 503, requestId);
     try {
       const skillId = params.name;
-      const body = await req.json().catch(() => ({})) as any;
+      const body = (rawBody || {}) as any;
       const direction = String(body?.direction || "").trim();
       if (!direction) return errorResponse("direction is required", 400, requestId);
       const row = getSkillById.get(skillId) as any;
