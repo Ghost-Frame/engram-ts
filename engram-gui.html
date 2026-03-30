@@ -8,7 +8,7 @@
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#050816;color:#c8ccd4;font-family:'Inter',sans-serif;overflow:hidden;height:100vh}
+body{background:#0a0a0a;color:#c8ccd4;font-family:'Inter',sans-serif;overflow:hidden;height:100vh}
 canvas#bg-canvas{position:fixed;top:0;left:0;display:block;pointer-events:none}
 canvas#graph{position:fixed;top:0;left:0;display:block;cursor:grab}
 canvas#graph.grabbing{cursor:grabbing}
@@ -17,7 +17,7 @@ canvas#graph.grabbing{cursor:grabbing}
 .glass{background:rgba(15,20,25,0.75);backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);border:1px solid rgba(255,255,255,0.06);box-shadow:0 8px 32px rgba(0,0,0,0.4),inset 0 1px 0 rgba(255,255,255,0.04)}
 
 /* Topbar */
-#topbar{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;gap:16px;padding:10px 20px;background:rgba(10,14,30,0.85);backdrop-filter:blur(30px) saturate(1.5);-webkit-backdrop-filter:blur(30px) saturate(1.5);border-bottom:1px solid rgba(100,80,200,0.08);box-shadow:0 4px 30px rgba(0,0,0,0.4)}
+#topbar{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;gap:16px;padding:10px 20px;background:rgba(10,10,12,0.85);backdrop-filter:blur(30px) saturate(1.5);-webkit-backdrop-filter:blur(30px) saturate(1.5);border-bottom:1px solid rgba(255,255,255,0.06);box-shadow:0 4px 30px rgba(0,0,0,0.4)}
 #topbar h1{font-size:15px;font-weight:700;color:#e2e4e9;letter-spacing:1.5px;white-space:nowrap;text-transform:uppercase}
 #topbar h1 span{background:linear-gradient(135deg,#7b8fff 0%,#b28dff 50%,#c084fc 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .logo-glow{display:inline-block;filter:drop-shadow(0 0 8px rgba(129,140,248,0.3))}
@@ -40,7 +40,7 @@ canvas#graph.grabbing{cursor:grabbing}
 #inbox-badge{position:absolute;top:-5px;right:-5px;background:#f87171;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:10px;display:none;line-height:1.4}
 
 /* Loading overlay */
-#loading{position:fixed;top:0;left:0;right:0;bottom:0;z-index:200;background:#050816;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;transition:opacity 0.5s ease}
+#loading{position:fixed;top:0;left:0;right:0;bottom:0;z-index:200;background:#0a0a0a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;transition:opacity 0.5s ease}
 #loading.hidden{opacity:0;pointer-events:none}
 .spinner{width:40px;height:40px;border:3px solid rgba(129,140,248,0.15);border-top-color:#818cf8;border-radius:50%;animation:spin 0.8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
