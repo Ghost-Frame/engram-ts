@@ -119,6 +119,67 @@ registerDocsRoutes(router);
 registerOnboardRoutes(router);
 
 // ============================================================================
+// JOB QUEUE -- Register handlers and start drain loop
+// ============================================================================
+
+import { registerJobHandler, drainJobs, recoverStuckJobs } from "./src/jobs/index.ts";
+import { writeVec, db as jobDb } from "./src/db/index.ts";
+import { autoLink } from "./src/memory/search.ts";
+import { updateCooccurrences } from "./src/graph/cooccurrence.ts";
+import { FSRSRating, fsrsProcessReview, calculateDecayScore } from "./src/fsrs/index.ts";
+
+registerJobHandler("post_store", async (payload) => {
+  const { memoryId, content, category, userId, importance, embeddingBase64, lightweight } = payload;
+  if (!memoryId) return;
+
+  // Write vec table entry for ANN search
+  if (embeddingBase64) {
+    try {
+      const embArray = new Float32Array(Buffer.from(embeddingBase64, "base64").buffer);
+      const vecJson = JSON.stringify(Array.from(embArray));
+      writeVec.run(vecJson, memoryId);
+    } catch {}
+  }
+
+  if (lightweight) return;
+
+  // Auto-link with entities and projects
+  if (content && userId) {
+    try { await autoLink(memoryId, content, userId); } catch {}
+  }
+
+  // Update co-occurrences
+  if (content && userId) {
+    try { updateCooccurrences(memoryId, content, userId); } catch {}
+  }
+
+  // FSRS init if not already set
+  if (memoryId) {
+    try {
+      const row = jobDb.prepare("SELECT fsrs_stability FROM memories WHERE id = ?").get(memoryId) as any;
+      if (!row?.fsrs_stability) {
+        const init = fsrsProcessReview(null, FSRSRating.Good, 0);
+        const decay = calculateDecayScore(init.stability, init.difficulty, 0);
+        jobDb.prepare(
+          `UPDATE memories SET fsrs_stability=?, fsrs_difficulty=?, fsrs_storage_strength=?,
+           fsrs_retrieval_strength=?, fsrs_learning_state=?, fsrs_reps=?, fsrs_lapses=?,
+           fsrs_last_review_at=?, decay_score=? WHERE id=?`
+        ).run(
+          init.stability, init.difficulty, init.storage_strength, init.retrieval_strength,
+          init.learning_state, init.reps, init.lapses, init.last_review_at, decay, memoryId
+        );
+      }
+    } catch {}
+  }
+});
+
+// Drain pending jobs every 5 seconds
+recoverStuckJobs();
+setInterval(async () => {
+  try { await drainJobs(10); } catch {}
+}, 5000);
+
+// ============================================================================
 // HTTP SERVER
 // ============================================================================
 

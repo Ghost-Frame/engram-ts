@@ -3,7 +3,7 @@
 
 import type { Chunk, Processor, ProcessOptions, ProcessResult } from "../types.ts";
 import { callLLM } from "../../llm/index.ts";
-import { embedWithChunking, embeddingToBuffer } from "../../embeddings/index.ts";
+import { embedWithChunking, embeddingToBuffer, addToEmbeddingCache } from "../../embeddings/index.ts";
 import { db } from "../../db/index.ts";
 import { checkSimHashDuplicate, storeSimHash } from "../../memory/simhash.ts";
 import { enqueueJob } from "../../jobs/index.ts";
@@ -88,6 +88,13 @@ Return JSON:
 
             // Store SimHash (second arg is the simhash string)
             storeSimHash(result.id, dupResult.simhash);
+
+            // Add to in-memory search cache immediately
+            addToEmbeddingCache({
+              id: result.id, user_id: options.userId, content,
+              category, importance, embedding: embArray,
+              is_static: !!fact.is_static, source_count: 1, is_latest: true, is_forgotten: false,
+            });
 
             const embBase64 = Buffer.from(embArray.buffer, embArray.byteOffset, embArray.byteLength).toString("base64");
             enqueueJob("post_store", {

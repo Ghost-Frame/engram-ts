@@ -2,7 +2,7 @@
 // Integration tests require a running Engram instance (embedding provider + DB initialized).
 
 import type { Chunk, Processor, ProcessOptions, ProcessResult } from "../types.ts";
-import { embedWithChunking, embeddingToBuffer } from "../../embeddings/index.ts";
+import { embedWithChunking, embeddingToBuffer, addToEmbeddingCache } from "../../embeddings/index.ts";
 import { db } from "../../db/index.ts";
 import { checkSimHashDuplicate, storeSimHash } from "../../memory/simhash.ts";
 import { enqueueJob } from "../../jobs/index.ts";
@@ -38,7 +38,14 @@ export const rawProcessor: Processor = {
         // Store SimHash (second arg is the simhash string, not content)
         storeSimHash(result.id, dupResult.simhash);
 
-        // Enqueue post-store pipeline
+        // Add to in-memory search cache immediately (same as store handler)
+        addToEmbeddingCache({
+          id: result.id, user_id: options.userId, content,
+          category: options.category, importance: 5, embedding: embArray,
+          is_static: false, source_count: 1, is_latest: true, is_forgotten: false,
+        });
+
+        // Enqueue post-store pipeline (FSRS init, vec table, entity linking)
         const embBase64 = Buffer.from(embArray.buffer, embArray.byteOffset, embArray.byteLength).toString("base64");
         enqueueJob("post_store", {
           memoryId: result.id,
