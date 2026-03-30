@@ -68,10 +68,54 @@ router.use(createAuthMiddleware(guiAuthed));
 // checking the path in the auth middleware and skipping auth for these paths.
 // TODO: Add pre-auth route support to router in a future iteration.
 
-// --- Domain routes will be registered here as each domain is extracted ---
-// Example (after Task 7):
-//   import { registerRoutes as memoryRoutes } from "./src/memory/routes.ts";
-//   memoryRoutes(router);
+// --- Domain routes ---
+import { registerMemoryRoutes } from "./src/memory/routes.ts";
+import { registerSearchRoutes } from "./src/search/routes.ts";
+import { registerEpisodeRoutes } from "./src/episodes/routes.ts";
+import { registerGraphRoutes } from "./src/graph/routes.ts";
+import { registerProjectRoutes } from "./src/projects/routes.ts";
+import { registerIntelligenceRoutes } from "./src/intelligence/routes.ts";
+import { registerConversationRoutes } from "./src/conversations/routes.ts";
+import { registerContextRoutes } from "./src/context/routes.ts";
+import { registerPackRoutes } from "./src/pack/routes.ts";
+import { registerIngestionRoutes } from "./src/ingestion/routes.ts";
+import { registerAuthKeysRoutes } from "./src/auth-keys/routes.ts";
+import { registerAdminRoutes } from "./src/admin/routes.ts";
+import { registerFsrsRoutes } from "./src/fsrs/routes.ts";
+import { registerWebhookRoutes } from "./src/webhooks/routes.ts";
+import { registerAgentRoutes } from "./src/agents/routes.ts";
+import { registerScratchRoutes } from "./src/scratch/routes.ts";
+import { registerSkillRoutes } from "./src/skills/routes.ts";
+import { registerInboxRoutes } from "./src/inbox/routes.ts";
+import { registerHealthRoutes } from "./src/health/routes.ts";
+import { registerPromptRoutes } from "./src/prompts/routes.ts";
+import { registerGuardRoutes } from "./src/guard/routes.ts";
+import { registerDocsRoutes } from "./src/docs/routes.ts";
+import { registerOnboardRoutes } from "./src/onboard/routes.ts";
+
+registerHealthRoutes(router);       // pre-auth: /live, /ready, /health, /metrics
+registerMemoryRoutes(router);
+registerSearchRoutes(router);
+registerEpisodeRoutes(router);
+registerGraphRoutes(router);
+registerProjectRoutes(router);
+registerIntelligenceRoutes(router);
+registerConversationRoutes(router);
+registerContextRoutes(router);
+registerPackRoutes(router);
+registerIngestionRoutes(router);
+registerAuthKeysRoutes(router);
+registerAdminRoutes(router);
+registerFsrsRoutes(router);
+registerWebhookRoutes(router);
+registerAgentRoutes(router);
+registerScratchRoutes(router);
+registerSkillRoutes(router);
+registerInboxRoutes(router);
+registerPromptRoutes(router);
+registerGuardRoutes(router);
+registerDocsRoutes(router);
+registerOnboardRoutes(router);
 
 // ============================================================================
 // HTTP SERVER
