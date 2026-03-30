@@ -1,0 +1,123 @@
+#!/usr/bin/env -S node --experimental-strip-types
+// ============================================================================
+// ENGRAM SERVER v6 -- Modular entry point
+// ============================================================================
+
+import "./src/tracing.ts";
+import { createServer } from "http";
+
+import { PORT, HOST, PKG_VERSION, CORS_ORIGIN, OPEN_ACCESS } from "./src/config/index.ts";
+import { log } from "./src/config/logger.ts";
+import { createRouter } from "./src/router/index.ts";
+import { createAuthMiddleware } from "./src/middleware/auth.ts";
+import { setWebhookEmitter } from "./src/middleware/audit.ts";
+import { securityHeaders, json } from "./src/helpers/index.ts";
+
+// Database (importing triggers schema creation + migrations)
+import { db } from "./src/db/connection.ts";
+
+// Embeddings
+import { initEmbedder, embed, isEmbedderReady, refreshEmbeddingCache, embeddingCacheLatest } from "./src/embeddings/index.ts";
+import { initReranker } from "./src/reranker/index.ts";
+import { isLLMAvailable } from "./src/llm/index.ts";
+
+// GUI
+import { reloadGuiHtml, guiAuthed } from "./src/gui/index.ts";
+
+// Webhooks
+import { emitWebhookEvent } from "./src/platform/webhooks.ts";
+
+// Wire webhook emitter into middleware
+setWebhookEmitter((userId, event, payload) => emitWebhookEvent(userId, event, payload));
+
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
+
+await initEmbedder();
+await initReranker();
+
+// WAL checkpoint at startup
+try {
+  const result = db.pragma("wal_checkpoint(TRUNCATE)") as Array<{ busy: number; log: number; checkpointed: number }>;
+  const r = result[0] || {};
+  log.info({ msg: "wal_checkpoint", busy: r.busy, log: r.log, checkpointed: r.checkpointed });
+} catch (e: any) {
+  log.warn({ msg: "wal_checkpoint_failed", error: e.message });
+}
+
+// Pre-warm embeddings
+{
+  refreshEmbeddingCache();
+  await embed("warmup");
+  log.info({ msg: "warmup_complete", cache_size: embeddingCacheLatest.length });
+}
+
+// ============================================================================
+// ROUTER
+// ============================================================================
+
+const router = createRouter();
+
+// Auth middleware (skipped for health probes below)
+router.use(createAuthMiddleware(guiAuthed));
+
+// --- Health routes (no auth needed, registered before auth middleware applies) ---
+// NOTE: These are registered first. The auth middleware runs for all routes,
+// but health/live endpoints should work without auth. We handle this by
+// checking the path in the auth middleware and skipping auth for these paths.
+// TODO: Add pre-auth route support to router in a future iteration.
+
+// --- Domain routes will be registered here as each domain is extracted ---
+// Example (after Task 7):
+//   import { registerRoutes as memoryRoutes } from "./src/memory/routes.ts";
+//   memoryRoutes(router);
+
+// ============================================================================
+// HTTP SERVER
+// ============================================================================
+
+const server = createServer(async (req, res) => {
+  try {
+    const protocol = req.headers["x-forwarded-proto"] === "https" ? "https" : "http";
+    const host = req.headers.host || `${HOST}:${PORT}`;
+    const url = `${protocol}://${host}${req.url || "/"}`;
+    const request = new Request(url, {
+      method: req.method,
+      headers: Object.fromEntries(
+        Object.entries(req.headers)
+          .filter(([, v]) => v !== undefined)
+          .map(([k, v]) => [k, Array.isArray(v) ? v.join(", ") : v!])
+      ),
+      body: req.method !== "GET" && req.method !== "HEAD"
+        ? await new Promise<Buffer>((resolve) => {
+            const chunks: Buffer[] = [];
+            req.on("data", (c) => chunks.push(c));
+            req.on("end", () => resolve(Buffer.concat(chunks)));
+          })
+        : undefined,
+      duplex: "half",
+    } as any);
+
+    const response = await router.handle(request);
+
+    res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
+    const body = await response.arrayBuffer();
+    res.end(Buffer.from(body));
+  } catch (e: any) {
+    log.error({ msg: "unhandled_error", error: e.message, stack: e.stack?.split("\n")[1]?.trim() });
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Internal server error" }));
+  }
+});
+
+server.listen(PORT, HOST, () => {
+  log.info({
+    msg: "server_started",
+    version: PKG_VERSION,
+    host: HOST,
+    port: PORT,
+    open_access: OPEN_ACCESS,
+    cors: CORS_ORIGIN,
+  });
+});
