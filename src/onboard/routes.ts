@@ -55,10 +55,10 @@ export function registerOnboardRoutes(router: Router): void {
 
   // POST /fetch
   router.post("/fetch", async (req) => {
-    const { auth, requestId } = getContext(req);
+    const { auth, requestId, body: rawBody } = getContext(req);
     if (!hasScope(auth, "read")) return errorResponse("Read scope required", 403);
     try {
-      const body = await req.json().catch(() => ({})) as any;
+      const body = (rawBody || {}) as any;
       const { url: fetchUrl, cache = false } = body;
       if (!fetchUrl || typeof fetchUrl !== "string") return errorResponse("'url' is required", 400);
       let parsed: URL;

@@ -87,9 +87,9 @@ ${memoryBlock}
 
   // POST /header
   router.post("/header", async (req) => {
-    const { auth } = getContext(req);
+    const { auth, body: rawBody } = getContext(req);
     try {
-      const body = await req.json() as any;
+      const body = (rawBody || {}) as any;
       const actorModel = body.actor_model || "unknown";
       const actorRole = body.actor_role || "assistant"; // audit | verify | fix | assistant
       const taskContext = body.context || "";

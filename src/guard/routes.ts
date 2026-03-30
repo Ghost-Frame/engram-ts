@@ -57,9 +57,9 @@ export function registerGuardRoutes(router: Router): void {
 
   // POST /guard
   router.post("/guard", async (req) => {
-    const { auth, clientIp, requestId } = getContext(req);
+    const { auth, clientIp, requestId, body: rawBody } = getContext(req);
     try {
-      const body = await req.json() as any;
+      const body = (rawBody || {}) as any;
       const action = body.action;
       if (!action || typeof action !== "string") return errorResponse("action (string) required -- describe what you are about to do");
 

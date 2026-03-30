@@ -23,10 +23,10 @@ export function registerWebhookRoutes(router: Router): void {
 
   // POST /webhooks -- create webhook
   router.post("/webhooks", async (req) => {
-    const { auth } = getContext(req);
+    const { auth, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
     try {
-      const body = await req.json() as any;
+      const body = (rawBody || {}) as any;
       if (!body.url) return errorResponse("url is required");
       const webhookError = validatePublicWebhookUrl(body.url, "Webhook URL");
       if (webhookError) return errorResponse(webhookError, 400);
@@ -78,10 +78,10 @@ export function registerWebhookRoutes(router: Router): void {
 
   // POST /sync/receive -- receive synced changes
   router.post("/sync/receive", async (req) => {
-    const { auth } = getContext(req);
+    const { auth, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
     try {
-      const body = await req.json() as any;
+      const body = (rawBody || {}) as any;
       const memories = body.memories;
       if (!Array.isArray(memories)) return errorResponse("memories array required");
 

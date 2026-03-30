@@ -46,14 +46,14 @@ export function registerInboxRoutes(router: Router): void {
 
   // POST /inbox/:id/reject -- reject a pending memory
   router.post("/inbox/:id/reject", async (req, params) => {
-    const { auth, clientIp } = getContext(req);
+    const { auth, clientIp, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
     const id = Number(params.id);
     const mem = getMemoryWithoutEmbedding.get(id) as any;
     if (!mem) return errorResponse("Not found", 404);
     if (!canAccessOwnedRow(mem, auth)) return errorResponse("Forbidden", 403);
     if (mem.status !== "pending") return errorResponse(`Memory is already ${mem.status}`, 400);
-    const body = await req.json().catch(() => ({})) as any;
+    const body = (rawBody || {}) as any;
     rejectMemory.run(id, auth.user_id);
     auditLog(auth.user_id, "inbox.reject", "memory", id, body.reason || null, clientIp);
     if (body.reason) {
@@ -65,14 +65,14 @@ export function registerInboxRoutes(router: Router): void {
 
   // POST /inbox/:id/edit -- edit + approve in one shot
   router.post("/inbox/:id/edit", async (req, params) => {
-    const { auth } = getContext(req);
+    const { auth, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
     try {
       const id = Number(params.id);
       const mem = getMemoryWithoutEmbedding.get(id) as any;
       if (!mem) return errorResponse("Not found", 404);
       if (!canAccessOwnedRow(mem, auth)) return errorResponse("Forbidden", 403);
-      const body = await req.json() as any;
+      const body = (rawBody || {}) as any;
 
       const sets: string[] = ["status = 'approved'", "updated_at = datetime('now')"];
       const vals: any[] = [];
@@ -106,10 +106,10 @@ export function registerInboxRoutes(router: Router): void {
 
   // POST /inbox/bulk -- bulk approve/reject
   router.post("/inbox/bulk", async (req) => {
-    const { auth } = getContext(req);
+    const { auth, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
     try {
-      const body = await req.json() as any;
+      const body = (rawBody || {}) as any;
       const ids = body.ids;
       const action = body.action; // "approve" or "reject"
       if (!Array.isArray(ids) || !ids.length) return errorResponse("ids array required");
@@ -144,10 +144,10 @@ export function registerInboxRoutes(router: Router): void {
 
   // POST /approve -- legacy alias for POST /inbox/:id/approve
   router.post("/approve", async (req) => {
-    const { auth, clientIp } = getContext(req);
+    const { auth, clientIp, body: rawBody } = getContext(req);
     log.warn({ msg: "deprecated_route", path: "/approve", use: "POST /inbox/{id}/approve", user: auth.user_id });
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
-    const body = await req.json().catch(() => ({})) as any;
+    const body = (rawBody || {}) as any;
     const id = Number(body?.id);
     if (!id) return errorResponse("Missing 'id' in request body", 400);
     const mem = getMemoryWithoutEmbedding.get(id) as any;

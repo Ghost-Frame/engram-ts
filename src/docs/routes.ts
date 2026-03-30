@@ -16,10 +16,10 @@ export function registerDocsRoutes(router: Router): void {
 
   // POST /docs/resolve
   router.post("/docs/resolve", async (req) => {
-    const { auth, requestId } = getContext(req);
+    const { auth, requestId, body: rawBody } = getContext(req);
     if (!hasScope(auth, "read")) return errorResponse("Read scope required", 403);
     try {
-      const body = await req.json().catch(() => ({})) as any;
+      const body = (rawBody || {}) as any;
       const { library, version, force_refresh = false } = body;
       if (!library || typeof library !== "string") return errorResponse("'library' is required", 400);
       const libKey = library.trim().toLowerCase();
@@ -148,10 +148,10 @@ export function registerDocsRoutes(router: Router): void {
 
   // POST /errors
   router.post("/errors", async (req) => {
-    const { auth, requestId } = getContext(req);
+    const { auth, requestId, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
     try {
-      const body = await req.json().catch(() => ({})) as any;
+      const body = (rawBody || {}) as any;
       const { type, message, stack, source: errSource, severity = "error", context } = body;
       if (!message || typeof message !== "string") return errorResponse("'message' is required", 400);
       const errType = (type || "Error").trim();

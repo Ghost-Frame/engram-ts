@@ -33,10 +33,10 @@ export function registerAgentRoutes(router: Router): void {
 
   // POST /agents -- register agent
   router.post("/agents", async (req) => {
-    const { auth, clientIp, requestId } = getContext(req);
+    const { auth, clientIp, requestId, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
     try {
-      const body = await req.json() as any;
+      const body = (rawBody || {}) as any;
       const { name, category, description, code_hash } = body;
       if (!name || typeof name !== "string") return errorResponse("name (string) required");
 
@@ -81,11 +81,11 @@ export function registerAgentRoutes(router: Router): void {
 
   // POST /agents/:id/revoke -- revoke agent
   router.post("/agents/:id/revoke", async (req, params) => {
-    const { auth, clientIp, requestId } = getContext(req);
+    const { auth, clientIp, requestId, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
     const agentId = Number(params.id);
     if (isNaN(agentId)) return errorResponse("Invalid id");
-    const body = await req.json().catch(() => ({})) as any;
+    const body = (rawBody || {}) as any;
     const reason = body.reason || "revoked";
     revokeAgent.run(reason, agentId, auth.user_id);
     audit(auth.user_id, "agent.revoke", "agent", agentId, reason, clientIp, requestId, agentId);
@@ -106,11 +106,11 @@ export function registerAgentRoutes(router: Router): void {
 
   // POST /agents/:agent/link-key -- link an API key to this agent
   router.post("/agents/:agent/link-key", async (req, params) => {
-    const { auth } = getContext(req);
+    const { auth, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
     const agentId = Number(params.agent);
     if (isNaN(agentId)) return errorResponse("Invalid id");
-    const body = await req.json() as any;
+    const body = (rawBody || {}) as any;
     const keyId = body.key_id;
     if (!keyId) return errorResponse("key_id required");
     const agent = getAgentById.get(agentId, auth.user_id) as any;
@@ -133,8 +133,9 @@ export function registerAgentRoutes(router: Router): void {
 
   // POST /verify -- verify a signed execution or passport
   router.post("/verify", async (req) => {
+    const { body: rawBody } = getContext(req);
     try {
-      const body = await req.json() as any;
+      const body = (rawBody || {}) as any;
       if (body.passport) {
         const result = verifyPassport(signingSecret, body.passport);
         return json({ type: "passport", ...result });
