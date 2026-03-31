@@ -112,8 +112,8 @@ curl -X POST http://localhost:4200/search \
 
 - Server: Node.js 22+ with `--experimental-strip-types` (or Bun)
 - Database: libsql (SQLite fork with native FLOAT32 vector columns and FTS5)
-- Embeddings: BAAI/bge-m3, 1024-dim, local ONNX inference in a Worker thread (swappable -- any ONNX model works)
-- Reranker: IBM granite-embedding-reranker-english-r2 INT8 quantized cross-encoder (optional, also swappable)
+- Embeddings: BAAI/bge-m3, 1024-dim, local ONNX inference in a Worker thread (swappable via `ENGRAM_MODEL_DIR`)
+- Reranker: IBM granite-embedding-reranker-english-r2 INT8 quantized cross-encoder (optional)
 - Decay: FSRS-6 with 21 trained parameters and power-law forgetting
 - LLM: optional, any OpenAI-compatible endpoint (fact extraction, personality, consolidation)
 
@@ -632,7 +632,7 @@ All tools support signed tool manifests for integrity verification when `ENGRAM_
 
 ### Embeddings and Reranker
 
-The default models are [BAAI/bge-m3](https://huggingface.co/BAAI/bge-m3) (embeddings) and [IBM granite-embedding-reranker-english-r2](https://huggingface.co/ibm-granite/granite-embedding-reranker-english-r2) (reranker). Both are drop-in replaceable with any ONNX model. Point `ENGRAM_MODEL_DIR` at a directory containing `tokenizer.json` and `model_quantized.onnx` (or `model.onnx`), set `ENGRAM_EMBEDDING_DIM` to match, and run `POST /admin/reembed` to re-embed existing memories.
+The default embedding model is [BAAI/bge-m3](https://huggingface.co/BAAI/bge-m3) (1024-dim). It is drop-in replaceable with any ONNX embedding model: point `ENGRAM_MODEL_DIR` at a directory containing `tokenizer.json` and `model_quantized.onnx` (or `model.onnx`), set `ENGRAM_EMBEDDING_DIM` to match, and run `POST /admin/reembed` to re-embed existing memories. The reranker is [IBM granite-embedding-reranker-english-r2](https://huggingface.co/ibm-granite/granite-embedding-reranker-english-r2) (INT8 quantized).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
