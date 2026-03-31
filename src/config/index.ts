@@ -121,7 +121,7 @@ export const FORGET_SWEEP_INTERVAL = 5 * 60 * 1000;
 // FSRS-6 configuration
 export const FSRS_DEFAULT_RETENTION = 0.9;
 export const CONSOLIDATION_THRESHOLD = Number(process.env.ENGRAM_CONSOLIDATION_THRESHOLD ?? 8);
-export const CONSOLIDATION_INTERVAL = Number(process.env.ENGRAM_CONSOLIDATION_INTERVAL ?? 30) * 60 * 1000;
+export const CONSOLIDATION_INTERVAL = Number(process.env.ENGRAM_CONSOLIDATION_INTERVAL_MINUTES ?? 30) * 60 * 1000;
 
 // Reranker config (LLM-based reranker; separate from ONNX cross-encoder)
 export const RERANKER_ENABLED = (process.env.ENGRAM_RERANKER ?? process.env.RERANKER) !== "0";

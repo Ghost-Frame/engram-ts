@@ -167,6 +167,9 @@ async function embed(text: string): Promise<Float32Array> {
   // If output is already pooled (2D: [1, dim]), use directly
   const pooled = new Float32Array(embeddingDim);
   if (output.dims.length === 2) {
+    if (output.dims[1] !== embeddingDim) {
+      throw new Error(`Model output dim ${output.dims[1]} does not match configured EMBEDDING_DIM ${embeddingDim}`);
+    }
     pooled.set(hidden.subarray(0, embeddingDim));
   } else {
     // Mean pool over non-padding tokens from last_hidden_state [1, seq, dim]
