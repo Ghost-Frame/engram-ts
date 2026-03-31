@@ -57,3 +57,23 @@ UsersZan*
 
 # Worktrees
 .worktrees/
+
+# Local overrides
+.env.local
+docker-compose.local.yml
+
+# Tool/plugin state
+.claire/
+.playwright-mcp/
+.superpowers/
+
+# Bolt graph subproject (unused)
+bolt-graph/
+
+# Generated memory scripts
+src/memory/_gen*
+
+# Tools artifacts
+tools/node_modules/
+tools/*.png
+tools/*.gif
