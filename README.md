@@ -46,9 +46,21 @@ Execution signing, guardrails, trust scoring, and full audit trails. Every recor
 
 Seven standalone microservices absorbed into Engram as native modules. Agent registry (Soma), task tracking (Chiasm), event bus (Axon), workflow orchestration (Loom), quality evaluation (Thymus), action logging (Broca), and structural analysis (OpenSpace). Same database, same auth, zero new dependencies.
 
+### Bulk Ingestion
+
+The `/ingest` endpoint accepts large document uploads and processes them through a full pipeline: format detection, parsing, chunking, and memory creation. Supports markdown, HTML, PDF, DOCX, CSV, JSONL, ZIP archives, and conversation exports from Claude and ChatGPT. Two modes: `raw` stores chunks directly, `extract` runs LLM fact extraction on each chunk. Progress is streamed via Axon events and tracked as a Chiasm task.
+
 ### Eidolon (Companion Intelligence Layer)
 
 [Eidolon](https://codeberg.org/GhostFrame/eidolon) pairs with Engram to add proactive agent awareness. Action gating blocks dangerous operations before they execute. A living prompt injects relevant memory context into every agent session. Credential scrubbing prevents secrets from leaking into prompts. Engram is the memory. Eidolon is the guardian that acts on it.
+
+---
+
+### Recent Changes
+
+**Modular server refactor** -- The monolithic `routes/index.ts` has been decomposed into domain modules (`memory/`, `search/`, `ingestion/`, `admin/`, `auth/`, etc.) with a shared router. Each module owns its routes, types, and logic. The single-file entrypoint still works for backwards compatibility.
+
+**Embedding and reranker model swap** -- Embeddings moved from gte-Qwen2-1.5B-instruct to [BAAI/bge-m3](https://huggingface.co/BAAI/bge-m3) (1024-dim, SentencePiece Unigram tokenizer). Reranker moved from bge-reranker-base to [IBM granite-embedding-reranker-english-r2](https://huggingface.co/ibm-granite/granite-embedding-reranker-english-r2) (ByteLevel BPE tokenizer, INT8 quantized). Both run as ONNX models in dedicated Worker threads and are drop-in replaceable via `ENGRAM_MODEL_DIR` and `ENGRAM_RERANKER_MODEL_DIR`.
 
 ---
 
