@@ -112,8 +112,8 @@ curl -X POST http://localhost:4200/search \
 
 - Server: Node.js 22+ with `--experimental-strip-types` (or Bun)
 - Database: libsql (SQLite fork with native FLOAT32 vector columns and FTS5)
-- Embeddings: BGE-large-en-v1.5, 1024-dim, local ONNX inference in a Worker thread
-- Reranker: BGE-reranker-base INT8 quantized cross-encoder (optional)
+- Embeddings: BAAI/bge-m3, 1024-dim, local ONNX inference in a Worker thread (swappable -- any ONNX model works)
+- Reranker: IBM granite-embedding-reranker-english-r2 INT8 quantized cross-encoder (optional, also swappable)
 - Decay: FSRS-6 with 21 trained parameters and power-law forgetting
 - LLM: optional, any OpenAI-compatible endpoint (fact extraction, personality, consolidation)
 
@@ -121,7 +121,7 @@ curl -X POST http://localhost:4200/search \
 
 Every query runs through four parallel channels, then merges via Reciprocal Rank Fusion:
 
-1. Vector similarity: cosine distance against BGE-large-en-v1.5 embeddings
+1. Vector similarity: cosine distance against bge-m3 embeddings
 2. FTS5 full-text: BM25 ranking across content and tags
 3. Personality signals: match against extracted preferences, values, and identity markers
 4. Graph relationships: 2-hop traversal weighted by edge type and PageRank score
@@ -130,7 +130,7 @@ Question-type detection (fact recall, preference, reasoning, generalization, tim
 
 ### Memory Lifecycle
 
-1. **Store:** SimHash (64-bit, Hamming distance <= 3) checks for near-duplicates. If unique, BGE-large-en-v1.5 embeds the content. Stored in libsql with FTS5 indexing.
+1. **Store:** SimHash (64-bit, Hamming distance <= 3) checks for near-duplicates. If unique, the configured embedding model (bge-m3 by default) embeds the content. Stored in libsql with FTS5 indexing.
 2. **Auto-link:** New memory is compared against existing ones via in-memory cosine similarity. Links form at >= 0.55 similarity with typed relationships: similarity, updates, extends, contradicts, caused_by, prerequisite_for.
 3. **FSRS-6 init:** Each memory gets initial stability, difficulty, storage strength, and retrieval strength. Power-law forgetting begins.
 4. **Fact extraction:** If an LLM is configured, structured facts with temporal validity windows (valid_at, invalid_at) are extracted. Contradicting facts automatically invalidate predecessors.
@@ -173,8 +173,8 @@ Any OpenAI-compatible provider via `LLM_URL`, `LLM_API_KEY`, and `LLM_MODEL`. Up
 │  └───────────────────────────────────────┘           │
 │                                                       │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
-│  │ BGE-large│  │ Reranker │  │  Graph   │           │
-│  │  Embedder │  │ (BGE-rr) │  │  Engine  │           │
+│  │  bge-m3  │  │ Reranker │  │  Graph   │           │
+│  │  Embedder │  │ (Granite)│  │  Engine  │           │
 │  └──────────┘  └──────────┘  └──────────┘           │
 │                                                       │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
@@ -632,10 +632,13 @@ All tools support signed tool manifests for integrity verification when `ENGRAM_
 
 ### Embeddings and Reranker
 
+The default models are [BAAI/bge-m3](https://huggingface.co/BAAI/bge-m3) (embeddings) and [IBM granite-embedding-reranker-english-r2](https://huggingface.co/ibm-granite/granite-embedding-reranker-english-r2) (reranker). Both are drop-in replaceable with any ONNX model. Point `ENGRAM_MODEL_DIR` at a directory containing `tokenizer.json` and `model_quantized.onnx` (or `model.onnx`), set `ENGRAM_EMBEDDING_DIM` to match, and run `POST /admin/reembed` to re-embed existing memories.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ENGRAM_EMBEDDING_PROVIDER` | `local` | Embedding provider: `local`, `google`, `vertex` |
 | `ENGRAM_EMBEDDING_DIM` | auto | Embedding dimension (1024 for local, 768 for google/vertex) |
+| `ENGRAM_MODEL_DIR` | auto | Custom ONNX model directory (must contain tokenizer.json + model ONNX file) |
 | `ENGRAM_CROSS_ENCODER` | `1` | Set `0` to disable the ONNX cross-encoder reranker |
 | `ENGRAM_RERANKER` | `1` | Set `0` to disable all reranking in search results |
 | `ENGRAM_RERANKER_TOP_K` | `12` | Rerank top K candidates |
