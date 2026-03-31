@@ -117,13 +117,15 @@ class ByteLevelBPETokenizer {
 
     const input_ids = new BigInt64Array(maxSeq);
     const attention_mask = new BigInt64Array(maxSeq);
-    const token_type_ids = new BigInt64Array(maxSeq); // all zeros
+    const token_type_ids = new BigInt64Array(maxSeq);
     let p = 0;
+    // [CLS] query tokens [SEP] = segment 0, document tokens [SEP] = segment 1
     input_ids[p] = BigInt(this.clsId); attention_mask[p++] = 1n;
     for (const id of tQ) { input_ids[p] = BigInt(id); attention_mask[p++] = 1n; }
     input_ids[p] = BigInt(this.sepId); attention_mask[p++] = 1n;
-    for (const id of tD) { input_ids[p] = BigInt(id); attention_mask[p++] = 1n; }
-    input_ids[p] = BigInt(this.sepId); attention_mask[p++] = 1n;
+    // Document segment: token_type_ids = 1
+    for (const id of tD) { input_ids[p] = BigInt(id); attention_mask[p] = 1n; token_type_ids[p++] = 1n; }
+    input_ids[p] = BigInt(this.sepId); attention_mask[p] = 1n; token_type_ids[p++] = 1n;
     return { input_ids, attention_mask, token_type_ids };
   }
 }
