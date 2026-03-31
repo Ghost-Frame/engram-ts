@@ -113,7 +113,7 @@ curl -X POST http://localhost:4200/search \
 - Server: Node.js 22+ with `--experimental-strip-types` (or Bun)
 - Database: libsql (SQLite fork with native FLOAT32 vector columns and FTS5)
 - Embeddings: BAAI/bge-m3, 1024-dim, local ONNX inference in a Worker thread (swappable via `ENGRAM_MODEL_DIR`)
-- Reranker: IBM granite-embedding-reranker-english-r2 INT8 quantized cross-encoder (optional)
+- Reranker: IBM granite-embedding-reranker-english-r2 INT8 quantized cross-encoder (optional, swappable via `ENGRAM_RERANKER_MODEL_DIR`)
 - Decay: FSRS-6 with 21 trained parameters and power-law forgetting
 - LLM: optional, any OpenAI-compatible endpoint (fact extraction, personality, consolidation)
 
@@ -632,13 +632,14 @@ All tools support signed tool manifests for integrity verification when `ENGRAM_
 
 ### Embeddings and Reranker
 
-The default embedding model is [BAAI/bge-m3](https://huggingface.co/BAAI/bge-m3) (1024-dim). It is drop-in replaceable with any ONNX embedding model: point `ENGRAM_MODEL_DIR` at a directory containing `tokenizer.json` and `model_quantized.onnx` (or `model.onnx`), set `ENGRAM_EMBEDDING_DIM` to match, and run `POST /admin/reembed` to re-embed existing memories. The reranker is [IBM granite-embedding-reranker-english-r2](https://huggingface.co/ibm-granite/granite-embedding-reranker-english-r2) (INT8 quantized).
+The default models are [BAAI/bge-m3](https://huggingface.co/BAAI/bge-m3) (embeddings, 1024-dim) and [IBM granite-embedding-reranker-english-r2](https://huggingface.co/ibm-granite/granite-embedding-reranker-english-r2) (reranker, INT8 quantized). Both are drop-in replaceable with any ONNX model. For embeddings, set `ENGRAM_MODEL_DIR` and `ENGRAM_EMBEDDING_DIM`, then run `POST /admin/reembed`. For the reranker, set `ENGRAM_RERANKER_MODEL_DIR`. Each directory must contain `tokenizer.json` and a model ONNX file.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ENGRAM_EMBEDDING_PROVIDER` | `local` | Embedding provider: `local`, `google`, `vertex` |
 | `ENGRAM_EMBEDDING_DIM` | auto | Embedding dimension (1024 for local, 768 for google/vertex) |
 | `ENGRAM_MODEL_DIR` | auto | Custom ONNX model directory (must contain tokenizer.json + model ONNX file) |
+| `ENGRAM_RERANKER_MODEL_DIR` | auto | Custom ONNX reranker model directory (must contain tokenizer.json + model ONNX file) |
 | `ENGRAM_CROSS_ENCODER` | `1` | Set `0` to disable the ONNX cross-encoder reranker |
 | `ENGRAM_RERANKER` | `1` | Set `0` to disable all reranking in search results |
 | `ENGRAM_RERANKER_TOP_K` | `12` | Rerank top K candidates |

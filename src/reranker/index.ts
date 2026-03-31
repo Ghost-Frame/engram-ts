@@ -17,10 +17,12 @@ const DATA_DIR = process.env.ENGRAM_DATA_DIR
   ? resolve(process.env.ENGRAM_DATA_DIR)
   : resolve(import.meta.dirname || ".", "../../data");
 export const CROSS_ENCODER_ENABLED = process.env.ENGRAM_CROSS_ENCODER !== "0";
-const CROSS_ENCODER_DIR = resolve(DATA_DIR, "models", "granite-embedding-reranker-english-r2");
+// Custom reranker model dir: set ENGRAM_RERANKER_MODEL_DIR to a directory containing tokenizer.json + model ONNX file
+const CUSTOM_RERANKER_DIR = process.env.ENGRAM_RERANKER_MODEL_DIR ? resolve(process.env.ENGRAM_RERANKER_MODEL_DIR) : null;
+const CROSS_ENCODER_DIR = CUSTOM_RERANKER_DIR || resolve(DATA_DIR, "models", "granite-embedding-reranker-english-r2");
 const CROSS_ENCODER_MAX_SEQ = Number(process.env.ENGRAM_RERANKER_MAX_SEQ || 512);
-const CROSS_ENCODER_ONNX = "model_quantized.onnx";
-const CROSS_ENCODER_URLS: Record<string, string> = {
+const CROSS_ENCODER_ONNX = process.env.ENGRAM_RERANKER_FP32 === "1" ? "model.onnx" : "model_quantized.onnx";
+const CROSS_ENCODER_URLS: Record<string, string> = CUSTOM_RERANKER_DIR ? {} : {
   "tokenizer.json": "https://huggingface.co/keisuke-miyako/granite-embedding-reranker-english-r2-onnx-int8/resolve/main/tokenizer.json",
   "model_quantized.onnx": "https://huggingface.co/keisuke-miyako/granite-embedding-reranker-english-r2-onnx-int8/resolve/main/model_quantized.onnx",
 };
@@ -142,7 +144,7 @@ export async function initReranker(): Promise<void> {
   }
   try {
     const t0 = Date.now();
-    log.info({ msg: "loading_cross_encoder", model: "granite-embedding-reranker-english-r2" });
+    log.info({ msg: "loading_cross_encoder", model: CUSTOM_RERANKER_DIR ? CROSS_ENCODER_DIR : "granite-embedding-reranker-english-r2" });
     await ensureRerankerFiles();
     await spawnRerankerWorker();
     log.info({ msg: "cross_encoder_loaded", mode: "worker_thread", ms: Date.now() - t0 });
