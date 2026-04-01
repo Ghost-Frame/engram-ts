@@ -118,6 +118,29 @@ registerGuardRoutes(router);
 registerDocsRoutes(router);
 registerOnboardRoutes(router);
 
+// Syntheos consolidated services (legacy handler pattern -> router fallback)
+import { handleThymusRoutes, handleSomaRoutes, handleChiasmRoutes, handleAxonRoutes, handleLoomRoutes, handleBrocaRoutes } from "./src/services/index.ts";
+
+// Register Syntheos services as router fallbacks.
+// These use the legacy (method, url, req, requestId) pattern.
+// The fallback adapter runs auth middleware (already applied by router.use)
+// then delegates to the handler chain.
+const synthesosFallback = async (req: Request): Promise<Response | null> => {
+  const url = new URL(req.url);
+  const method = req.method.toUpperCase();
+  const requestId = crypto.randomUUID().slice(0, 8);
+  return (
+    await handleThymusRoutes(method, url, req, requestId) ??
+    await handleSomaRoutes(method, url, req, requestId) ??
+    await handleChiasmRoutes(method, url, req, requestId) ??
+    await handleAxonRoutes(method, url, req, requestId) ??
+    await handleLoomRoutes(method, url, req, requestId) ??
+    await handleBrocaRoutes(method, url, req, requestId)
+  );
+};
+router.fallback(synthesosFallback);
+
+
 // ============================================================================
 // JOB QUEUE -- Register handlers and start drain loop
 // ============================================================================

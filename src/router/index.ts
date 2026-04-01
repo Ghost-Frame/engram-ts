@@ -1,5 +1,5 @@
-import type { Handler, Middleware, Params, Route, Router } from "./types.ts";
-export type { Handler, Middleware, Params, Router } from "./types.ts";
+import type { Handler, Middleware, Params, Route, Router, FallbackHandler } from "./types.ts";
+export type { Handler, Middleware, Params, Router, FallbackHandler } from "./types.ts";
 
 import { securityHeaders } from "../helpers/index.ts";
 
@@ -31,6 +31,7 @@ function matchRoute(route: Route, method: string, pathSegments: string[]): Param
 export function createRouter(): Router {
   const routes: Route[] = [];
   const middlewares: Middleware[] = [];
+  const fallbacks: FallbackHandler[] = [];
 
   function addRoute(method: string, pattern: string, handler: Handler, prefix = ""): void {
     const fullPattern = prefix + pattern;
@@ -61,6 +62,8 @@ export function createRouter(): Router {
       fn(grouped);
     },
 
+    fallback: (fn: FallbackHandler) => { fallbacks.push(fn); },
+
     handle: async (req: Request): Promise<Response> => {
       const url = new URL(req.url);
       const method = req.method.toUpperCase();
@@ -81,6 +84,26 @@ export function createRouter(): Router {
       }
 
       if (!matched) {
+        // Run middleware chain for fallback handlers (auth, etc.)
+        if (fallbacks.length > 0) {
+          let mwIdx = 0;
+          const fallbackHandler = async (): Promise<Response> => {
+            if (mwIdx < middlewares.length) {
+              const mw = middlewares[mwIdx++];
+              return mw(req, {}, fallbackHandler);
+            }
+            // After middleware, try each fallback
+            for (const fb of fallbacks) {
+              const fbRes = await fb(req);
+              if (fbRes) return fbRes;
+            }
+            return new Response(JSON.stringify({ error: "Not found" }), {
+              status: 404,
+              headers: { "Content-Type": "application/json" },
+            });
+          };
+          return fallbackHandler();
+        }
         return new Response(JSON.stringify({ error: "Not found" }), {
           status: 404,
           headers: { "Content-Type": "application/json" },

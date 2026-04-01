@@ -27,5 +27,9 @@ export interface Router {
   delete(path: string, handler: Handler): void;
   use(middleware: Middleware): void;
   group(prefix: string, fn: (router: Router) => void): void;
+  fallback(fn: FallbackHandler): void;
   handle(req: Request): Promise<Response>;
 }
+
+
+export type FallbackHandler = (req: Request) => Promise<Response | null>;
