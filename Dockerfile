@@ -15,7 +15,7 @@ COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev 2>/dev/null || npm install --omit=dev
 
 # Copy app files
-COPY server-split.ts ./
+COPY server.ts ./
 COPY src/ ./src/
 COPY sign/ ./sign/
 COPY engram-gui.html engram-login.html ./
@@ -29,4 +29,4 @@ EXPOSE 4200
 ENV ENGRAM_PORT=4200
 ENV ENGRAM_HOST=0.0.0.0
 
-CMD ["node", "--experimental-strip-types", "server-split.ts"]
+CMD ["node", "--experimental-strip-types", "server.ts"]
