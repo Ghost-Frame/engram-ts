@@ -29,8 +29,10 @@ import type { FeedbackItem } from "./types.ts";
 import { MAX_CONTENT_SIZE, DEFAULT_IMPORTANCE } from "./types.ts";
 import { embed, embeddingToBuffer, addToEmbeddingCache, invalidateEmbeddingCache, getCachedEmbeddings, cosineSimilarity, embedWithChunking, demoteFromLatestCache } from "../embeddings/index.ts";
 import { db, insertMemory, linkMemoryEntity, linkMemoryProject, recordUsage, markSuperseded, insertLink, getLinksForUser, writeVec } from "../db/index.ts";
-import { DB_PATH } from "../config/index.ts";
+import { DB_PATH, MAX_ARTIFACT_SIZE, MAX_ARTIFACTS_PER_MEMORY } from "../config/index.ts";
 import { statSync } from "node:fs";
+import { processArtifact, ArtifactInput } from "../artifacts/storage.ts";
+import { insertArtifact } from "../db/index.ts";
 import { autoLink } from "./search.ts";
 import { insertEpisode, getEpisodeBySession, updateEpisodeForUser } from "../episodes/db.ts";
 import { fastExtractFacts } from "../intelligence/extraction.ts";
@@ -131,6 +133,44 @@ export function registerMemoryRoutes(router: Router): void {
 
       storeSimHash(result.id, simhashResult.simhash);
 
+      // Artifact storage
+      const artifactResults: Array<{ id: number; filename: string; size_bytes: number; storage_mode: string }> = [];
+      if (Array.isArray(b?.artifacts) && b.artifacts.length > 0) {
+        if (b.artifacts.length > MAX_ARTIFACTS_PER_MEMORY) {
+          return errorResponse(`Too many artifacts (max ${MAX_ARTIFACTS_PER_MEMORY})`, 400, requestId);
+        }
+
+        for (const rawArtifact of b.artifacts) {
+          if (!rawArtifact.filename || !rawArtifact.data_base64) {
+            return errorResponse("Each artifact requires filename and data_base64", 400, requestId);
+          }
+
+          const decoded = Buffer.from(rawArtifact.data_base64, "base64");
+          if (decoded.length > MAX_ARTIFACT_SIZE) {
+            return errorResponse(`Artifact "${rawArtifact.filename}" exceeds max size (${MAX_ARTIFACT_SIZE} bytes)`, 413, requestId);
+          }
+
+          const stored = processArtifact(rawArtifact as ArtifactInput);
+          const artResult = insertArtifact.get(
+            result.id,
+            stored.filename,
+            stored.mime_type,
+            stored.size_bytes,
+            stored.sha256,
+            stored.storage_mode,
+            stored.data,
+            stored.disk_path
+          ) as { id: number; created_at: string };
+
+          artifactResults.push({
+            id: artResult.id,
+            filename: stored.filename,
+            size_bytes: stored.size_bytes,
+            storage_mode: stored.storage_mode,
+          });
+        }
+      }
+
       emitWebhookEvent("memory.created", {
         id: result.id, content, category: category || "general",
         importance: imp, tags: tagsJson ? JSON.parse(tagsJson) : [], episode_id: episodeId,
@@ -171,6 +211,7 @@ export function registerMemoryRoutes(router: Router): void {
         fact_extraction: isLLMAvailable() ? "queued" : "disabled",
         status: memStatus,
         model: (model && typeof model === "string") ? model.trim() : null,
+        ...(artifactResults.length > 0 ? { artifacts: artifactResults } : {}),
       }, 201);
 
       auditLog(auth.user_id, "memory.store", "memory", result.id, (category || "general"), clientIp);
