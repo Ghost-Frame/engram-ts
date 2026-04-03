@@ -1260,3 +1260,38 @@ export const getTemporalPatternsForNow = db.prepare(
    WHERE tp.user_id = ? AND tp.day_of_week = ? AND tp.hour_of_day = ?
    ORDER BY tp.access_count DESC LIMIT ?`
 );
+
+// ============================================================================
+// PREPARED STATEMENTS -- artifacts (v5.12)
+// ============================================================================
+
+export const insertArtifact = db.prepare(
+  `INSERT INTO artifacts (memory_id, filename, mime_type, size_bytes, sha256, storage_mode, data, disk_path)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+   RETURNING id, created_at`
+);
+
+export const getArtifactsByMemory = db.prepare(
+  `SELECT id, filename, mime_type, size_bytes, sha256, storage_mode, created_at
+   FROM artifacts WHERE memory_id = ?`
+);
+
+export const getArtifactById = db.prepare(
+  `SELECT id, memory_id, filename, mime_type, size_bytes, sha256, storage_mode, data, disk_path, created_at
+   FROM artifacts WHERE id = ?`
+);
+
+export const getArtifactDiskRefCount = db.prepare(
+  `SELECT COUNT(*) as count FROM artifacts WHERE disk_path = ?`
+);
+
+export const getArtifactStats = db.prepare(
+  `SELECT
+     COUNT(*) as total_count,
+     SUM(size_bytes) as total_bytes,
+     SUM(CASE WHEN storage_mode = 'inline' THEN size_bytes ELSE 0 END) as inline_bytes,
+     SUM(CASE WHEN storage_mode = 'disk' THEN size_bytes ELSE 0 END) as disk_bytes,
+     SUM(CASE WHEN storage_mode = 'inline' THEN 1 ELSE 0 END) as inline_count,
+     SUM(CASE WHEN storage_mode = 'disk' THEN 1 ELSE 0 END) as disk_count
+   FROM artifacts`
+);

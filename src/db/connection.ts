@@ -973,6 +973,24 @@ migrate(`
 // Record current schema version
 setSchemaVersion(1, "initial schema with all tables and indexes");
 setSchemaVersion(2, "insertMemory accepts user_id and space_id atomically");
+
+// v5.12: Artifact storage
+migrate(`CREATE TABLE IF NOT EXISTS artifacts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  memory_id INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+  filename TEXT NOT NULL,
+  mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+  size_bytes INTEGER NOT NULL,
+  sha256 TEXT NOT NULL,
+  storage_mode TEXT NOT NULL DEFAULT 'inline',
+  data BLOB,
+  disk_path TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+)`);
+migrate("CREATE INDEX IF NOT EXISTS idx_artifacts_memory ON artifacts(memory_id)");
+migrate("CREATE INDEX IF NOT EXISTS idx_artifacts_hash ON artifacts(sha256)");
+setSchemaVersion(512, "artifact storage table");
+
 log.info({ msg: "schema_version", version: _getSchemaVersion() });
 
 // ============================================================================
