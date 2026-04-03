@@ -75,4 +75,94 @@ describe("Artifact Storage", () => {
       }
     });
   });
+
+  describe("Edge cases", () => {
+    it("stores multiple artifacts on one memory", async () => {
+      const { status, data } = await api("/store", {
+        method: "POST",
+        body: {
+          content: "Multi-file deployment",
+          category: "task",
+          source: "test",
+          artifacts: [
+            { filename: "config.json", mime_type: "application/json", data_base64: Buffer.from('{"key":"value"}').toString("base64") },
+            { filename: "deploy.sh", mime_type: "text/x-shellscript", data_base64: Buffer.from("#!/bin/bash\necho deploy").toString("base64") },
+          ],
+        },
+      });
+      assert.ok(status === 200 || status === 201);
+      assert.equal(data.artifacts.length, 2);
+      const list = await api(`/artifacts/${data.id}`);
+      assert.equal(list.data.artifacts.length, 2);
+    });
+
+    it("rejects store with too many artifacts", async () => {
+      const artifacts = Array.from({ length: 11 }, (_, i) => ({
+        filename: `file${i}.txt`,
+        mime_type: "text/plain",
+        data_base64: Buffer.from("x").toString("base64"),
+      }));
+      const { status } = await api("/store", {
+        method: "POST",
+        body: { content: "Too many files", category: "test", source: "test", artifacts },
+      });
+      assert.equal(status, 400);
+    });
+
+    it("rejects artifact missing filename", async () => {
+      const { status } = await api("/store", {
+        method: "POST",
+        body: {
+          content: "Bad artifact",
+          category: "test",
+          source: "test",
+          artifacts: [{ data_base64: Buffer.from("x").toString("base64") }],
+        },
+      });
+      assert.equal(status, 400);
+    });
+
+    it("rejects artifact missing data_base64", async () => {
+      const { status } = await api("/store", {
+        method: "POST",
+        body: {
+          content: "Bad artifact",
+          category: "test",
+          source: "test",
+          artifacts: [{ filename: "test.txt" }],
+        },
+      });
+      assert.equal(status, 400);
+    });
+
+    it("memory without artifacts returns empty artifacts array in search", async () => {
+      const { data: storeData } = await api("/store", {
+        method: "POST",
+        body: { content: "No artifacts here unique-marker-12345", category: "test", source: "test" },
+      });
+      const { data: searchData } = await api("/search", {
+        method: "POST",
+        body: { query: "unique-marker-12345" },
+      });
+      const match = searchData.results.find((r) => r.id === storeData.id);
+      if (match) {
+        assert.ok(Array.isArray(match.artifacts));
+        assert.equal(match.artifacts.length, 0);
+      }
+    });
+
+    it("GET /artifact/:id returns 404 for nonexistent id", async () => {
+      const res = await fetch(`${BASE}/artifact/999999`);
+      assert.equal(res.status, 404);
+    });
+
+    it("GET /artifacts/stats returns usage stats", async () => {
+      const { status, data } = await api("/artifacts/stats");
+      assert.equal(status, 200);
+      assert.ok(typeof data.total_count === "number");
+      assert.ok(typeof data.total_bytes === "number");
+      assert.ok(data.inline);
+      assert.ok(data.disk);
+    });
+  });
 });
