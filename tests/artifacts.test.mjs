@@ -47,4 +47,32 @@ describe("Artifact Storage", () => {
       memoryId = data.id;
     });
   });
+
+  describe("Search integration", () => {
+    it("POST /search returns artifact metadata on results", async () => {
+      const { status, data } = await api("/search", {
+        method: "POST",
+        body: { query: "nginx config for test" },
+      });
+      assert.equal(status, 200);
+      const match = data.results.find((r) => r.id === memoryId);
+      assert.ok(match, "Should find the memory with artifact");
+      assert.ok(Array.isArray(match.artifacts), "Result should have artifacts array");
+      assert.equal(match.artifacts.length, 1);
+      assert.equal(match.artifacts[0].filename, "nginx.conf");
+      assert.ok(!match.artifacts[0].data, "Search should not include blob data");
+    });
+
+    it("POST /recall returns artifact metadata on results", async () => {
+      const { status, data } = await api("/recall", {
+        method: "POST",
+        body: { context: "nginx config" },
+      });
+      assert.equal(status, 200);
+      const match = data.memories.find((m) => m.id === memoryId);
+      if (match) {
+        assert.ok(Array.isArray(match.artifacts), "Recall result should have artifacts array");
+      }
+    });
+  });
 });

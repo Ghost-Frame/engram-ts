@@ -3997,6 +3997,16 @@ Return JSON:
         if (_searchElapsed < 200) opsCounters.sla_search_under_200ms++;
         try { recordUsage.run(auth.user_id, "memory.search", 1, null); } catch {}
 
+        // Enrich search results with artifact metadata
+        for (const r of explainResults) {
+          const arts = getArtifactsByMemory.all(r.id) as Array<{
+            id: number; filename: string; mime_type: string; size_bytes: number;
+          }>;
+          (r as any).artifacts = arts.length > 0 ? arts.map(({ id, filename, mime_type, size_bytes }) => ({
+            id, filename, mime_type, size_bytes,
+          })) : [];
+        }
+
         return json({
           results: explainResults,
           abstained,
@@ -4419,14 +4429,27 @@ Return JSON:
           }
         } catch {}
 
+        // Build memories array for enrichment
+        const memories = sorted.map(s => ({
+          ...s.memory,
+          recall_source: s.source,
+          recall_score: Math.round(s.score * 100) / 100,
+          tags: s.memory.tags ? (() => { try { return JSON.parse(s.memory.tags); } catch { return []; } })() : [],
+        }));
+
+        // Enrich recall results with artifact metadata
+        for (const m of memories) {
+          const arts = getArtifactsByMemory.all(m.id) as Array<{
+            id: number; filename: string; mime_type: string; size_bytes: number;
+          }>;
+          (m as any).artifacts = arts.length > 0 ? arts.map(({ id, filename, mime_type, size_bytes }) => ({
+            id, filename, mime_type, size_bytes,
+          })) : [];
+        }
+
         return json({
           // Standard Engram format
-          memories: sorted.map(s => ({
-            ...s.memory,
-            recall_source: s.source,
-            recall_score: Math.round(s.score * 100) / 100,
-            tags: s.memory.tags ? (() => { try { return JSON.parse(s.memory.tags); } catch { return []; } })() : [],
-          })),
+          memories,
           breakdown: {
             static: sorted.filter(s => s.source === "static").length,
             semantic: sorted.filter(s => s.source === "semantic").length,
