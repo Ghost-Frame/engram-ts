@@ -70,7 +70,7 @@ import {
 } from "../db/index.ts";
 
 // Artifacts
-import { readArtifactFromDisk } from "../artifacts/storage.ts";
+import { readArtifactFromDisk, deleteArtifactFromDisk } from "../artifacts/storage.ts";
 
 // Embeddings
 import {
@@ -4048,6 +4048,21 @@ Return JSON:
     // MEMORY — get / delete / forget
     // ========================================================================
 
+    function cleanupArtifactDiskFiles(memoryId: number): void {
+      const artifacts = db.prepare(
+        "SELECT id, storage_mode, disk_path FROM artifacts WHERE memory_id = ?"
+      ).all(memoryId) as Array<{ id: number; storage_mode: string; disk_path: string | null }>;
+
+      for (const art of artifacts) {
+        if (art.storage_mode === "disk" && art.disk_path) {
+          const refCount = getArtifactDiskRefCount.get(art.disk_path) as { count: number };
+          if (refCount.count <= 1) {
+            deleteArtifactFromDisk(art.disk_path);
+          }
+        }
+      }
+    }
+
     if (url.pathname.match(/^\/memory\/\d+\/forget$/) && method === "POST") {
       const id = Number(url.pathname.split("/")[2]);
       if (isNaN(id)) return errorResponse("Invalid id");
@@ -4056,6 +4071,7 @@ Return JSON:
       if (!mem) return errorResponse("Not found", 404);
       if (mem.user_id !== auth.user_id && !auth.is_admin) return errorResponse("Forbidden", 403);
       const body = await req.json().catch(() => ({})) as any;
+      cleanupArtifactDiskFiles(id);
       markForgotten.run(id);
       if (body.reason) {
         db.prepare("UPDATE memories SET forget_reason = ? WHERE id = ?").run(body.reason, id);
@@ -4525,6 +4541,7 @@ Return JSON:
       const mem = getMemoryWithoutEmbedding.get(id) as any;
       if (!mem) return errorResponse("Not found", 404);
       if (mem.user_id !== auth.user_id && !auth.is_admin) return errorResponse("Forbidden", 403);
+      cleanupArtifactDiskFiles(id);
       deleteMemory(id);
       audit(auth.user_id, "memory.delete", "memory", id, null, clientIp, requestId);
       removeFromEmbeddingCache(id);
@@ -4894,6 +4911,7 @@ Return JSON:
     if (url.pathname.match(/^\/gui\/memories\/\d+$/) && method === "DELETE") {
       if (!guiAuthed(req)) return errorResponse("GUI auth required", 401);
       const id = Number(url.pathname.split("/")[3]);
+      cleanupArtifactDiskFiles(id);
       deleteMemory(id);
       audit(null, "gui.delete", "memory", id, null, clientIp, requestId);
       return json({ deleted: true, id });
