@@ -153,6 +153,12 @@ export const GUI_AUTH_LOCKOUT_MS = 600_000;
 export const OPEN_ACCESS_RATE_LIMIT = Number(process.env.ENGRAM_OPEN_RATE_LIMIT || 120);
 export const OPEN_ACCESS_SCOPES = (process.env.ENGRAM_OPEN_ACCESS_SCOPES || "read").split(",").map(s => s.trim()).filter(Boolean);
 
+// Artifact storage
+export const ARTIFACT_SIZE_THRESHOLD = Number(process.env.ENGRAM_ARTIFACT_SIZE_THRESHOLD || 1_048_576); // 1MB
+export const MAX_ARTIFACT_SIZE = Number(process.env.ENGRAM_MAX_ARTIFACT_SIZE || 52_428_800); // 50MB
+export const MAX_ARTIFACTS_PER_MEMORY = Number(process.env.ENGRAM_MAX_ARTIFACTS_PER_MEMORY || 10);
+export const ARTIFACT_DIR = resolve(DATA_DIR, "artifacts");
+
 // Backup config
 export const BACKUP_DIR = process.env.ENGRAM_BACKUP_DIR || resolve(DATA_DIR, "backups");
 export const BACKUP_RETENTION_DAYS = Number(process.env.ENGRAM_BACKUP_RETENTION_DAYS || 7);
