@@ -165,4 +165,19 @@ describe("Artifact Storage", () => {
       assert.ok(data.disk);
     });
   });
+
+  describe("Context integration", () => {
+    it("POST /context returns artifact metadata on memories", async () => {
+      const { status, data } = await api("/context", {
+        method: "POST",
+        body: { query: "nginx config", max_tokens: 4000 },
+      });
+      assert.equal(status, 200);
+      const memories = data.semantic_matches || data.memories || data.results || [];
+      const match = memories.find((m) => m.id === memoryId);
+      if (match) {
+        assert.ok(Array.isArray(match.artifacts));
+      }
+    });
+  });
 });

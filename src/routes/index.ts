@@ -2970,9 +2970,22 @@ Only include pairs that are actual contradictions.`;
         const blockIds = blocks.filter(b => b.id > 0).map(b => b.id);
         setTimeout(() => { try { const batch = db.transaction(() => { for (const id of blockIds) trackAccessWithFSRS(id); }); batch(); } catch {} }, 0);
 
+        // Enrich context results with artifact metadata
+        for (const b of blocks) {
+          if (b.id <= 0) { (b as any).artifacts = []; continue; }
+          const arts = getArtifactsByMemory.all(b.id) as Array<{
+            id: number; filename: string; mime_type: string; size_bytes: number;
+          }>;
+          (b as any).artifacts = arts.length > 0 ? arts.map(({ id, filename, mime_type, size_bytes }) => ({
+            id, filename, mime_type, size_bytes,
+          })) : [];
+        }
+
+        const enrichedBlocks = blocks.map(b => ({ id: b.id, category: b.category, source: b.source, model: b.model || null, origin: b.origin || null, score: Math.round(b.score * 100) / 100, tokens: b.tokens, artifacts: (b as any).artifacts }));
         return json({
           context: contextParts.join("\n\n"),
-          blocks: blocks.map(b => ({ id: b.id, category: b.category, source: b.source, model: b.model || null, origin: b.origin || null, score: Math.round(b.score * 100) / 100, tokens: b.tokens })),
+          blocks: enrichedBlocks,
+          semantic_matches: enrichedBlocks.filter(b => b.source === "semantic"),
           token_estimate: usedTokens,
           token_budget: tokenBudget,
           utilization: Math.round(usedTokens / tokenBudget * 100) / 100,
