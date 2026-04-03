@@ -330,6 +330,22 @@ function getOwnedProjectIds(ids: unknown, auth: AuthContext): number[] {
     .filter((id) => Number.isInteger(id) && !!getProjectForUser.get(id, auth.user_id));
 }
 
+// Clean up disk-stored artifacts before a memory is deleted/forgotten
+function cleanupArtifactDiskFiles(memoryId: number): void {
+  const artifacts = db.prepare(
+    "SELECT id, storage_mode, disk_path FROM artifacts WHERE memory_id = ?"
+  ).all(memoryId) as Array<{ id: number; storage_mode: string; disk_path: string | null }>;
+
+  for (const art of artifacts) {
+    if (art.storage_mode === "disk" && art.disk_path) {
+      const refCount = getArtifactDiskRefCount.get(art.disk_path) as { count: number } | undefined;
+      if (!refCount || refCount.count <= 1) {
+        deleteArtifactFromDisk(art.disk_path);
+      }
+    }
+  }
+}
+
 // Sweep expired memories (tenant-scoped when userId provided)
 function sweepExpiredMemories(userId?: number): number {
   const query = userId != null
@@ -339,6 +355,7 @@ function sweepExpiredMemories(userId?: number): number {
     ? db.prepare(query).all(userId)
     : db.prepare(query).all()) as Array<{ id: number; content: string; forget_reason: string }>;
   for (const mem of expired) {
+    cleanupArtifactDiskFiles(mem.id);
     markForgotten.run(mem.id);
     log.debug({ msg: "auto_forgot", id: mem.id, reason: mem.forget_reason || "expired" });
   }
@@ -4047,21 +4064,6 @@ Return JSON:
     // ========================================================================
     // MEMORY — get / delete / forget
     // ========================================================================
-
-    function cleanupArtifactDiskFiles(memoryId: number): void {
-      const artifacts = db.prepare(
-        "SELECT id, storage_mode, disk_path FROM artifacts WHERE memory_id = ?"
-      ).all(memoryId) as Array<{ id: number; storage_mode: string; disk_path: string | null }>;
-
-      for (const art of artifacts) {
-        if (art.storage_mode === "disk" && art.disk_path) {
-          const refCount = getArtifactDiskRefCount.get(art.disk_path) as { count: number };
-          if (refCount.count <= 1) {
-            deleteArtifactFromDisk(art.disk_path);
-          }
-        }
-      }
-    }
 
     if (url.pathname.match(/^\/memory\/\d+\/forget$/) && method === "POST") {
       const id = Number(url.pathname.split("/")[2]);
