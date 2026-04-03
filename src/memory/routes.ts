@@ -86,6 +86,22 @@ export function registerMemoryRoutes(router: Router): void {
         return json({ stored: false, duplicate: true, existing_id: simhashResult.existingId, distance: simhashResult.distance, boosted: true });
       }
 
+      // Pre-validate artifacts before any DB writes
+      if (Array.isArray(b?.artifacts) && b.artifacts.length > 0) {
+        if (b.artifacts.length > MAX_ARTIFACTS_PER_MEMORY) {
+          return errorResponse(`Too many artifacts (max ${MAX_ARTIFACTS_PER_MEMORY})`, 400, requestId);
+        }
+        for (const rawArtifact of b.artifacts) {
+          if (!rawArtifact.filename || !rawArtifact.data_base64) {
+            return errorResponse("Each artifact requires filename and data_base64", 400, requestId);
+          }
+          const decoded = Buffer.from(rawArtifact.data_base64, "base64");
+          if (decoded.length > MAX_ARTIFACT_SIZE) {
+            return errorResponse(`Artifact "${rawArtifact.filename}" exceeds max size (${MAX_ARTIFACT_SIZE} bytes)`, 413, requestId);
+          }
+        }
+      }
+
       // Embed
       let embBuffer: Buffer | null = null;
       let embArray: Float32Array | null = null;
@@ -133,23 +149,10 @@ export function registerMemoryRoutes(router: Router): void {
 
       storeSimHash(result.id, simhashResult.simhash);
 
-      // Artifact storage
+      // Artifact storage (already validated before memory insert)
       const artifactResults: Array<{ id: number; filename: string; size_bytes: number; storage_mode: string }> = [];
       if (Array.isArray(b?.artifacts) && b.artifacts.length > 0) {
-        if (b.artifacts.length > MAX_ARTIFACTS_PER_MEMORY) {
-          return errorResponse(`Too many artifacts (max ${MAX_ARTIFACTS_PER_MEMORY})`, 400, requestId);
-        }
-
         for (const rawArtifact of b.artifacts) {
-          if (!rawArtifact.filename || !rawArtifact.data_base64) {
-            return errorResponse("Each artifact requires filename and data_base64", 400, requestId);
-          }
-
-          const decoded = Buffer.from(rawArtifact.data_base64, "base64");
-          if (decoded.length > MAX_ARTIFACT_SIZE) {
-            return errorResponse(`Artifact "${rawArtifact.filename}" exceeds max size (${MAX_ARTIFACT_SIZE} bytes)`, 413, requestId);
-          }
-
           const stored = processArtifact(rawArtifact as ArtifactInput);
           const artResult = insertArtifact.get(
             result.id,
