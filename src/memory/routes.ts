@@ -33,6 +33,7 @@ import { DB_PATH, MAX_ARTIFACT_SIZE, MAX_ARTIFACTS_PER_MEMORY } from "../config/
 import { statSync } from "node:fs";
 import { processArtifact } from "../artifacts/storage.ts";
 import type { ArtifactInput } from "../artifacts/storage.ts";
+import { indexArtifact } from "../artifacts/fts.ts";
 import { insertArtifact } from "../db/index.ts";
 import { autoLink } from "./search.ts";
 import { insertEpisode, getEpisodeBySession, updateEpisodeForUser } from "../episodes/db.ts";
@@ -172,6 +173,11 @@ export function registerMemoryRoutes(router: Router): void {
             size_bytes: stored.size_bytes,
             storage_mode: stored.storage_mode,
           });
+
+          // FTS index text-based artifacts on plaintext
+          if (stored.data) {
+            indexArtifact(artResult.id, stored.mime_type, stored.data);
+          }
         }
       }
 
