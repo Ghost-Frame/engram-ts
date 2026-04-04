@@ -56,6 +56,12 @@ export async function consolidateCluster(
       return null;
     }
 
+    // Fix: ensure title is a non-empty string, fallback to first words of summary
+    if (typeof result.title !== "string" || !result.title.trim()) {
+      result.title = result.summary.split(/\s+/).slice(0, 5).join(" ");
+      log.warn({ msg: "consolidation_title_fallback", center_id: centerMemoryId, derived_title: result.title });
+    }
+
     // Create summary memory
     const embArray = await embed(result.summary);
     const embBuffer = embeddingToBuffer(embArray);
