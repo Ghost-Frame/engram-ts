@@ -43,7 +43,7 @@ await initReranker();
   let encKey = "";
   const creddKey = process.env.ENGRAM_CREDD_AGENT_KEY || "";
   const creddUrl = process.env.ENGRAM_CREDD_URL || "";
-  if (creddKey) {
+  if (creddKey && creddUrl) {
     try {
       const resp = await fetch(`${creddUrl}/secret/engram/artifact-encryption-key`, {
         headers: { Authorization: `Bearer ${creddKey}` },
@@ -52,8 +52,15 @@ await initReranker();
       if (resp.ok) {
         const data = await resp.json() as { value?: { key?: string } };
         encKey = data?.value?.key || "";
+        log.info({ msg: "credd_fetch", status: "ok", key_length: encKey.length });
+      } else {
+        log.warn({ msg: "credd_fetch", status: resp.status });
       }
-    } catch {}
+    } catch (e: any) {
+      log.warn({ msg: "credd_fetch_failed", error: e.message });
+    }
+  } else {
+    log.info({ msg: "credd_fetch", status: "skipped", has_key: Boolean(creddKey), has_url: Boolean(creddUrl) });
   }
   if (!encKey) encKey = ARTIFACT_ENCRYPTION_KEY;
   try {
