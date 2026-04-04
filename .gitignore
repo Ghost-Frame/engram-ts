@@ -73,6 +73,11 @@ engram-gui-new.html
 engram-gui-prev.html
 landing.html
 
+# Internal ops (hardening plans, n8n workflows, agent planning docs)
+audit/
+docs/plans/
+docs/superpowers/
+
 # Grafana dashboards (exported JSON, not app code)
 grafana/
 
