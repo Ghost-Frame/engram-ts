@@ -64,6 +64,10 @@ migrate(`CREATE INDEX IF NOT EXISTS idx_soma_agents_type ON soma_agents(type)`);
 migrate(`CREATE INDEX IF NOT EXISTS idx_soma_agents_status ON soma_agents(status)`);
 migrate(`CREATE INDEX IF NOT EXISTS idx_soma_agent_logs_agent_created ON soma_agent_logs(agent_id, created_at)`);
 
+// Add drift tracking columns to soma_agents
+try { db.exec(`ALTER TABLE soma_agents ADD COLUMN quality_score REAL`); } catch {}
+try { db.exec(`ALTER TABLE soma_agents ADD COLUMN drift_flags TEXT DEFAULT '[]'`); } catch {}
+
 // - Prepared statements --
 
 export const insertAgent = db.prepare(
@@ -96,3 +100,7 @@ export const getLogById = db.prepare("SELECT * FROM soma_agent_logs WHERE id = ?
 export const agentCount = db.prepare("SELECT COUNT(*) as count FROM soma_agents");
 export const onlineCount = db.prepare("SELECT COUNT(*) as count FROM soma_agents WHERE status = 'online'");
 export const groupCount = db.prepare("SELECT COUNT(*) as count FROM soma_groups");
+
+export const updateAgentQuality = db.prepare(`
+  UPDATE soma_agents SET quality_score = ?, drift_flags = ? WHERE id = ?
+`);

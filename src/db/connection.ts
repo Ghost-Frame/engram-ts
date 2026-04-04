@@ -928,6 +928,76 @@ migrate(`
 `);
 migrate(`CREATE INDEX IF NOT EXISTS idx_skill_tags_tag ON skill_tags(tag)`);
 
+// v6.1 - OpenSpace full schema: new skill_records columns
+migrate("ALTER TABLE skill_records ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private'");
+migrate("ALTER TABLE skill_records ADD COLUMN lineage_source_task_id TEXT");
+migrate("ALTER TABLE skill_records ADD COLUMN lineage_content_diff TEXT NOT NULL DEFAULT ''");
+migrate("ALTER TABLE skill_records ADD COLUMN lineage_content_snapshot TEXT NOT NULL DEFAULT '{}'");
+migrate("ALTER TABLE skill_records ADD COLUMN total_fallbacks INTEGER NOT NULL DEFAULT 0");
+
+// v6.1 - Execution analyses (one per task)
+migrate(`
+  CREATE TABLE IF NOT EXISTS execution_analyses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT NOT NULL UNIQUE,
+    timestamp TEXT NOT NULL,
+    task_completed INTEGER NOT NULL DEFAULT 0,
+    execution_note TEXT NOT NULL DEFAULT '',
+    tool_issues TEXT NOT NULL DEFAULT '[]',
+    candidate_for_evolution INTEGER NOT NULL DEFAULT 0,
+    evolution_suggestions TEXT NOT NULL DEFAULT '[]',
+    analyzed_by TEXT NOT NULL DEFAULT '',
+    analyzed_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )
+`);
+migrate("CREATE INDEX IF NOT EXISTS idx_exec_analyses_task ON execution_analyses(task_id)");
+migrate("CREATE INDEX IF NOT EXISTS idx_exec_analyses_candidate ON execution_analyses(candidate_for_evolution) WHERE candidate_for_evolution = 1");
+
+// v6.1 - Per-skill judgments within an analysis
+migrate(`
+  CREATE TABLE IF NOT EXISTS skill_judgments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    analysis_id INTEGER NOT NULL REFERENCES execution_analyses(id) ON DELETE CASCADE,
+    skill_id TEXT NOT NULL,
+    skill_applied INTEGER NOT NULL DEFAULT 0,
+    note TEXT NOT NULL DEFAULT '',
+    UNIQUE(analysis_id, skill_id)
+  )
+`);
+migrate("CREATE INDEX IF NOT EXISTS idx_skill_judgments_skill ON skill_judgments(skill_id)");
+
+// v6.1 - Tool dependencies per skill
+migrate(`
+  CREATE TABLE IF NOT EXISTS skill_tool_deps (
+    skill_id TEXT NOT NULL REFERENCES skill_records(skill_id) ON DELETE CASCADE,
+    tool_key TEXT NOT NULL,
+    critical INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (skill_id, tool_key)
+  )
+`);
+
+// v6.1 - Tool quality tracking
+migrate(`
+  CREATE TABLE IF NOT EXISTS tool_quality_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tool_key TEXT NOT NULL UNIQUE,
+    backend TEXT NOT NULL DEFAULT '',
+    server TEXT NOT NULL DEFAULT 'default',
+    tool_name TEXT NOT NULL DEFAULT '',
+    description_hash TEXT NOT NULL DEFAULT '',
+    total_calls INTEGER NOT NULL DEFAULT 0,
+    total_successes INTEGER NOT NULL DEFAULT 0,
+    total_failures INTEGER NOT NULL DEFAULT 0,
+    avg_execution_ms REAL NOT NULL DEFAULT 0,
+    llm_flagged_count INTEGER NOT NULL DEFAULT 0,
+    quality_score REAL NOT NULL DEFAULT 1.0,
+    last_execution_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )
+`);
+migrate("CREATE INDEX IF NOT EXISTS idx_tool_quality_score ON tool_quality_records(quality_score)");
+
 migrate(`
   CREATE VIRTUAL TABLE IF NOT EXISTS skills_fts USING fts5(
     name, description, content,

@@ -126,6 +126,8 @@ import { registerGuardRoutes } from "./src/guard/routes.ts";
 import { registerDocsRoutes } from "./src/docs/routes.ts";
 import { registerOnboardRoutes } from "./src/onboard/routes.ts";
 import { registerArtifactRoutes } from "./src/artifacts/routes.ts";
+import { registerDashboardRoutes } from "./src/skills/dashboard.ts";
+import { registerGroundingRoutes } from "./src/grounding/routes.ts";
 
 registerHealthRoutes(router);       // pre-auth: /live, /ready, /health, /metrics
 registerMemoryRoutes(router);
@@ -151,6 +153,18 @@ registerGuardRoutes(router);
 registerDocsRoutes(router);
 registerOnboardRoutes(router);
 registerArtifactRoutes(router);
+registerDashboardRoutes(router);
+registerGroundingRoutes(router);
+
+// Initialize default grounding providers
+import { getToolQualityManager } from "./src/grounding/quality.ts";
+import { getGroundingClient } from "./src/grounding/client.ts";
+import { ShellProvider } from "./src/grounding/backends/shell.ts";
+{
+  const qm = getToolQualityManager();
+  const gc = getGroundingClient(qm);
+  gc.registerProvider(new ShellProvider());
+}
 
 // Syntheos consolidated services (legacy handler pattern -> router fallback)
 import { handleThymusRoutes, handleSomaRoutes, handleChiasmRoutes, handleAxonRoutes, handleLoomRoutes, handleBrocaRoutes } from "./src/services/index.ts";

@@ -11,6 +11,8 @@ import {
   evaluate, getEvaluation, listEvaluations, getAgentScores,
   recordMetric, getMetrics, getMetricSummary,
   getStats,
+  recordSessionQuality, getSessionQuality,
+  recordDriftEvent, getDriftEvents, getDriftSummary,
 } from "./scoring.ts";
 
 export async function handleThymusRoutes(
@@ -145,6 +147,60 @@ export async function handleThymusRoutes(
 
   if (sub === "/stats" && method === "GET") {
     return json(getStats());
+  }
+
+  // - Session Quality --
+
+  if (sub === "/session-quality" && method === "POST") {
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
+    if (!body.session_id || !body.agent) return errorResponse("session_id and agent are required", 400, requestId);
+    try {
+      return json(recordSessionQuality(body), 201);
+    } catch (e: any) {
+      return errorResponse(e.message, 400, requestId);
+    }
+  }
+
+  if (sub === "/session-quality" && method === "GET") {
+    const agent = url.searchParams.get("agent");
+    if (!agent) return errorResponse("agent query parameter is required", 400, requestId);
+    const since = url.searchParams.get("since") ?? undefined;
+    const limitStr = url.searchParams.get("limit");
+    const results = getSessionQuality(agent, {
+      since,
+      limit: limitStr ? parseInt(limitStr, 10) : undefined,
+    });
+    return json(results);
+  }
+
+  // - Drift Events --
+
+  if (sub === "/drift-events" && method === "POST") {
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
+    if (!body.agent || !body.drift_type || !body.signal) {
+      return errorResponse("agent, drift_type, and signal are required", 400, requestId);
+    }
+    try {
+      return json(recordDriftEvent(body), 201);
+    } catch (e: any) {
+      return errorResponse(e.message, 400, requestId);
+    }
+  }
+
+  if (sub === "/drift-events" && method === "GET") {
+    const agent = url.searchParams.get("agent");
+    if (!agent) return errorResponse("agent query parameter is required", 400, requestId);
+    const limitStr = url.searchParams.get("limit");
+    const results = getDriftEvents(agent, limitStr ? parseInt(limitStr, 10) : undefined);
+    return json(results);
+  }
+
+  if (sub === "/drift-summary" && method === "GET") {
+    const agent = url.searchParams.get("agent");
+    if (!agent) return errorResponse("agent query parameter is required", 400, requestId);
+    return json(getDriftSummary(agent));
   }
 
   return null; // Not a thymus route match

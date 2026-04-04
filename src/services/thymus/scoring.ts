@@ -11,6 +11,8 @@ import {
   insertEvaluation, getEvaluationById,
   insertMetric, getMetricById,
   rubricCount, evaluationCount, metricCount,
+  insertSessionQuality, getSessionQualityByAgent, getSessionQualitySince,
+  insertDriftEvent, getDriftEventsByAgent, getDriftSummary as getDriftSummaryStmt,
 } from "./db.ts";
 
 // - Rubrics --
@@ -205,6 +207,73 @@ export function getMetricSummary(agent: string, metric: string, since?: string) 
   ).get(...params) as { avg: number | null; min: number | null; max: number | null; count: number };
 
   return { agent, metric, avg: row.avg ?? 0, min: row.min ?? 0, max: row.max ?? 0, count: row.count };
+}
+
+// ---- Session Quality ----
+
+export function recordSessionQuality(data: {
+  session_id: string;
+  agent: string;
+  turn_count?: number;
+  rules_followed?: string[];
+  rules_drifted?: string[];
+  personality_score?: number;
+  rule_compliance_rate?: number;
+}): any {
+  const result = insertSessionQuality.run(
+    data.session_id,
+    data.agent,
+    data.turn_count ?? 0,
+    JSON.stringify(data.rules_followed ?? []),
+    JSON.stringify(data.rules_drifted ?? []),
+    data.personality_score ?? null,
+    data.rule_compliance_rate ?? null
+  );
+  return { id: result.lastInsertRowid, ...data };
+}
+
+export function getSessionQuality(agent: string, opts?: { since?: string; limit?: number }): any[] {
+  if (opts?.since) {
+    return getSessionQualitySince.all(agent, opts.since) as any[];
+  }
+  return getSessionQualityByAgent.all(agent, opts?.limit ?? 50) as any[];
+}
+
+// ---- Drift Events ----
+
+export function recordDriftEvent(data: {
+  agent: string;
+  session_id?: string;
+  drift_type: string;
+  severity?: string;
+  signal: string;
+}): any {
+  const validTypes = ['priority', 'framework', 'interaction', 'meaning', 'safety', 'structural'];
+  const validSeverities = ['low', 'medium', 'high', 'critical'];
+
+  if (!validTypes.includes(data.drift_type)) {
+    throw new Error(`Invalid drift_type: ${data.drift_type}. Must be one of: ${validTypes.join(', ')}`);
+  }
+  if (data.severity && !validSeverities.includes(data.severity)) {
+    throw new Error(`Invalid severity: ${data.severity}. Must be one of: ${validSeverities.join(', ')}`);
+  }
+
+  const result = insertDriftEvent.run(
+    data.agent,
+    data.session_id ?? null,
+    data.drift_type,
+    data.severity ?? 'low',
+    data.signal
+  );
+  return { id: result.lastInsertRowid, ...data };
+}
+
+export function getDriftEvents(agent: string, limit?: number): any[] {
+  return getDriftEventsByAgent.all(agent, limit ?? 100) as any[];
+}
+
+export function getDriftSummary(agent: string): any[] {
+  return getDriftSummaryStmt.all(agent) as any[];
 }
 
 // - Stats --

@@ -12,6 +12,7 @@ import {
   addToGroupStmt, removeFromGroupStmt, deleteGroupMemberships, deleteAgentMemberships, deleteAgentLogs,
   insertLog, getLogById,
   agentCount, onlineCount, groupCount,
+  updateAgentQuality as updateAgentQualityStmt,
 } from "./db.ts";
 
 // - Agents --
@@ -193,6 +194,16 @@ export function getLogs(agentId: number, opts?: { level?: string; limit?: number
     `SELECT * FROM soma_agent_logs WHERE ${clauses.join(" AND ")} ORDER BY created_at DESC LIMIT ?`,
   ).all(...params, limit) as Record<string, unknown>[];
   return parseJsonFieldsAll(rows, "data");
+}
+
+// - Quality / Drift --
+
+export function updateAgentQuality(agentId: string, qualityScore: number, driftFlags: string[]): any {
+  const result = updateAgentQualityStmt.run(qualityScore, JSON.stringify(driftFlags), agentId);
+  if (result.changes === 0) {
+    throw new Error(`Agent not found: ${agentId}`);
+  }
+  return { agentId, qualityScore, driftFlags };
 }
 
 // - Stats --

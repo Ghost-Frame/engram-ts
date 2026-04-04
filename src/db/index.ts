@@ -1074,16 +1074,10 @@ export const cleanupOldUsage = db.prepare(
 // SKILLS - prepared statements
 // ============================================================================
 
-export const upsertSkill = db.prepare(`
-  INSERT INTO skill_records (skill_id, name, description, path, content, category, origin, generation, lineage_change_summary, creator_id, first_seen, last_updated)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-  ON CONFLICT(skill_id) DO UPDATE SET
-    name = excluded.name,
-    description = excluded.description,
-    path = excluded.path,
-    content = excluded.content,
-    last_updated = datetime('now')
-`);
+export const upsertSkill = db.prepare(
+  `INSERT OR REPLACE INTO skill_records (skill_id, name, description, path, content, category, origin, generation, lineage_change_summary, creator_id, visibility, lineage_source_task_id, lineage_content_diff, lineage_content_snapshot, total_fallbacks)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+);
 
 export const getSkillById = db.prepare(`SELECT * FROM skill_records WHERE skill_id = ?`);
 export const getSkillByPath = db.prepare(`SELECT * FROM skill_records WHERE path = ? AND is_active = 1 LIMIT 1`);
@@ -1147,6 +1141,187 @@ export const getSkillTagsStmt = db.prepare(
 
 export const insertSkillParentStmt = db.prepare(
   `INSERT OR IGNORE INTO skill_lineage_parents (skill_id, parent_skill_id) VALUES (?, ?)`
+);
+
+// --- Execution Analysis statements ---
+
+export const insertExecutionAnalysis = db.prepare(
+  `INSERT INTO execution_analyses (task_id, timestamp, task_completed, execution_note, tool_issues, candidate_for_evolution, evolution_suggestions, analyzed_by, analyzed_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+);
+
+export const getExecutionAnalysis = db.prepare(
+  "SELECT * FROM execution_analyses WHERE task_id = ?"
+);
+
+export const listExecutionAnalyses = db.prepare(
+  "SELECT * FROM execution_analyses ORDER BY analyzed_at DESC LIMIT ?"
+);
+
+export const listEvolutionCandidates = db.prepare(
+  "SELECT * FROM execution_analyses WHERE candidate_for_evolution = 1 ORDER BY analyzed_at DESC LIMIT ?"
+);
+
+// --- Skill Judgment statements ---
+
+export const insertSkillJudgment = db.prepare(
+  `INSERT OR REPLACE INTO skill_judgments (analysis_id, skill_id, skill_applied, note)
+   VALUES (?, ?, ?, ?)`
+);
+
+export const getSkillJudgments = db.prepare(
+  "SELECT * FROM skill_judgments WHERE analysis_id = ?"
+);
+
+export const getSkillJudgmentsBySkill = db.prepare(
+  `SELECT sj.*, ea.task_id, ea.task_completed, ea.analyzed_at
+   FROM skill_judgments sj JOIN execution_analyses ea ON sj.analysis_id = ea.id
+   WHERE sj.skill_id = ? ORDER BY ea.analyzed_at DESC LIMIT ?`
+);
+
+// --- Skill Tool Deps statements ---
+
+export const insertSkillToolDep = db.prepare(
+  "INSERT OR REPLACE INTO skill_tool_deps (skill_id, tool_key, critical) VALUES (?, ?, ?)"
+);
+
+export const getSkillToolDeps = db.prepare(
+  "SELECT * FROM skill_tool_deps WHERE skill_id = ?"
+);
+
+export const findSkillsByTool = db.prepare(
+  `SELECT sr.* FROM skill_records sr
+   JOIN skill_tool_deps std ON sr.skill_id = std.skill_id
+   WHERE std.tool_key = ? AND sr.is_active = 1`
+);
+
+// --- Skill counter updates ---
+
+export const incrementSkillApplied = db.prepare(
+  "UPDATE skill_records SET total_applied = total_applied + 1, last_updated = datetime('now') WHERE skill_id = ?"
+);
+
+export const incrementSkillCompletions = db.prepare(
+  "UPDATE skill_records SET total_completions = total_completions + 1, last_updated = datetime('now') WHERE skill_id = ?"
+);
+
+export const incrementSkillFallbacks = db.prepare(
+  "UPDATE skill_records SET total_fallbacks = total_fallbacks + 1, last_updated = datetime('now') WHERE skill_id = ?"
+);
+
+export const deactivateSkill = db.prepare(
+  "UPDATE skill_records SET is_active = 0, last_updated = datetime('now') WHERE skill_id = ?"
+);
+
+export const reactivateSkill = db.prepare(
+  "UPDATE skill_records SET is_active = 1, last_updated = datetime('now') WHERE skill_id = ?"
+);
+
+export const getSkillVersions = db.prepare(
+  "SELECT * FROM skill_records WHERE name = ? ORDER BY generation DESC"
+);
+
+// --- Tool Quality statements ---
+
+export const upsertToolQuality = db.prepare(
+  `INSERT INTO tool_quality_records (tool_key, backend, server, tool_name, description_hash, quality_score)
+   VALUES (?, ?, ?, ?, ?, ?)
+   ON CONFLICT(tool_key) DO UPDATE SET
+     backend = excluded.backend, server = excluded.server, tool_name = excluded.tool_name,
+     description_hash = excluded.description_hash, updated_at = datetime('now')`
+);
+
+export const getToolQuality = db.prepare(
+  "SELECT * FROM tool_quality_records WHERE tool_key = ?"
+);
+
+export const listToolQuality = db.prepare(
+  "SELECT * FROM tool_quality_records ORDER BY quality_score ASC LIMIT ?"
+);
+
+export const updateToolQualityMetrics = db.prepare(
+  `UPDATE tool_quality_records SET
+   total_calls = total_calls + 1,
+   total_successes = CASE WHEN ? = 1 THEN total_successes + 1 ELSE total_successes END,
+   total_failures = CASE WHEN ? = 0 THEN total_failures + 1 ELSE total_failures END,
+   avg_execution_ms = (avg_execution_ms * total_calls + ?) / (total_calls + 1),
+   quality_score = CASE WHEN total_calls > 0 THEN CAST(total_successes + (CASE WHEN ? = 1 THEN 1 ELSE 0 END) AS REAL) / (total_calls + 1) ELSE 1.0 END,
+   last_execution_at = datetime('now'),
+   updated_at = datetime('now')
+   WHERE tool_key = ?`
+);
+
+export const incrementToolLLMFlags = db.prepare(
+  "UPDATE tool_quality_records SET llm_flagged_count = llm_flagged_count + 1, updated_at = datetime('now') WHERE tool_key = ?"
+);
+
+export const getDegradedTools = db.prepare(
+  "SELECT * FROM tool_quality_records WHERE quality_score < ? ORDER BY quality_score ASC"
+);
+
+// --- Lineage DAG query (recursive CTE, depth-limited) ---
+
+export const getSkillLineageUp = db.prepare(
+  `WITH RECURSIVE ancestors(skill_id, depth) AS (
+    SELECT ?, 0
+    UNION ALL
+    SELECT slp.parent_skill_id, a.depth + 1
+    FROM skill_lineage_parents slp JOIN ancestors a ON slp.skill_id = a.skill_id
+    WHERE a.depth < 20
+  )
+  SELECT sr.* FROM ancestors a JOIN skill_records sr ON a.skill_id = sr.skill_id`
+);
+
+export const getSkillLineageDown = db.prepare(
+  `WITH RECURSIVE descendants(skill_id, depth) AS (
+    SELECT ?, 0
+    UNION ALL
+    SELECT slp.skill_id, d.depth + 1
+    FROM skill_lineage_parents slp JOIN descendants d ON slp.parent_skill_id = d.skill_id
+    WHERE d.depth < 20
+  )
+  SELECT sr.* FROM descendants d JOIN skill_records sr ON d.skill_id = sr.skill_id`
+);
+
+export const getSkillParents = db.prepare(
+  "SELECT parent_skill_id FROM skill_lineage_parents WHERE skill_id = ?"
+);
+
+export const getSkillChildren = db.prepare(
+  "SELECT skill_id FROM skill_lineage_parents WHERE parent_skill_id = ?"
+);
+
+// --- Dashboard aggregate queries ---
+
+export const getSkillStats = db.prepare(
+  `SELECT
+    COUNT(*) as total,
+    SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active,
+    SUM(total_selections) as total_selections,
+    SUM(total_completions) as total_completions,
+    AVG(CASE WHEN total_selections > 0 THEN CAST(total_completions AS REAL) / total_selections ELSE NULL END) as avg_completion_rate
+  FROM skill_records`
+);
+
+export const getSkillStatsByCategory = db.prepare(
+  `SELECT category, COUNT(*) as count, SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active
+   FROM skill_records GROUP BY category`
+);
+
+export const getSkillStatsByOrigin = db.prepare(
+  `SELECT origin, COUNT(*) as count FROM skill_records WHERE is_active = 1 GROUP BY origin`
+);
+
+export const listSkillsSorted = db.prepare(
+  `SELECT * FROM skill_records WHERE is_active = 1
+   ORDER BY CASE WHEN ? = 'score' THEN CAST(total_completions AS REAL) / MAX(total_selections, 1) END DESC,
+            CASE WHEN ? = 'updated' THEN last_updated END DESC,
+            CASE WHEN ? = 'name' THEN name END ASC
+   LIMIT ?`
+);
+
+export const countAnalyses = db.prepare(
+  "SELECT COUNT(*) as count FROM execution_analyses"
 );
 
 // ============================================================================

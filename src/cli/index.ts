@@ -563,6 +563,7 @@ ${bold("Commands:")}
   ${cyan("health")}              Check server health
   ${cyan("stats")}               Show statistics
   ${cyan("ingest <path>")}       Ingest a file into memory
+  ${cyan("skill <action>")}     Skill operations (search, list, execute, fix, quality)
 
 ${bold("Global Options:")}
   ${yellow("--url <url>")}         Engram server URL (env: ENGRAM_URL)
@@ -600,6 +601,79 @@ function dieApiError(err: unknown): never {
     process.stderr.write(red(`Error: ${msg}`) + "\n");
   }
   process.exit(1);
+}
+
+async function cmdSkill(cfg: Config, args: string[], opts: Record<string, string | boolean | undefined>) {
+  const action = args[0];
+  if (!action) die('Usage: engram-cli skill <search|list|execute|fix|quality> [options]');
+
+  switch (action) {
+    case "search": {
+      const query = args[1] || String(opts["query"] || "");
+      if (!query) die("Usage: engram-cli skill search <query>");
+      const limit = opts["limit"] ? parseInt(String(opts["limit"]), 10) : 10;
+      const result = await api(cfg, "POST", "/skills/search", { query, limit }) as any;
+      if (cfg.json) { process.stdout.write(JSON.stringify(result, null, 2) + "\n"); return; }
+      const results = result?.results || [];
+      if (results.length === 0) { process.stdout.write(yellow("No skills found.\n")); return; }
+      for (const s of results) {
+        process.stdout.write(`${bold(s.name)} ${dim(`[${s.skill_id}]`)} ${cyan(s.source)} score:${(s.score * 100).toFixed(0)}%\n`);
+        if (s.description) process.stdout.write(`  ${dim(s.description.slice(0, 80))}\n`);
+      }
+      break;
+    }
+    case "list": {
+      const limit = opts["limit"] ? parseInt(String(opts["limit"]), 10) : 20;
+      const result = await api(cfg, "GET", `/skills?limit=${limit}`) as any;
+      if (cfg.json) { process.stdout.write(JSON.stringify(result, null, 2) + "\n"); return; }
+      const skills = result?.skills || [];
+      if (skills.length === 0) { process.stdout.write(yellow("No skills registered.\n")); return; }
+      process.stdout.write(bold("Skills") + ` (${skills.length})\n`);
+      for (const s of skills) {
+        const active = s.is_active ? green("active") : red("inactive");
+        process.stdout.write(`  ${s.name.padEnd(30)} ${active} ${dim(s.origin)} sel:${s.total_selections} comp:${s.total_completions}\n`);
+      }
+      break;
+    }
+    case "execute": {
+      const task = args[1] || String(opts["task"] || "");
+      if (!task) die("Usage: engram-cli skill execute <task>");
+      const result = await api(cfg, "POST", "/skills/execute", { task, analyze: true }) as any;
+      if (cfg.json) { process.stdout.write(JSON.stringify(result, null, 2) + "\n"); return; }
+      process.stdout.write(bold("Response:") + "\n" + (result?.response || "(empty)") + "\n\n");
+      if (result?.skills_used?.length) {
+        process.stdout.write(dim(`Skills used: ${result.skills_used.join(", ")}`) + "\n");
+      }
+      if (result?.analysis) {
+        process.stdout.write(dim(`Analysis: completed=${result.analysis.task_completed}, suggestions=${result.analysis.suggestions}`) + "\n");
+      }
+      break;
+    }
+    case "fix": {
+      const skillId = args[1] || String(opts["id"] || "");
+      const direction = args[2] || String(opts["direction"] || "");
+      if (!skillId || !direction) die("Usage: engram-cli skill fix <skill_id> <direction>");
+      const result = await api(cfg, "POST", `/skills/${skillId}/fix`, { direction }) as any;
+      if (cfg.json) { process.stdout.write(JSON.stringify(result, null, 2) + "\n"); return; }
+      process.stdout.write(green(`Skill ${skillId} fixed`) + "\n");
+      break;
+    }
+    case "quality": {
+      const skillId = args[1] || String(opts["id"] || "");
+      if (!skillId) die("Usage: engram-cli skill quality <skill_id>");
+      const result = await api(cfg, "GET", `/skills/${skillId}/quality`) as any;
+      if (cfg.json) { process.stdout.write(JSON.stringify(result, null, 2) + "\n"); return; }
+      process.stdout.write(bold("Quality Metrics") + "\n");
+      process.stdout.write(`  Selections:  ${cyan(String(result?.total_selections ?? 0))}\n`);
+      process.stdout.write(`  Applied:     ${cyan(String(result?.total_applied ?? 0))} (${((result?.applied_rate ?? 0) * 100).toFixed(0)}%)\n`);
+      process.stdout.write(`  Completions: ${cyan(String(result?.total_completions ?? 0))} (${((result?.completion_rate ?? 0) * 100).toFixed(0)}%)\n`);
+      process.stdout.write(`  Fallbacks:   ${cyan(String(result?.total_fallbacks ?? 0))} (${((result?.fallback_rate ?? 0) * 100).toFixed(0)}%)\n`);
+      process.stdout.write(`  Effective:   ${cyan(((result?.effective_rate ?? 0) * 100).toFixed(0) + "%")}\n`);
+      break;
+    }
+    default:
+      die(`Unknown skill action: ${action}. Use: search, list, execute, fix, quality`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -640,6 +714,10 @@ async function main() {
       // ingest
       format: { type: "string" },
       progress: { type: "boolean" },
+      // skill
+      task: { type: "string" },
+      direction: { type: "string" },
+      id: { type: "string" },
     },
   });
 
@@ -694,6 +772,9 @@ async function main() {
         break;
       case "ingest":
         await cmdIngest(cfg, restArgs, values as Record<string, string | boolean | undefined>);
+        break;
+      case "skill":
+        await cmdSkill(cfg, restArgs, values as Record<string, string | boolean | undefined>);
         break;
       default:
         process.stderr.write(red(`Error: Unknown command '${command}'. Run with --help for usage.\n`));

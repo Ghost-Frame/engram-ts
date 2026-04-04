@@ -27,7 +27,7 @@ export function parseSkillMd(raw: string): SkillMeta {
     switch (key) {
       case "name": meta.name = val; break;
       case "description": meta.description = val; break;
-      case "category": meta.category = val; break;
+      case "category": meta.category = val as any; break;
       case "tags": {
         const inner = val.replace(/^\[|\]$/g, "");
         meta.tags = inner.split(",").map(t => t.trim().replace(/^["']|["']$/g, "")).filter(Boolean);

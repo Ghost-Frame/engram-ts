@@ -58,6 +58,30 @@ migrate(`CREATE INDEX IF NOT EXISTS idx_evaluations_agent_created ON evaluations
 migrate(`CREATE INDEX IF NOT EXISTS idx_evaluations_rubric_created ON evaluations(rubric_id, created_at DESC)`);
 migrate(`CREATE INDEX IF NOT EXISTS idx_quality_metrics_agent_metric ON quality_metrics(agent, metric, recorded_at DESC)`);
 
+// Session quality snapshots
+migrate(`CREATE TABLE IF NOT EXISTS session_quality (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  agent TEXT NOT NULL,
+  turn_count INTEGER DEFAULT 0,
+  rules_followed TEXT DEFAULT '[]',
+  rules_drifted TEXT DEFAULT '[]',
+  personality_score REAL,
+  rule_compliance_rate REAL,
+  created_at TEXT DEFAULT (datetime('now'))
+)`);
+
+// Behavioral drift events
+migrate(`CREATE TABLE IF NOT EXISTS behavioral_drift_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agent TEXT NOT NULL,
+  session_id TEXT,
+  drift_type TEXT NOT NULL,
+  severity TEXT DEFAULT 'low',
+  signal TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+)`);
+
 // - Prepared statements --
 
 export const insertRubric = db.prepare(
@@ -85,3 +109,35 @@ export const getMetricById = db.prepare("SELECT * FROM quality_metrics WHERE id 
 export const rubricCount = db.prepare("SELECT COUNT(*) as count FROM rubrics");
 export const evaluationCount = db.prepare("SELECT COUNT(*) as count FROM evaluations");
 export const metricCount = db.prepare("SELECT COUNT(*) as count FROM quality_metrics");
+
+// Session quality statements
+export const insertSessionQuality = db.prepare(`
+  INSERT INTO session_quality (session_id, agent, turn_count, rules_followed, rules_drifted, personality_score, rule_compliance_rate)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+`);
+
+export const getSessionQualityByAgent = db.prepare(`
+  SELECT * FROM session_quality WHERE agent = ? ORDER BY created_at DESC LIMIT ?
+`);
+
+export const getSessionQualitySince = db.prepare(`
+  SELECT * FROM session_quality WHERE agent = ? AND created_at >= ? ORDER BY created_at DESC
+`);
+
+// Drift event statements
+export const insertDriftEvent = db.prepare(`
+  INSERT INTO behavioral_drift_events (agent, session_id, drift_type, severity, signal)
+  VALUES (?, ?, ?, ?, ?)
+`);
+
+export const getDriftEventsByAgent = db.prepare(`
+  SELECT * FROM behavioral_drift_events WHERE agent = ? ORDER BY created_at DESC LIMIT ?
+`);
+
+export const getDriftSummary = db.prepare(`
+  SELECT drift_type, severity, COUNT(*) as count
+  FROM behavioral_drift_events
+  WHERE agent = ?
+  GROUP BY drift_type, severity
+  ORDER BY count DESC
+`);

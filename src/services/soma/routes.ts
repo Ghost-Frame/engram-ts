@@ -14,6 +14,7 @@ import {
   findByCapability,
   addLog, getLogs,
   getStats,
+  updateAgentQuality,
 } from "./registry.ts";
 
 const VALID_AGENT_STATUSES = new Set(["pending", "online", "offline", "error"]);
@@ -104,6 +105,20 @@ export async function handleSomaRoutes(
     const agent = heartbeat(parseInt(hbMatch[1], 10), body.status);
     if (!agent) return errorResponse("Agent not found", 404, requestId);
     return json(agent);
+  }
+
+  // PATCH /soma/agents/:id/quality
+  const qualityMatch = sub.match(/^\/agents\/([^/]+)\/quality$/);
+  if (qualityMatch && method === "PATCH") {
+    const { body: rawBody } = getContext(req);
+    const body = (rawBody || {}) as any;
+    if (body.quality_score === undefined) return errorResponse("quality_score is required", 400, requestId);
+    try {
+      const result = updateAgentQuality(qualityMatch[1], body.quality_score, body.drift_flags ?? []);
+      return json(result);
+    } catch (e: any) {
+      return errorResponse(e.message, e.message.includes("not found") ? 404 : 400, requestId);
+    }
   }
 
   // POST /soma/agents/:id/logs
