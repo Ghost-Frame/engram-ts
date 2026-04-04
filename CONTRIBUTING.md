@@ -20,8 +20,8 @@ npm run dev
 ```
 
 **Requirements:**
-- Node.js ≥ 22.0.0
-- ~350MB disk for embedding model (BGE-large-en-v1.5, auto-downloaded on first run)
+- Node.js >= 22.0.0
+- ~350MB disk for embedding model (bge-m3, auto-downloaded on first run)
 
 ## Architecture
 
@@ -34,18 +34,24 @@ mcp-server.ts      MCP server, JSON-RPC 2.0 stdio transport
 src/
 ├── auth/          API keys, GUI cookies, RBAC, Google Cloud auth
 ├── config/        environment and runtime configuration, logger + ops counters
-├── db/            libsql with FTS5 + dynamic FLOAT32 vectors
-├── embeddings/    Pluggable: local ONNX (BGE-large-en-v1.5), Google AI Studio, Vertex AI
+├── db/            libsql with FTS5 + dynamic FLOAT32 vectors, durable job queue
+├── embeddings/    Pluggable: local ONNX (bge-m3, 1024-dim), Google AI Studio, Vertex AI
 ├── fsrs/          FSRS-6 spaced repetition, 21 trained weights
 ├── graph/         Graphology-based knowledge graph + community detection
 ├── gui/           GUI route handlers
 ├── helpers/       shared utilities (security headers, SSRF protection)
-├── intelligence/  fact extraction, consolidation, reflections, contradiction detection, personality
+├── intelligence/  fact extraction, consolidation, decomposition, reflections, contradiction detection, personality
+├── ingestion/     bulk document import (markdown, HTML, PDF, DOCX, CSV, JSONL, ZIP, conversation exports)
+├── jobs/          durable job queue with transactional claiming and retry logic
 ├── llm/           LLM client (Anthropic/MiniMax/Vertex/OpenAI-compatible, with fallback chain)
 ├── memory/        core memory CRUD + versioning, hybrid vector+FTS search, profile generation
 ├── platform/      webhooks, digests, sync, import/export
-├── reranker/      ONNX cross-encoder (BGE-reranker-base) with SentencePiece tokenizer
-├── routes/        HTTP route definitions
+├── reranker/      ONNX cross-encoder (IBM Granite reranker, INT8 quantized) with BPE tokenizer
+├── router/        lightweight HTTP router (no framework dependency)
+├── search/        search domain logic, recall layers, explainability
+├── admin/         admin endpoints (reembed, communities, decompose-sweep, maintenance)
+├── context/       smart context assembly with token budgets and fact grouping
+├── middleware/     auth middleware, rate limiting
 ├── services/      consolidated Syntheos microservices
 │   ├── thymus/    rubric-based quality evaluation and scoring
 │   ├── soma/      agent registry, heartbeat, groups, logs
@@ -72,7 +78,7 @@ landing.html       marketing landing page
 
 5. **Node.js HTTP, not Express/Hono**: Zero framework dependency. The server uses `createServer` with a Web Request/Response adapter. Core dependencies: libsql, onnxruntime-node, graphology, and @modelcontextprotocol/sdk.
 
-6. **Raw ONNX inference**: Embeddings use onnxruntime-node directly with a hand-written BERT WordPiece tokenizer - no @huggingface/transformers wrapper. Model files (tokenizer.json + quantized ONNX) are auto-downloaded from HuggingFace on first run.
+6. **Raw ONNX inference**: Embeddings and reranking use onnxruntime-node directly with hand-written tokenizers (SentencePiece Unigram for bge-m3, ByteLevel BPE for Granite reranker). No @huggingface/transformers wrapper. Model files (tokenizer.json + quantized ONNX) are auto-downloaded from HuggingFace on first run.
 
 7. **Episodic memory**: Conversations are stored as episodes with narrative summaries, embedded for semantic search, and linked to extracted facts. This enables temporal queries ("what did I work on last week?") and contextual recall ("why was this decision made?").
 
@@ -116,26 +122,29 @@ We always need more coverage:
 4. Update CHANGELOG.md under `[Unreleased]`
 5. Submit a PR with a clear description of what changed and why
 
-## Recent Changes (v5.10)
+## Recent Changes (v6.0)
 
-**Syntheos Phase 1: Service Consolidation** - Three standalone microservices (Thymus, Soma, Chiasm) absorbed into the Engram monolith as native modules under `src/services/`. Each service follows the same `db.ts` / business-logic / `routes.ts` pattern. All use parameterized SQL, share the main database, and reuse Engram auth. See `src/services/index.ts` for the barrel export and `src/routes/index.ts` fetchHandler for route wiring.
+**Atomic fact decomposition** -- Long memories are broken into self-contained atomic facts via LLM. Each fact is independently searchable and linked to its source via `has_fact` edges. Search supports `facts_only` and `exclude_facts` filters. Context assembly groups facts under parents. Admin endpoints provide retroactive sweep. See `src/intelligence/decomposition.ts`.
 
-**Thymus** - Rubric-based quality evaluation. Define weighted criteria, score agent outputs, track metrics over time. See `src/services/thymus/`.
+**Non-destructive consolidation** -- Consolidation summaries link back to sources but no longer archive them. Originals stay searchable. See `src/intelligence/consolidation.ts`.
 
-**Soma** - Agent registry with heartbeat tracking, capability search, group management, and structured logging. See `src/services/soma/`.
+**Durable job queue** -- DB-backed async processing with transactional claiming, exponential backoff retries, and WAL hardening (`synchronous=FULL`). Replaced fire-and-forget setTimeout patterns. See `src/jobs/index.ts`.
 
-**Chiasm** - Task tracking and coordination. Agents create tasks, update status, read each other's work via a feed endpoint. See `src/services/chiasm/`.
+**Domain module refactor** -- The monolithic `routes/index.ts` was split into `src/search/`, `src/admin/`, `src/context/`, `src/ingestion/`, `src/auth/`, etc. Each module owns its routes, types, and logic.
 
-These areas may benefit from additional test coverage:
+**Syntheos consolidation** -- Seven standalone microservices absorbed into Engram as native modules under `src/services/`. Thymus (quality eval), Soma (agent registry), Chiasm (task tracking), Axon (event bus), Loom (workflows), Broca (action log), OpenSpace (structural analysis).
+
+Areas that benefit from test coverage:
 
 | Feature | Location |
 |---------|----------|
-| Thymus rubric CRUD and scoring | `src/services/thymus/routes.ts`, `scoring.ts` |
-| Soma agent lifecycle | `src/services/soma/routes.ts`, `registry.ts` |
-| Chiasm task coordination | `src/services/chiasm/routes.ts`, `engine.ts` |
+| Atomic fact decomposition | `src/intelligence/decomposition.ts` |
+| Fact-aware search filtering | `src/search/routes.ts` |
+| Context fact grouping | `src/context/index.ts` |
+| Job queue claim/retry | `src/jobs/index.ts` |
+| Syntheos services | `src/services/*/routes.ts` |
 | PageRank in search scoring | `src/memory/search.ts`, `src/graph/pagerank.ts` |
 | CLI commands | `src/cli/index.ts` |
-| Source filtering in search | `src/memory/search.ts` `hybridSearch()` |
 | Memory health diagnostics | `GET /memory-health` |
 
 ## Roadmap (Not Yet Shipped)
