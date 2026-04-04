@@ -103,3 +103,36 @@ describe("initEncryption", () => {
     assert.throws(() => initEncryption("bad-key"), /Invalid encryption key format/);
   });
 });
+
+describe("encryption + FTS interaction", () => {
+  it("indexes plaintext but stores encrypted data", async () => {
+    const { db } = await import("../src/db/connection.ts");
+    const { encryptArtifact, parseEncryptionKey } = await import("../src/artifacts/encryption.ts");
+    const { indexArtifact } = await import("../src/artifacts/fts.ts");
+
+    const masterKey = parseEncryptionKey("a".repeat(64));
+    const userId = 1;
+    const plaintext = Buffer.from('server { listen 80; upstream backend { server 127.0.0.1:3000; } }');
+    const encrypted = encryptArtifact(plaintext, masterKey, userId);
+
+    const memResult = db.prepare(
+      "INSERT INTO memories (content, category, importance, user_id, embedding) VALUES (?, ?, ?, ?, zeroblob(4)) RETURNING id"
+    ).get("nginx config for encryption test", "config", 5, userId) as { id: number };
+
+    const artResult = db.prepare(
+      "INSERT INTO artifacts (memory_id, filename, mime_type, size_bytes, sha256, storage_mode, data, is_encrypted) VALUES (?, ?, ?, ?, ?, ?, ?, 1) RETURNING id"
+    ).get(memResult.id, "nginx.conf", "text/plain", plaintext.length, "enctest456", "inline", encrypted) as { id: number };
+
+    // Index the PLAINTEXT
+    const indexed = indexArtifact(artResult.id, "text/plain", plaintext);
+    assert.ok(indexed, "should index plaintext content");
+
+    // FTS finds the content via plaintext
+    const ftsHits = db.prepare("SELECT rowid FROM artifacts_fts WHERE content MATCH 'upstream'").all();
+    assert.ok(ftsHits.length > 0, "FTS should find 'upstream' in plaintext");
+
+    // But stored data is encrypted
+    const storedRow = db.prepare("SELECT data FROM artifacts WHERE id = ?").get(artResult.id) as { data: Buffer };
+    assert.notDeepEqual(Buffer.from(storedRow.data), plaintext, "stored data should be encrypted");
+  });
+});
