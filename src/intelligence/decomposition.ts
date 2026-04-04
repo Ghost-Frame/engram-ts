@@ -8,11 +8,7 @@ import { log } from "../config/logger.ts";
 import { db, insertMemory, insertLink, writeVec } from "../db/index.ts";
 import { embed, embeddingToBuffer, addToEmbeddingCache } from "../embeddings/index.ts";
 
-// NOTE: These config imports will be available after Task 4 adds them.
-// For now, use fallback defaults inline if they don't exist yet.
-const DECOMPOSITION_ENABLED = true;  // Will be imported from config later
-const DECOMPOSITION_MIN_LENGTH = 20;
-const DECOMPOSITION_MAX_FACTS = 8;
+import { DECOMPOSITION_ENABLED, DECOMPOSITION_MIN_LENGTH, DECOMPOSITION_MAX_FACTS } from "../config/index.ts";
 
 const DECOMPOSITION_PROMPT = `You are a fact extraction engine for a memory system. Given a memory entry, extract individual atomic facts.
 
