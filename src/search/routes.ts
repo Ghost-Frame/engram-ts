@@ -37,6 +37,8 @@ export function registerSearchRoutes(router: Router): void {
 
       const { query, limit, include_links, expand_relationships, latest_only, tag,
               episode_id: filterEpisode, temporal_sort, vector_floor, source } = body;
+      const factsOnly = body.facts_only === true;
+      const excludeFacts = body.exclude_facts === true;
       if (!query || typeof query !== "string") return errorResponse("query is required");
 
       const effectiveLimit = source ? Math.min((limit || 10) * 5, 200) : Math.min(limit || 10, 50);
@@ -63,6 +65,19 @@ export function registerSearchRoutes(router: Router): void {
         results = results.filter(r => {
           const mem = getMemoryWithoutEmbedding.get(r.id) as any;
           return mem?.episode_id === filterEpisode;
+        });
+      }
+
+      if (factsOnly) {
+        results = results.filter(r => {
+          const mem = getMemoryWithoutEmbedding.get(r.id) as any;
+          return mem?.is_fact === 1;
+        });
+      }
+      if (excludeFacts) {
+        results = results.filter(r => {
+          const mem = getMemoryWithoutEmbedding.get(r.id) as any;
+          return !mem?.is_fact;
         });
       }
 
@@ -127,6 +142,15 @@ export function registerSearchRoutes(router: Router): void {
       for (const r of explainResults) {
         const arts = getArtifactsByMemory.all(r.id) as Array<{ id: number; filename: string; mime_type: string; size_bytes: number }>;
         (r as any).artifacts = arts.map(({ id, filename, mime_type, size_bytes }) => ({ id, filename, mime_type, size_bytes }));
+      }
+
+      // Enrich with fact metadata
+      for (const r of explainResults) {
+        const mem = getMemoryWithoutEmbedding.get(r.id) as any;
+        if (mem?.is_fact) {
+          (r as any).is_fact = true;
+          (r as any).parent_id = mem.parent_memory_id;
+        }
       }
 
       return json({
