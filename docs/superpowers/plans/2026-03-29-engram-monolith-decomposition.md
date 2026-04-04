@@ -1906,7 +1906,7 @@ ssh rocky "cd /opt/engram-staging && ENGRAM_PORT=4202 node --experimental-strip-
 - [ ] **Step 4: Run integration tests against staging**
 
 ```bash
-ENGRAM_URL=http://100.64.0.2:4202 node --test tests/api.test.mjs
+ENGRAM_URL=http://<server-ip>:4202 node --test tests/api.test.mjs
 ```
 
 - [ ] **Step 5: Compare key queries**

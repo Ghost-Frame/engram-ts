@@ -12,7 +12,7 @@ The ingestion pipeline built in v5.12.0 proved the target architecture: domain m
 
 ## Solution
 
-Full decomposition of the monolith into domain modules following the ingestion template. A lightweight custom router replaces the manual URL matching dispatch. Each domain gets its own directory with types, routes, business logic, DB queries, and tests. The refactored codebase is built and tested on Rocky (100.64.0.2) staging before replacing production.
+Full decomposition of the monolith into domain modules following the ingestion template. A lightweight custom router replaces the manual URL matching dispatch. Each domain gets its own directory with types, routes, business logic, DB queries, and tests. The refactored codebase is built and tested on Rocky (<server-ip>) staging before replacing production.
 
 A future second project migrates the lightweight router to Hono once the decomposition is stable. That is out of scope here.
 
@@ -227,7 +227,7 @@ Tests use `node:test` with `node:assert/strict` (same as ingestion tests). No te
 
 ## Staging on Rocky
 
-The refactored codebase is built and tested on Rocky (100.64.0.2).
+The refactored codebase is built and tested on Rocky (<server-ip>).
 
 - Rocky already runs a mirror copy of production Engram
 - Copy Rocky's existing Engram database to the staging instance
@@ -239,7 +239,7 @@ The refactored codebase is built and tested on Rocky (100.64.0.2).
 
 Once staging passes all tests and manual verification:
 
-1. Stop production Engram on hetzner-zan
+1. Stop production Engram on `<deployment-host>`
 2. Deploy refactored codebase
 3. Start with production database (no migration needed, schema unchanged)
 4. Verify health endpoint, run integration tests against production

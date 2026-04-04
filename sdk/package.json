@@ -11,7 +11,7 @@
     "prepublishOnly": "npm run build"
   },
   "keywords": ["engram", "memory", "ai", "agents", "semantic-search", "knowledge-graph", "llm"],
-  "author": "Zan <zan@zanfiel.com>",
+  "author": "Zanverse",
   "license": "Elastic-2.0",
   "repository": {
     "type": "git",

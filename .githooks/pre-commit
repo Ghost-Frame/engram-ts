@@ -18,13 +18,12 @@ PATTERNS=(
   'ZanSSH|SSH key name'
   'zanfiel\.com|Personal domain'
   'syntheos\.dev|Syntheos domain'
-  'engram\.lol|Engram domain'
+  # engram.lol is this project's own public domain -- not blocked here
   'zancord\.org|Zancord domain'
   'bayaudiovideo|BAV domain'
-  'zan-hetzner|Server hostname'
-  'bav-apps|Server hostname'
-  'forge-box|Server hostname'
-  'bav-pangolin|Server hostname'
+  # Add your own private server hostnames below. Examples:
+  # 'your-server-1|Server hostname'
+  # 'your-server-2|Server hostname'
 )
 
 # Files to skip (config examples, the hook itself, license)

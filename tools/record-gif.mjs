@@ -57,7 +57,7 @@ function startServer() {
     '.woff': 'font/woff', '.woff2': 'font/woff2',
   };
 
-  const apiUrl = process.env.ENGRAM_URL || 'http://100.64.0.13:4200';
+  const apiUrl = process.env.ENGRAM_URL || 'http://localhost:4200';
   let apiKey = process.env.ENGRAM_API_KEY || '';
   if (!apiKey) {
     try { apiKey = execSync('cred get engram api-key-claude --raw', { stdio: ['pipe', 'pipe', 'pipe'] }).toString().trim(); }

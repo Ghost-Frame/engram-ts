@@ -18,8 +18,8 @@ import type { BrainCommand, BrainResponse, BrainQueryResult, BrainStats } from "
 const BRAIN_BACKEND: string = process.env.ENGRAM_BRAIN_BACKEND || "rust";
 const EXE_SUFFIX = process.platform === "win32" ? ".exe" : "";
 
-const RUST_BINARY = `/home/zan/eidolon/rust/target/release/eidolon${EXE_SUFFIX}`;
-const CPP_BINARY = `/home/zan/eidolon/cpp/build/eidolon${EXE_SUFFIX}`;
+const RUST_BINARY = process.env.ENGRAM_BRAIN_RUST_BIN || `eidolon${EXE_SUFFIX}`;
+const CPP_BINARY = process.env.ENGRAM_BRAIN_CPP_BIN || `eidolon-cpp${EXE_SUFFIX}`;
 
 const REQUEST_TIMEOUT_MS = 30000;
 const MAX_RESTART_ATTEMPTS = 3;

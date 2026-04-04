@@ -1061,15 +1061,15 @@ Expected: Log shows `artifact_encryption: disabled` and no errors. Stop with Ctr
 
 ```bash
 git bundle create /tmp/engram-artifact-search-enc.bundle HEAD
-scp /tmp/engram-artifact-search-enc.bundle hetzner-zan:/home/zan/engram/
-ssh hetzner-zan "cd /home/zan/engram && git fetch engram-artifact-search-enc.bundle HEAD:incoming && git merge incoming && systemctl --user restart engram"
+scp /tmp/engram-artifact-search-enc.bundle <deployment-host>:/opt/engram/
+ssh <deployment-host> "cd /opt/engram && git fetch engram-artifact-search-enc.bundle HEAD:incoming && git merge incoming && systemctl --user restart engram"
 ```
 
 - [ ] **Step 4: Verify deployment**
 
 ```bash
-ssh hetzner-zan "curl -s http://localhost:4200/health | head -c 200"
-ssh hetzner-zan "journalctl --user -u engram --no-pager -n 20"
+ssh <deployment-host> "curl -s http://localhost:4200/health | head -c 200"
+ssh <deployment-host> "journalctl --user -u engram --no-pager -n 20"
 ```
 
 Check for `artifact_encryption: disabled` in logs and no errors.

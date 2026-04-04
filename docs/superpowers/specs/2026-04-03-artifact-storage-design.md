@@ -70,7 +70,7 @@ Content-addressable. Same file never stored twice. Nested by prefix to avoid one
 **Option 2 - JSON with base64:**
 ```json
 {
-  "content": "Generated nginx config for bav-apps",
+  "content": "Generated nginx config for example-server",
   "category": "task",
   "source": "claude-code",
   "artifacts": [
@@ -108,7 +108,7 @@ Both paths store the memory and all artifacts in a single write-lock transaction
 ```json
 {
   "id": 12345,
-  "content": "Generated nginx config for bav-apps",
+  "content": "Generated nginx config for example-server",
   "score": 0.87,
   "artifacts": [
     {"id": 1, "filename": "nginx.conf", "mime_type": "text/plain", "size_bytes": 2048}

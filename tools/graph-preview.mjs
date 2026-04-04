@@ -16,7 +16,7 @@ import { execSync } from 'child_process';
  *   --height <n>       Viewport height (default: 1080)
  *   --wait <ms>        Wait time after load for simulation to settle (default: 4000)
  *   --mock             Use built-in mock data instead of real API
- *   --api <url>        Engram API base URL (default: $ENGRAM_URL or http://100.64.0.13:4200)
+ *   --api <url>        Engram API base URL (default: $ENGRAM_URL or http://localhost:4200)
  *   --api-key <key>    Engram API key (default: $ENGRAM_API_KEY)
  *   --zoom <level>     Zoom level: "fit", "close", "detail" (default: fit)
  *   --region <x,y,w,h> Capture specific region (CSS pixels)
@@ -51,7 +51,7 @@ const config = {
   height: parseInt(getArg('height', '1080')),
   wait: parseInt(getArg('wait', '4000')),
   useMock: hasFlag('mock'),
-  apiUrl: getArg('api', process.env.ENGRAM_URL || 'http://100.64.0.13:4200'),
+  apiUrl: getArg('api', process.env.ENGRAM_URL || 'http://localhost:4200'),
   apiKey: getArg('api-key', process.env.ENGRAM_API_KEY || (() => { try { return execSync('cred get engram api-key-claude --raw', { stdio: ['pipe', 'pipe', 'pipe'] }).toString().trim(); } catch { return ''; } })()),
   zoom: getArg('zoom', 'fit'),
   region: getArg('region', null),

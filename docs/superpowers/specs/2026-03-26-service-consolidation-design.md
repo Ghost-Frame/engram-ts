@@ -153,7 +153,7 @@ Once all services are co-located, Broca's `/ask` NL query gateway becomes dramat
 3. Wire routes into `src/services/index.ts` and Engram's `fetchHandler`
 4. One-time data migration script: copy rows from standalone `.db` files
 5. Add MCP tools: `thymus_evaluate`, `task_create`, `task_update`, `agent_register`, `agent_heartbeat`
-6. Decommission 3 systemd services on zan-hetzner
+6. Decommission 3 systemd services on <deployment-host>
 7. Update all agent configs to point at Engram instead of standalone services
 
 **Axon stub:** Until Phase 2, internal events are logged but not published. Services that previously called Axon will call a no-op `publish()` stub.

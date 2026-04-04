@@ -413,7 +413,7 @@ CMD ["node", "server.js"]
 
 ### Registration
 
-Registered in Pangolin dashboard as a site pointing to the container's port on zan-hetzner. Domain TBD (likely `gui.engram.lol` or `app.engram.lol/gui`).
+Registered in Pangolin dashboard as a site pointing to the container's port on <deployment-host>. Domain TBD (likely `gui.engram.lol` or `app.engram.lol/gui`).
 
 ---
 

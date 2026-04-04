@@ -23,7 +23,7 @@
     },
     {
       "id": "m12",
-      "label": "Forge Box (94.156.152.50): 12-core Intel Xeon Gold",
+      "label": "Build Server (203.0.113.3): 12-core Intel Xeon Gold",
       "category": "state",
       "importance": 5,
       "source": "opencode@Zanverse"
@@ -58,7 +58,7 @@
     },
     {
       "id": "m28",
-      "label": "Nextcloud external storage mount of /home/zan is F",
+      "label": "Nextcloud external storage mount of /home/user is F",
       "category": "task",
       "importance": 5,
       "source": "unknown"
@@ -135,7 +135,7 @@
     },
     {
       "id": "m52",
-      "label": "Builder audit completed (2026-03-07): /home/zan/ba",
+      "label": "Builder audit completed (2026-03-07): /home/user/ba",
       "category": "discovery",
       "importance": 5,
       "source": "opencode@Verse"
@@ -191,7 +191,7 @@
     },
     {
       "id": "m66",
-      "label": "Zanverse Pangolin VPS (46.225.188.154, Debian 13) ",
+      "label": "Reverse Proxy VPS (203.0.113.4, Debian 13) ",
       "category": "state",
       "importance": 5,
       "source": "opencode@Verse"
@@ -205,35 +205,35 @@
     },
     {
       "id": "m68",
-      "label": "OVH VPS hosting zanverse.lol — IP: 40.160.252.134,",
+      "label": "OVH VPS hosting zanverse.lol — IP: 203.0.113.1,",
       "category": "state",
       "importance": 5,
       "source": "opencode@Verse"
     },
     {
       "id": "m71",
-      "label": "OVH VPS FULL AUDIT (40.160.252.134, vps-6b7824f3) ",
+      "label": "OVH VPS FULL AUDIT (203.0.113.1, vps-6b7824f3) ",
       "category": "state",
       "importance": 5,
       "source": "opencode@Verse"
     },
     {
       "id": "m73",
-      "label": "OVH VPS LISTENING PORTS (40.160.252.134) — 2026-03",
+      "label": "OVH VPS LISTENING PORTS (203.0.113.1) — 2026-03",
       "category": "state",
       "importance": 5,
       "source": "opencode@Verse"
     },
     {
       "id": "m74",
-      "label": "OVH VPS CRON JOBS + KEY PATHS (40.160.252.134) — 2",
+      "label": "OVH VPS CRON JOBS + KEY PATHS (203.0.113.1) — 2",
       "category": "state",
       "importance": 5,
       "source": "opencode@Verse"
     },
     {
       "id": "m76",
-      "label": "ZANVERSE-INSTRUCTIONS.md found at /home/zan/ZANVER",
+      "label": "ZANVERSE-INSTRUCTIONS.md found at /home/user/ZANVER",
       "category": "discovery",
       "importance": 5,
       "source": "opencode@Verse"
@@ -247,7 +247,7 @@
     },
     {
       "id": "m78",
-      "label": "OVH VPS (40.160.252.134) has a LOCAL Headscale pod",
+      "label": "OVH VPS (203.0.113.1) has a LOCAL Headscale pod",
       "category": "issue",
       "importance": 5,
       "source": "opencode@Verse"
@@ -310,7 +310,7 @@
     },
     {
       "id": "m96",
-      "label": "OVH VPS monitoring agents (100.64.0.9 / 40.160.252",
+      "label": "OVH VPS monitoring agents (203.0.113.2 / 203.0.113.",
       "category": "state",
       "importance": 5,
       "source": "opencode@Verse"

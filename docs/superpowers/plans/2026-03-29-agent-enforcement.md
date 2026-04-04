@@ -366,7 +366,7 @@ ssh rocky "cd ~/eidolon && cargo build --release && sudo systemctl restart eidol
 
 Submit a test task and check Axon for the agent.online event:
 ```bash
-ENGRAM_URL=http://100.64.0.13:4200
+ENGRAM_URL=http://<server-ip>:4200
 ENGRAM_API_KEY=$(cat ~/.engram/config.json | python3 -c "import sys,json; print(json.load(sys.stdin).get('apiKey',''))")
 
 curl -s "$ENGRAM_URL/axon/events?limit=5" \
@@ -390,13 +390,13 @@ ssh rocky "cd ~/eidolon && git add eidolon-daemon/src/routes/tasks.rs && git com
 
 ---
 
-## Task 5: Deploy Eidolon to zan-hetzner
+## Task 5: Deploy Eidolon to the production host
 
-The same binary runs on both Rocky (7701) and zan-hetzner (7700). After tasks 1-4 pass on Rocky, deploy to zan-hetzner.
+The same binary runs on both Rocky (7701) and the production host (7700). After tasks 1-4 pass on Rocky, deploy to the production host.
 
 **Files:**
 - `~/eidolon/` on Rocky (build source)
-- `/usr/local/bin/eidolon-daemon` on zan-hetzner (deployment target)
+- `/usr/local/bin/eidolon-daemon` on `<deployment-host>` (deployment target)
 
 - [ ] **Step 1: Build release binary on Rocky**
 
@@ -406,25 +406,25 @@ ssh rocky "cd ~/eidolon && cargo build --release 2>&1 | tail -5"
 
 Expected: `Compiling eidolon-daemon` ... `Finished release`
 
-- [ ] **Step 2: Copy binary to zan-hetzner**
+- [ ] **Step 2: Copy binary to the production host**
 
 ```bash
-ssh rocky "scp ~/eidolon/target/release/eidolon-daemon hetzner-zan:/tmp/eidolon-daemon-new"
+ssh rocky "scp ~/eidolon/target/release/eidolon-daemon <deployment-host>:/tmp/eidolon-daemon-new"
 ```
 
-- [ ] **Step 3: Install and restart on zan-hetzner**
+- [ ] **Step 3: Install and restart on the production host**
 
 ```bash
-ssh hetzner-zan "sudo cp /tmp/eidolon-daemon-new /usr/local/bin/eidolon-daemon && sudo chmod +x /usr/local/bin/eidolon-daemon && sudo systemctl restart eidolon-daemon && sleep 2 && systemctl is-active eidolon-daemon"
+ssh <deployment-host> "sudo cp /tmp/eidolon-daemon-new /usr/local/bin/eidolon-daemon && sudo chmod +x /usr/local/bin/eidolon-daemon && sudo systemctl restart eidolon-daemon && sleep 2 && systemctl is-active eidolon-daemon"
 ```
 
 Expected: `active`
 
-- [ ] **Step 4: Verify gate/complete is live on zan-hetzner**
+- [ ] **Step 4: Verify gate/complete is live on the production host**
 
 ```bash
 EIDOLON_KEY=$(~/.local/bin/cred get eidolon hetzner-key --field key --raw 2>/dev/null || echo "")
-curl -s -X POST http://100.64.0.13:7700/gate/complete \
+curl -s -X POST http://<server-ip>:7700/gate/complete \
   -H "Authorization: Bearer $EIDOLON_KEY" \
   -H "Content-Type: application/json" \
   -d '{"session_id": "test", "summary": ""}'
@@ -493,13 +493,13 @@ git add src/routes/tasks.ts
 git commit -m "feat: require non-blank summary when completing tasks"
 ```
 
-- [ ] **Step 5: Deploy to zan-hetzner**
+- [ ] **Step 5: Deploy to the production host**
 
 ```bash
-ssh hetzner-zan "cd ~/chiasm && git pull && bun install && sudo systemctl restart chiasm && sleep 2 && systemctl is-active chiasm"
+ssh <deployment-host> "cd ~/chiasm && git pull && bun install && sudo systemctl restart chiasm && sleep 2 && systemctl is-active chiasm"
 ```
 
-> Note: Adjust the deploy command to match the actual Chiasm deployment setup on zan-hetzner (check `systemctl cat chiasm` if unsure).
+> Note: Adjust the deploy command to match the actual Chiasm deployment setup on the production host (check `systemctl cat chiasm` if unsure).
 
 ---
 
@@ -668,9 +668,9 @@ git commit -m "feat: add session-end hook for Engram store and Chiasm completion
 - [x] Axon auto-registration on agent spawn → Task 4
 - [x] Chiasm hard 400 on blank summary → Task 6
 - [x] Session-end hook for Claude Code → Task 7
-- [x] Deployed to both Rocky and zan-hetzner → Task 5
+- [x] Deployed to both Rocky and the production host → Task 5
 
 **Notes for executor:**
 - Find the exact variable names in `tasks.rs` before writing Task 4 code  -  run `grep -n 'agent\|session_id\|create_session' ~/eidolon/eidolon-daemon/src/routes/tasks.rs` first
-- Chiasm deployment in Task 6 Step 5  -  verify actual service name and deploy path with `systemctl cat chiasm` on zan-hetzner before restarting
+- Chiasm deployment in Task 6 Step 5  -  verify actual service name and deploy path with `systemctl cat chiasm` on the production host before restarting
 - The `engram-cli recall` command in the session-end hook  -  verify the exact flags with `engram-cli recall --help` before writing the hook
