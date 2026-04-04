@@ -6,7 +6,7 @@
 
 Memory, personality, reasoning, and trust in a single self-hosted system that learns, forgets, and grows.
 
-[![Version](https://img.shields.io/badge/version-5.11.0-gold.svg)](CHANGELOG.md) [![License](https://img.shields.io/badge/License-Elastic--2.0-blue.svg)](LICENSE) [![Node](https://img.shields.io/badge/node-%3E%3D22-green.svg)](https://nodejs.org) [![Docker](https://img.shields.io/badge/docker-compose-blue.svg)](docker-compose.yml)
+[![Version](https://img.shields.io/badge/version-6.0.0-gold.svg)](CHANGELOG.md) [![License](https://img.shields.io/badge/License-Elastic--2.0-blue.svg)](LICENSE) [![Node](https://img.shields.io/badge/node-%3E%3D22-green.svg)](https://nodejs.org) [![Docker](https://img.shields.io/badge/docker-compose-blue.svg)](docker-compose.yml)
 
 </div>
 
@@ -42,7 +42,7 @@ Detects contradictions between stored facts. Generates reflections. Derives new 
 
 Execution signing, guardrails, trust scoring, and full audit trails. Every record has provenance. Every action can be verified.
 
-### Orchestration (v5.11.0 - Syntheos)
+### Orchestration (v6.0.0 - Syntheos)
 
 Seven standalone microservices absorbed into Engram as native modules. Agent registry (Soma), task tracking (Chiasm), event bus (Axon), workflow orchestration (Loom), quality evaluation (Thymus), action logging (Broca), and structural analysis (OpenSpace). Same database, same auth, zero new dependencies.
 

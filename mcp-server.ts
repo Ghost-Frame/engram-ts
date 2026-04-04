@@ -47,7 +47,7 @@ async function engramWithTimeout(path: string, method = "GET", body?: unknown, t
 }
 
 const server = new Server(
-  { name: "engram", version: "5.11.0" },
+  { name: "engram", version: "6.0.0" },
   { capabilities: { tools: {} } },
 );
 
