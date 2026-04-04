@@ -6,7 +6,7 @@
 import "./src/tracing.ts";
 import { createServer } from "http";
 
-import { PORT, HOST, PKG_VERSION, CORS_ORIGIN, OPEN_ACCESS } from "./src/config/index.ts";
+import { PORT, HOST, PKG_VERSION, CORS_ORIGIN, OPEN_ACCESS, ARTIFACT_ENCRYPTION_KEY } from "./src/config/index.ts";
 import { log } from "./src/config/logger.ts";
 import { createRouter } from "./src/router/index.ts";
 import { createAuthMiddleware } from "./src/middleware/auth.ts";
@@ -36,6 +36,23 @@ setWebhookEmitter((userId, event, payload) => emitWebhookEvent(userId, event, pa
 
 await initEmbedder();
 await initReranker();
+
+// Artifact encryption (try cred first, fall back to env var)
+{
+  const { initEncryption } = await import("./src/artifacts/encryption.ts");
+  let encKey = "";
+  try {
+    const { execSync } = await import("node:child_process");
+    encKey = execSync("cred get engram artifact-encryption-key --raw", { timeout: 3000 }).toString().trim();
+  } catch {}
+  if (!encKey) encKey = ARTIFACT_ENCRYPTION_KEY;
+  try {
+    initEncryption(encKey);
+  } catch (e: any) {
+    log.error({ msg: "artifact_encryption_key_invalid", error: e.message });
+    process.exit(1);
+  }
+}
 
 // WAL checkpoint at startup
 try {
