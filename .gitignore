@@ -88,6 +88,9 @@ grafana/
 .env.local
 docker-compose.local.yml
 
+# Local hook blocklist (private patterns)
+.githooks/.blocklist
+
 # Tool/plugin state
 .claire/
 .playwright-mcp/
