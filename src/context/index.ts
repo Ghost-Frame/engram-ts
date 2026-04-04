@@ -385,6 +385,7 @@ export async function assembleContext(
     if ((c as any).user_id === userId) embMap.set(c.id, c);
   }
   const blockEmbeddings: Float32Array[] = [];
+  const memLookupCache = new Map<number, any>();
 
   const isDuplicate = (memId: number): boolean => {
     const cached = embMap.get(memId);
@@ -473,6 +474,7 @@ export async function assembleContext(
       model: r.model || null, origin: r.source || null,
     });
     // Attach parent_id for fact grouping in assembly
+    // Cache the lookup so the evolution phase below doesn't re-fetch
     const memForFact = deps.getMemoryWithoutEmbedding(r.id);
     if (memForFact?.is_fact && memForFact.parent_memory_id) {
       blocks[blocks.length - 1].parent_id = memForFact.parent_memory_id;
@@ -481,6 +483,8 @@ export async function assembleContext(
     usedTokens += tokens;
     const cachedEmb = embMap.get(r.id);
     if (cachedEmb) blockEmbeddings.push(cachedEmb.embedding);
+    // Store in local cache for reuse in evolution phase
+    if (memForFact) memLookupCache.set(r.id, memForFact);
   }
 
   timing.semantic_ms = Date.now() - t0 - Object.values(timing).reduce((a: number, b) => a + (b || 0), 0);
@@ -491,7 +495,7 @@ export async function assembleContext(
     const semanticBlocksForEvolution = blocks.filter(b => b.source === "semantic").slice(0, 8);
     for (const b of semanticBlocksForEvolution) {
       if (usedTokens >= tokenBudget * 0.72) break;
-      const mem = deps.getMemoryWithoutEmbedding(b.id);
+      const mem = memLookupCache.get(b.id) || deps.getMemoryWithoutEmbedding(b.id);
       if (!mem) continue;
       const rootId = mem.root_memory_id || mem.id;
       const chain = deps.getVersionChain(rootId, userId);

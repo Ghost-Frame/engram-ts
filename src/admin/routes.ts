@@ -867,9 +867,12 @@ export function registerAdminRoutes(router: Router): void {
   // ==========================================================================
 
   // POST /admin/decompose-sweep -- retroactively decompose existing memories
+  // Runs in background, returns immediately with candidate count
+  let sweepRunning = false;
   router.post("/admin/decompose-sweep", async (req) => {
     const { auth, body } = getContext(req);
     if (!auth.is_admin) return errorResponse("Admin required", 403);
+    if (sweepRunning) return errorResponse("Sweep already in progress", 409);
 
     const b = body as any;
     const batch = Math.min(Number(b?.batch) || 50, 200);
@@ -887,38 +890,39 @@ export function registerAdminRoutes(router: Router): void {
        LIMIT ?`
     ).all(DECOMPOSITION_MIN_LENGTH, batch) as any[];
 
-    let processed = 0;
-    let factsCreated = 0;
+    // Process in background -- don't hold the HTTP connection
+    sweepRunning = true;
+    const candidateCount = candidates.length;
+    (async () => {
+      let processed = 0;
+      let factsCreated = 0;
+      for (const mem of candidates) {
+        try {
+          const count = await decomposeAndStore(mem.id, mem.content, {
+            category: mem.category,
+            source: mem.source,
+            userId: mem.user_id,
+            spaceId: mem.space_id,
+            importance: mem.importance,
+            episodeId: mem.episode_id,
+            tags: mem.tags,
+            sessionId: mem.session_id,
+          });
+          processed++;
+          factsCreated += count;
 
-    for (const mem of candidates) {
-      try {
-        const count = await decomposeAndStore(mem.id, mem.content, {
-          category: mem.category,
-          source: mem.source,
-          userId: mem.user_id,
-          spaceId: mem.space_id,
-          importance: mem.importance,
-          episodeId: mem.episode_id,
-          tags: mem.tags,
-          sessionId: mem.session_id,
-        });
-        processed++;
-        factsCreated += count;
-
-        // Rate limit between decompositions
-        if (rateLimit > 0) {
-          await new Promise(r => setTimeout(r, 1000 / rateLimit));
+          if (rateLimit > 0) {
+            await new Promise(r => setTimeout(r, 1000 / rateLimit));
+          }
+        } catch (e: any) {
+          log.warn({ msg: "decompose_sweep_item_failed", memory_id: mem.id, error: e.message });
         }
-      } catch (e: any) {
-        log.warn({ msg: "decompose_sweep_item_failed", memory_id: mem.id, error: e.message });
       }
-    }
+      log.info({ msg: "decompose_sweep_complete", processed, facts_created: factsCreated });
+      sweepRunning = false;
+    })();
 
-    const remaining = (db.prepare(
-      "SELECT COUNT(*) as count FROM memories WHERE is_decomposed = 0 AND is_fact = 0 AND is_archived = 0 AND is_forgotten = 0"
-    ).get() as { count: number }).count;
-
-    return json({ processed, facts_created: factsCreated, remaining });
+    return json({ status: "started", candidates: candidateCount, batch });
   });
 
   // GET /admin/decompose-status -- check decomposition progress

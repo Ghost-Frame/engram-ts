@@ -41,45 +41,52 @@ export function registerSearchRoutes(router: Router): void {
       const excludeFacts = body.exclude_facts === true;
       if (!query || typeof query !== "string") return errorResponse("query is required");
 
-      const effectiveLimit = source ? Math.min((limit || 10) * 5, 200) : Math.min(limit || 10, 50);
+      // Fetch more candidates when post-hoc filtering is active
+      const hasPostFilter = !!tag || !!filterEpisode || factsOnly || excludeFacts;
+      const baseLimit = Math.min(limit || 10, 50);
+      const effectiveLimit = source ? Math.min(baseLimit * 5, 200)
+        : hasPostFilter ? Math.min(baseLimit * 5, 200)
+        : baseLimit;
       const _searchT1 = performance.now();
       let results = await hybridSearch(
         query, effectiveLimit, include_links || false, expand_relationships ?? true,
         latest_only ?? true, auth.user_id,
         vector_floor != null ? Number(vector_floor) : undefined, null, source || undefined,
       );
-      if (source) results = results.slice(0, Math.min(limit || 10, 50));
+      if (source) results = results.slice(0, baseLimit);
 
       const _searchT2 = performance.now();
       log.info({ msg: "search_timing", phase: "hybridSearch", ms: (_searchT2 - _searchT1).toFixed(1) });
 
+      // Cache memory lookups to avoid repeated DB hits per result
+      const memCache = new Map<number, any>();
+      const getMem = (id: number) => {
+        let m = memCache.get(id);
+        if (m === undefined) { m = getMemoryWithoutEmbedding.get(id) ?? null; memCache.set(id, m); }
+        return m;
+      };
+
       if (tag) {
         results = results.filter(r => {
-          const mem = getMemoryWithoutEmbedding.get(r.id) as any;
+          const mem = getMem(r.id);
           if (!mem?.tags) return false;
           try { return JSON.parse(mem.tags).includes(tag); } catch { return false; }
         });
       }
 
       if (filterEpisode) {
-        results = results.filter(r => {
-          const mem = getMemoryWithoutEmbedding.get(r.id) as any;
-          return mem?.episode_id === filterEpisode;
-        });
+        results = results.filter(r => getMem(r.id)?.episode_id === filterEpisode);
       }
 
       if (factsOnly) {
-        results = results.filter(r => {
-          const mem = getMemoryWithoutEmbedding.get(r.id) as any;
-          return mem?.is_fact === 1;
-        });
+        results = results.filter(r => getMem(r.id)?.is_fact === 1);
       }
       if (excludeFacts) {
-        results = results.filter(r => {
-          const mem = getMemoryWithoutEmbedding.get(r.id) as any;
-          return !mem?.is_fact;
-        });
+        results = results.filter(r => !getMem(r.id)?.is_fact);
       }
+
+      // Trim to requested limit after post-filters
+      if (hasPostFilter) results = results.slice(0, baseLimit);
 
       const explicitOff = body.rerank === false;
       if (!explicitOff && RERANKER_ENABLED && isRerankerReady() && results.length > 3) {
@@ -108,7 +115,7 @@ export function registerSearchRoutes(router: Router): void {
       if (body.include_episodes) {
         const seenEpisodes = new Set<number>();
         for (const r of results) {
-          const mem = getMemoryWithoutEmbedding.get(r.id) as any;
+          const mem = getMem(r.id);
           const epId = mem?.episode_id;
           if (epId && !seenEpisodes.has(epId)) {
             seenEpisodes.add(epId);
@@ -146,7 +153,7 @@ export function registerSearchRoutes(router: Router): void {
 
       // Enrich with fact metadata
       for (const r of explainResults) {
-        const mem = getMemoryWithoutEmbedding.get(r.id) as any;
+        const mem = getMem(r.id);
         if (mem?.is_fact) {
           (r as any).is_fact = true;
           (r as any).parent_id = mem.parent_memory_id;
@@ -235,15 +242,17 @@ export function registerSearchRoutes(router: Router): void {
         }
       } catch {}
 
-      // Enrich recall results with artifact metadata
+      // Enrich recall results with artifact and fact metadata
       const recallMemories = sorted.map(s => {
         const arts = getArtifactsByMemory.all(s.memory.id) as Array<{ id: number; filename: string; mime_type: string; size_bytes: number }>;
+        const mem = getMemoryWithoutEmbedding.get(s.memory.id) as any;
         return {
           ...s.memory,
           recall_source: s.source,
           recall_score: Math.round(s.score * 100) / 100,
           tags: s.memory.tags ? (() => { try { return JSON.parse(s.memory.tags); } catch { return []; } })() : [],
           artifacts: arts.map(({ id, filename, mime_type, size_bytes }) => ({ id, filename, mime_type, size_bytes })),
+          ...(mem?.is_fact ? { is_fact: true, parent_id: mem.parent_memory_id } : {}),
         };
       });
 
