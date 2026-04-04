@@ -16,7 +16,7 @@ import {
   DECAY_FLOOR,
   PAGERANK_WEIGHT,
 } from "../config/index.ts";
-import { db, searchMemoriesFTS, getMemoryWithoutEmbedding, getVersionChainForUser, getLinksForUser, getLinksForUserBatch, getVersionChainBatch, insertLink } from "../db/index.ts";
+import { db, searchMemoriesFTS, getMemoryWithoutEmbedding, getVersionChainForUser, getLinksForUser, getLinksForUserBatch, getVersionChainBatch, insertLink, searchArtifactsFTS, getArtifactMemoryId } from "../db/index.ts";
 import { embed, cosineSimilarity, getCachedEmbeddings, embeddingToVectorJSON, shouldUseANN, annSearch } from "../embeddings/index.ts";
 import { calculateDecayScore, fsrsRetrievability, fsrsInitialStability, FSRSRating } from "../fsrs/index.ts";
 import { sanitizeFTS } from "../helpers/index.ts";
@@ -559,6 +559,7 @@ export async function hybridSearch(
   const ftsRanked: Array<{ id: number; rawScore: number }> = [];
   const personalityRanked: Array<{ id: number; rawScore: number }> = [];
   const graphRanked: Array<{ id: number; rawScore: number }> = [];
+  const artifactFtsRanked: Array<{ id: number; rawScore: number }> = [];
 
   // 1. Vector search - in-memory cosine scan with event-loop yields
   // NOTE: vector_top_k SQLite index disabled - it does a synchronous full-table scan
@@ -672,6 +673,48 @@ export async function hybridSearch(
   // FTS results already ranked by BM25 rank (fts_rank) from SQLite, preserve order
   // ftsRanked is already in descending relevance order from FTS5
 
+  // 2b. Artifact FTS5 content search
+  if (sanitized) {
+    try {
+      const artifactHits = searchArtifactsFTS.all(sanitized, Math.min(candidateTarget, 50)) as Array<{
+        rowid: number;
+        rank: number;
+      }>;
+
+      for (const ah of artifactHits) {
+        const memRow = getArtifactMemoryId.get(ah.rowid) as { memory_id: number } | undefined;
+        if (!memRow) continue;
+        const memId = memRow.memory_id;
+
+        artifactFtsRanked.push({ id: memId, rawScore: Math.abs(ah.rank) });
+
+        if (!results.has(memId)) {
+          const mem = getMemoryWithoutEmbedding.get(memId) as any;
+          if (mem && !mem.is_forgotten) {
+            if (mem.user_id !== userId) continue;
+            if (latestOnly && !mem.is_latest) continue;
+            if (sourceFilter && (!mem.source || !mem.source.includes(sourceFilter))) continue;
+            results.set(memId, {
+              id: memId,
+              content: mem.content,
+              category: mem.category,
+              source: mem.source,
+              model: mem.model || undefined,
+              importance: mem.importance,
+              created_at: mem.created_at,
+              score: 0,
+              version: mem.version,
+              is_latest: !!mem.is_latest,
+              is_static: !!mem.is_static,
+              source_count: mem.source_count || 1,
+              root_memory_id: mem.root_memory_id,
+            });
+          }
+        }
+      }
+    } catch {}
+  }
+
   // 3. Personality signal supplementation
   if (strategy.includePersonalitySignals) {
     const personalityResults = await searchPersonalitySignals(query, userId, latestOnly, strategy.personalityLimit);
@@ -713,6 +756,8 @@ export async function hybridSearch(
   const ftsScoreMap = new Map<number, number>(ftsRanked.map(r => [r.id, r.rawScore]));
   const personalityScoreMap = new Map<number, number>(personalityRanked.map(r => [r.id, r.rawScore]));
   const graphScoreMap = new Map<number, number>();
+  const artifactFtsSet = new Set(artifactFtsRanked.map(r => r.id));
+  const artifactFtsScoreMap = new Map<number, number>(artifactFtsRanked.map(r => [r.id, r.rawScore]));
 
   for (let rank = 0; rank < vectorRanked.length; rank++) {
     const id = vectorRanked[rank].id;
@@ -724,6 +769,10 @@ export async function hybridSearch(
   }
   for (let rank = 0; rank < personalityRanked.length; rank++) {
     const id = personalityRanked[rank].id;
+    rrfScores.set(id, (rrfScores.get(id) || 0) + 1 / (RRF_K + rank + 1));
+  }
+  for (let rank = 0; rank < artifactFtsRanked.length; rank++) {
+    const id = artifactFtsRanked[rank].id;
     rrfScores.set(id, (rrfScores.get(id) || 0) + 1 / (RRF_K + rank + 1));
   }
 
@@ -950,6 +999,7 @@ export async function hybridSearch(
     if (ftsSet.has(r.id)) { channels.push("fts"); r.fts_score = Math.round((ftsScoreMap.get(r.id) || 0) * 1000) / 1000; }
     if (personalitySet.has(r.id)) { channels.push("personality"); r.personality_signal_score = Math.max(r.personality_signal_score || 0, Math.round((personalityScoreMap.get(r.id) || 0) * 1000) / 1000); }
     if (graphSet.has(r.id)) { channels.push("graph"); r.graph_score = Math.round((graphScoreMap.get(r.id) || 0) * 1000) / 1000; }
+    if (artifactFtsSet.has(r.id)) { channels.push("artifact_fts"); (r as any).artifact_fts_score = Math.round((artifactFtsScoreMap.get(r.id) || 0) * 1000) / 1000; }
     r._channels = channels;
   }
 
