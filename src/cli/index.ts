@@ -373,7 +373,7 @@ async function cmdHealth(cfg: Config) {
   const statusStr = String(status).toLowerCase() === "ok" || String(status).toLowerCase() === "healthy"
     ? green("OK")
     : red(String(status));
-  process.stdout.write(`Engram v${version} -- ${statusStr}\n`);
+  process.stdout.write(`Engram v${version} - ${statusStr}\n`);
 }
 
 async function cmdStats(cfg: Config) {
@@ -510,7 +510,7 @@ async function cmdIngest(cfg: Config, args: string[], opts: Record<string, strin
         ? eventsResult
         : ((eventsResult as Record<string, unknown>)["events"] as unknown[] ?? []);
     } catch {
-      // transient error -- keep polling
+      // transient error - keep polling
       continue;
     }
 
@@ -548,7 +548,7 @@ async function cmdIngest(cfg: Config, args: string[], opts: Record<string, strin
 // Help text
 // ---------------------------------------------------------------------------
 function showHelp() {
-  process.stdout.write(`${bold("engram-cli")} -- Engram Memory System CLI
+  process.stdout.write(`${bold("engram-cli")} - Engram Memory System CLI
 
 ${bold("Usage:")} engram-cli <command> [options]
 

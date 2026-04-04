@@ -1,5 +1,5 @@
 // ============================================================================
-// EMOTIONAL VALENCE — Sentiment/affect tracking
+// EMOTIONAL VALENCE - Sentiment/affect tracking
 // Nobody in the AI memory space tracks emotional context.
 //
 // Each memory gets valence (-1 to +1), arousal (0 to 1), and dominant emotion.
@@ -10,7 +10,7 @@
 import { db, updateValence } from "../db/index.ts";
 import { log } from "../config/logger.ts";
 
-// Emotion lexicon — fast regex-based detection (no LLM needed)
+// Emotion lexicon - fast regex-based detection (no LLM needed)
 const EMOTION_PATTERNS: Array<{ pattern: RegExp; emotion: string; valence: number; arousal: number }> = [
   // Negative high arousal
   { pattern: /\b(furious|enraged|livid|outraged)\b/i, emotion: "anger", valence: -0.9, arousal: 0.9 },
@@ -56,7 +56,7 @@ export interface ValenceResult {
 }
 
 /**
- * analyzeValence — Fast regex-based emotion detection.
+ * analyzeValence - Fast regex-based emotion detection.
  * Returns aggregate valence/arousal from all matched patterns.
  */
 export function analyzeValence(content: string): ValenceResult {
@@ -91,7 +91,7 @@ export function analyzeValence(content: string): ValenceResult {
 }
 
 /**
- * storeValence — Analyze and persist valence for a memory.
+ * storeValence - Analyze and persist valence for a memory.
  */
 export function storeValence(memoryId: number, content: string): ValenceResult {
   const result = analyzeValence(content);
@@ -102,7 +102,7 @@ export function storeValence(memoryId: number, content: string): ValenceResult {
 }
 
 /**
- * queryByEmotion — Find memories by emotional state.
+ * queryByEmotion - Find memories by emotional state.
  */
 export function queryByEmotion(
   emotion: string,
@@ -118,7 +118,7 @@ export function queryByEmotion(
 }
 
 /**
- * getEmotionalProfile — Aggregate emotional stats for a user.
+ * getEmotionalProfile - Aggregate emotional stats for a user.
  */
 export function getEmotionalProfile(userId: number = 1): any {
   const stats = db.prepare(

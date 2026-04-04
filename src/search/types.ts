@@ -1,5 +1,5 @@
 // ============================================================================
-// SEARCH DOMAIN -- Type definitions and constants
+// SEARCH DOMAIN - Type definitions and constants
 // ============================================================================
 
 /** Available search mode presets */

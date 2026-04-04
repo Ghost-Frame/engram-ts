@@ -1,5 +1,5 @@
 // ============================================================================
-// LOGGER — Structured JSON logging + operational counters
+// LOGGER - Structured JSON logging + operational counters
 // ============================================================================
 
 import { LOG_LEVEL } from "../config/index.ts";

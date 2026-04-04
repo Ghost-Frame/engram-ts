@@ -1,5 +1,5 @@
 // ============================================================================
-// CAUSAL CHAINS — Temporal cause-effect detection
+// CAUSAL CHAINS - Temporal cause-effect detection
 // Nobody else in the AI memory space does this.
 //
 // When you store "deployed X" → "X crashed" → "fixed X with Y",
@@ -13,7 +13,7 @@ import { db, insertCausalChain, insertCausalLink, getCausalChainForMemory, getCa
 import { log } from "../config/logger.ts";
 import { embed, cosineSimilarity, bufferToEmbedding } from "../embeddings/index.ts";
 
-// Causal signal patterns — verbs/phrases that indicate cause-effect
+// Causal signal patterns - verbs/phrases that indicate cause-effect
 const CAUSAL_TRIGGERS = [
   /\b(because|caused by|due to|as a result of|triggered by|led to|resulted in)\b/i,
   /\b(after|then|next|consequently|therefore|so|thus)\b/i,
@@ -21,7 +21,7 @@ const CAUSAL_TRIGGERS = [
   /\b(failed|succeeded|completed|started|stopped|killed|recovered)\b/i,
 ];
 
-// Temporal proximity threshold (hours) — events within this window may be causal
+// Temporal proximity threshold (hours) - events within this window may be causal
 const TEMPORAL_WINDOW_HOURS = 24;
 
 interface CausalCandidate {
@@ -33,7 +33,7 @@ interface CausalCandidate {
 }
 
 /**
- * detectCausalLinks — Called after a new memory is stored.
+ * detectCausalLinks - Called after a new memory is stored.
  * Looks for recent memories that form a causal sequence with this one.
  * 
  * Algorithm:
@@ -68,7 +68,7 @@ export async function detectCausalLinks(
   for (const mem of recentMemories) {
     const memEmb = bufferToEmbedding(mem.embedding);
     const sim = cosineSimilarity(embedding, memEmb);
-    if (sim > 0.4) { // lower threshold than auto-link — causal connections can be less semantically similar
+    if (sim > 0.4) { // lower threshold than auto-link - causal connections can be less semantically similar
       candidates.push({
         memory_id: mem.id,
         content: mem.content,
@@ -81,7 +81,7 @@ export async function detectCausalLinks(
 
   if (candidates.length === 0) return null;
 
-  // Sort by time (oldest first — we want the cause before the effect)
+  // Sort by time (oldest first - we want the cause before the effect)
   candidates.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
   // Check if any candidate is already in a chain
@@ -113,7 +113,7 @@ export async function detectCausalLinks(
 }
 
 /**
- * getCausalHistory — Given a query, find relevant causal chains.
+ * getCausalHistory - Given a query, find relevant causal chains.
  * Returns full causal stories, not just individual facts.
  */
 export async function getCausalHistory(

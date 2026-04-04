@@ -1,5 +1,5 @@
 // ============================================================================
-// WEBHOOKS DOMAIN -- Database prepared statements
+// WEBHOOKS DOMAIN - Database prepared statements
 // ============================================================================
 
 import { db } from "../db/connection.ts";

@@ -1,5 +1,5 @@
 // ============================================================================
-// Service barrel -- wires all consolidated Syntheos service routes
+// Service barrel - wires all consolidated Syntheos service routes
 // Import this once in src/routes/index.ts to enable all service endpoints.
 // ============================================================================
 

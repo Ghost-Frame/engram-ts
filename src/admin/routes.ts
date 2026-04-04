@@ -1,5 +1,5 @@
 // ============================================================================
-// ADMIN DOMAIN -- Route handlers
+// ADMIN DOMAIN - Route handlers
 // ============================================================================
 
 import type { Router } from "../router/types.ts";
@@ -44,7 +44,7 @@ import {
 export function registerAdminRoutes(router: Router): void {
 
   // ==========================================================================
-  // RE-EMBED -- re-embed all memories with current provider
+  // RE-EMBED - re-embed all memories with current provider
   // ==========================================================================
 
   router.post("/admin/reembed", async (req) => {
@@ -59,7 +59,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // EMBEDDING INFO -- current embedding configuration
+  // EMBEDDING INFO - current embedding configuration
   // ==========================================================================
 
   router.get("/admin/embedding-info", async (req) => {
@@ -74,7 +74,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // BACKFILL FACTS -- populate valid_at for existing facts
+  // BACKFILL FACTS - populate valid_at for existing facts
   // ==========================================================================
 
   router.post("/admin/backfill-facts", async (req) => {
@@ -89,7 +89,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // REBUILD COOCCURRENCES -- rebuild entity cooccurrence graph
+  // REBUILD COOCCURRENCES - rebuild entity cooccurrence graph
   // ==========================================================================
 
   router.post("/admin/rebuild-cooccurrences", async (req) => {
@@ -104,7 +104,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // DETECT COMMUNITIES -- Louvain community detection
+  // DETECT COMMUNITIES - Louvain community detection
   // ==========================================================================
 
   router.post("/admin/detect-communities", async (req) => {
@@ -119,7 +119,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // REBUILD FTS -- drop and rebuild full-text search index
+  // REBUILD FTS - drop and rebuild full-text search index
   // ==========================================================================
 
   router.post("/admin/rebuild-fts", async (req) => {
@@ -135,7 +135,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // REFRESH CACHE -- force reload embedding cache from DB
+  // REFRESH CACHE - force reload embedding cache from DB
   // ==========================================================================
 
   router.post("/admin/refresh-cache", async (req) => {
@@ -150,7 +150,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // COMPACT -- VACUUM + ANALYZE the database
+  // COMPACT - VACUUM + ANALYZE the database
   // ==========================================================================
 
   router.post("/admin/compact", async (req) => {
@@ -168,7 +168,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // MAINTENANCE -- toggle maintenance mode
+  // MAINTENANCE - toggle maintenance mode
   // ==========================================================================
 
   router.post("/admin/maintenance", async (req) => {
@@ -190,7 +190,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // SCALE REPORT -- scale tier assessment with recommendations
+  // SCALE REPORT - scale tier assessment with recommendations
   // ==========================================================================
 
   router.get("/admin/scale-report", async (req) => {
@@ -229,7 +229,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // COLD STORAGE -- memory access distribution and cold storage config
+  // COLD STORAGE - memory access distribution and cold storage config
   // ==========================================================================
 
   router.get("/admin/cold-storage", async (req) => {
@@ -260,7 +260,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // GC -- garbage collection
+  // GC - garbage collection
   // ==========================================================================
 
   router.post("/admin/gc", async (req) => {
@@ -276,7 +276,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // SCHEMA -- schema snapshot and drift detection
+  // SCHEMA - schema snapshot and drift detection
   // ==========================================================================
 
   router.get("/admin/schema", async (req) => {
@@ -302,7 +302,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // SLA -- SLA metrics and targets
+  // SLA - SLA metrics and targets
   // ==========================================================================
 
   router.get("/admin/sla", async (req) => {
@@ -351,7 +351,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // USAGE -- admin-wide usage metrics
+  // USAGE - admin-wide usage metrics
   // ==========================================================================
 
   router.get("/admin/usage", async (req) => {
@@ -365,7 +365,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // QUOTAS -- tenant quota management
+  // QUOTAS - tenant quota management
   // ==========================================================================
 
   router.get("/admin/quotas", async (req) => {
@@ -401,7 +401,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // TENANTS -- list all tenants with usage statistics
+  // TENANTS - list all tenants with usage statistics
   // ==========================================================================
 
   router.get("/admin/tenants", async (req) => {
@@ -412,7 +412,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // PROVIDERS -- LLM/embedding provider configuration
+  // PROVIDERS - LLM/embedding provider configuration
   // ==========================================================================
 
   router.get("/admin/providers", async (req) => {
@@ -519,7 +519,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // BACKUP -- download SQLite DB (consistent snapshot)
+  // BACKUP - download SQLite DB (consistent snapshot)
   // ==========================================================================
 
   router.get("/backup", async (req) => {
@@ -545,7 +545,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // BACKUP VERIFY -- run integrity checks on live database
+  // BACKUP VERIFY - run integrity checks on live database
   // ==========================================================================
 
   router.post("/backup/verify", async (req) => {
@@ -572,7 +572,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // EXPORT -- download all memories as JSON or JSONL
+  // EXPORT - download all memories as JSON or JSONL
   // ==========================================================================
 
   router.get("/export", async (req) => {
@@ -618,7 +618,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // IMPORT -- bulk import memories
+  // IMPORT - bulk import memories
   // ==========================================================================
 
   router.post("/import", async (req) => {
@@ -693,7 +693,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // RESET -- wipe user-scoped data (OPEN_ACCESS mode only)
+  // RESET - wipe user-scoped data (OPEN_ACCESS mode only)
   // ==========================================================================
 
   router.post("/reset", async (req) => {
@@ -823,7 +823,7 @@ export function registerAdminRoutes(router: Router): void {
   });
 
   // ==========================================================================
-  // STATE -- query and delete tracked key-value state
+  // STATE - query and delete tracked key-value state
   // ==========================================================================
 
   router.get("/state", async (req) => {

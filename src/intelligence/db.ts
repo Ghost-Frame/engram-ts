@@ -1,5 +1,5 @@
 // ============================================================================
-// INTELLIGENCE DOMAIN -- Database prepared statements
+// INTELLIGENCE DOMAIN - Database prepared statements
 // ============================================================================
 
 import { db } from "../db/connection.ts";

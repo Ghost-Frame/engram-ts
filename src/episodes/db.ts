@@ -1,5 +1,5 @@
 // ============================================================================
-// EPISODES DOMAIN -- Database prepared statements
+// EPISODES DOMAIN - Database prepared statements
 // ============================================================================
 
 import { db, embeddingToVectorJSON, VECTOR_COL } from "../db/connection.ts";

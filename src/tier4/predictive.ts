@@ -1,11 +1,11 @@
 // ============================================================================
-// PREDICTIVE RECALL — Proactive memory surfacing
+// PREDICTIVE RECALL - Proactive memory surfacing
 // Nobody in the AI memory space does pre-emptive recall.
 //
 // Instead of waiting for a query, this surfaces memories BEFORE asked
 // based on: time of day, day of week, project context, activity patterns.
 //
-// "It's Monday morning in the zanverse project — here's where you left
+// "It's Monday morning in the zanverse project - here's where you left
 // off Friday, issues that might need attention, and scheduled tasks."
 // ============================================================================
 
@@ -27,7 +27,7 @@ interface PredictiveContext {
 }
 
 /**
- * trackTemporalAccess — Record that a memory category was accessed at this time.
+ * trackTemporalAccess - Record that a memory category was accessed at this time.
  * Builds the temporal pattern database over time.
  */
 export function trackTemporalAccess(
@@ -41,12 +41,12 @@ export function trackTemporalAccess(
   try {
     insertTemporalPattern.run(userId, dow, hour, category, projectId);
   } catch (e) {
-    // Ignore — pattern tracking is best-effort
+    // Ignore - pattern tracking is best-effort
   }
 }
 
 /**
- * predictiveRecall — Generate proactive context for the current moment.
+ * predictiveRecall - Generate proactive context for the current moment.
  * Called at session start or periodically.
  */
 export function predictiveRecall(userId: number = 1): PredictiveContext {

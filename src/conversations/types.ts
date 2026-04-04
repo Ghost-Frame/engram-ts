@@ -1,5 +1,5 @@
 // ============================================================================
-// CONVERSATIONS DOMAIN -- Type definitions
+// CONVERSATIONS DOMAIN - Type definitions
 // ============================================================================
 
 export interface Conversation {

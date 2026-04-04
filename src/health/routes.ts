@@ -1,5 +1,5 @@
 // ============================================================================
-// HEALTH DOMAIN -- Route handlers (no auth required)
+// HEALTH DOMAIN - Route handlers (no auth required)
 // ============================================================================
 
 import type { Router } from "../router/types.ts";
@@ -21,12 +21,12 @@ import { securityHeaders } from "../helpers/index.ts";
 
 export function registerHealthRoutes(router: Router): void {
 
-  // GET /live -- liveness probe (no auth required)
+  // GET /live - liveness probe (no auth required)
   router.get("/live", async (_req) => {
     return json({ status: "ok" });
   });
 
-  // GET /ready -- readiness probe: DB writable, embedding model loaded, LLM reachable
+  // GET /ready - readiness probe: DB writable, embedding model loaded, LLM reachable
   router.get("/ready", async (_req) => {
     const checks: Record<string, boolean> = {};
     try { db.prepare("SELECT 1").get(); checks.db = true; } catch { checks.db = false; }
@@ -36,7 +36,7 @@ export function registerHealthRoutes(router: Router): void {
     return json({ status: ready ? "ready" : "degraded", checks }, ready ? 200 : 503);
   });
 
-  // GET /health -- full health check (optional auth: unauthenticated gets minimal response)
+  // GET /health - full health check (optional auth: unauthenticated gets minimal response)
   router.get("/health", async (req) => {
     log.debug({ msg: "req", method: "GET", path: "/health", status: 200, ip: getClientIp(req) });
     const healthAuth = getAuthOrDefault(req, guiAuthed);
@@ -49,7 +49,7 @@ export function registerHealthRoutes(router: Router): void {
     if (!isAuthed) {
       return json({ status: "ok", version: PKG_VERSION });
     }
-    // Full health for authenticated users -- tenant-scoped for non-admins
+    // Full health for authenticated users - tenant-scoped for non-admins
     const uid = healthAuth.user_id;
     const isAdmin = healthAuth.is_admin;
     const memWhere = isAdmin ? "" : " AND user_id = ?";
@@ -178,7 +178,7 @@ export function registerHealthRoutes(router: Router): void {
     });
   });
 
-  // GET /metrics -- prometheus-format metrics (no auth required)
+  // GET /metrics - prometheus-format metrics (no auth required)
   router.get("/metrics", async (_req) => {
     const stats = getJobStats();
     const memCount = db.prepare("SELECT COUNT(*) as c FROM memories WHERE is_forgotten = 0").get() as any;
@@ -268,14 +268,14 @@ export function registerHealthRoutes(router: Router): void {
     });
   });
 
-  // GET /openapi.json -- OpenAPI spec
+  // GET /openapi.json - OpenAPI spec
   router.get("/openapi.json", async (_req) => {
     return new Response(JSON.stringify(getOpenAPISpec(), null, 2), {
       headers: securityHeaders({ "Content-Type": "application/json" }),
     });
   });
 
-  // GET /api/examples -- API usage examples
+  // GET /api/examples - API usage examples
   router.get("/api/examples", async (_req) => {
     return json({
       description: "Example request/response pairs for Engram API endpoints",

@@ -1,5 +1,5 @@
 // ============================================================================
-// CONSOLIDATION — Auto-summarize memory clusters
+// CONSOLIDATION - Auto-summarize memory clusters
 // ============================================================================
 
 import { db, insertMemory, markArchived, insertLink, writeVec, getClusterMembers, getClusterCandidates } from "../db/index.ts";
@@ -10,16 +10,16 @@ import { embed, embeddingToBuffer } from "../embeddings/index.ts";
 import { autoLink } from "../memory/search.ts";
 
 // ============================================================================
-// MEMORY CONSOLIDATION — Auto-summarize large clusters
+// MEMORY CONSOLIDATION - Auto-summarize large clusters
 // ============================================================================
 
 const CONSOLIDATION_PROMPT = `You are a memory consolidation engine. Given a cluster of related memories, create a single concise summary that captures all key information.
 
 Rules:
 - Preserve ALL important facts, decisions, and specific values (versions, IPs, dates, names)
-- The summary should be self-contained — someone reading only the summary should understand the full picture
+- The summary should be self-contained - someone reading only the summary should understand the full picture
 - Keep it under 500 words
-- Format as clear, dense paragraphs — not bullet points
+- Format as clear, dense paragraphs - not bullet points
 - Include the most important specifics, not just generalizations
 
 Respond with ONLY a JSON object:

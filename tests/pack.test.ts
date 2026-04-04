@@ -5,7 +5,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 // ============================================================================
-// src/pack/index.ts -- exports and types
+// src/pack/index.ts - exports and types
 // ============================================================================
 
 describe("packMemories function", () => {
@@ -19,13 +19,13 @@ describe("PackFormat type values", () => {
   it("accepts text, json, xml as PackFormat", async () => {
     const { packMemories } = await import("../src/pack/index.ts");
     // Type-level: just verify the function exists and accepts these strings
-    // (runtime type-checking is trivial -- these are string literals in the module)
+    // (runtime type-checking is trivial - these are string literals in the module)
     assert.ok(packMemories);
   });
 });
 
 // ============================================================================
-// src/pack/routes.ts -- exports
+// src/pack/routes.ts - exports
 // ============================================================================
 
 describe("registerPackRoutes", () => {

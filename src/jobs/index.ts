@@ -1,5 +1,5 @@
 // ============================================================================
-// DURABLE JOB QUEUE -- DB-backed async processing with retries
+// DURABLE JOB QUEUE - DB-backed async processing with retries
 // Replaces fire-and-forget setTimeout patterns
 // ============================================================================
 
@@ -59,7 +59,7 @@ const cleanupStmt = db.prepare(
   `DELETE FROM jobs WHERE status = 'completed' AND completed_at < datetime('now', '-1 day')`
 );
 
-// Recover stuck jobs (claimed but never completed -- process crashed)
+// Recover stuck jobs (claimed but never completed - process crashed)
 const recoverStmt = db.prepare(
   `UPDATE jobs SET status = 'pending', claimed_at = NULL
    WHERE status = 'running' AND claimed_at < datetime('now', '-5 minutes')`

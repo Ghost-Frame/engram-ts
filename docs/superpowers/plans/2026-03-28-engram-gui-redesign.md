@@ -4,7 +4,7 @@
 
 **Goal:** Replace the current SvelteKit GUI with a standalone graph.html (raw Three.js + 3d-force-graph, zero framework) and a Next.js 15 app for CRUD pages, deployed as a single Docker container.
 
-**Architecture:** Two independent artifacts: (1) engram-gui/public/graph.html -- a single self-contained HTML file with inline JS using CDN-loaded Three.js and 3d-force-graph, (2) engram-gui/ -- a Next.js 15 App Router project with Tailwind CSS 4.
+**Architecture:** Two independent artifacts: (1) engram-gui/public/graph.html - a single self-contained HTML file with inline JS using CDN-loaded Three.js and 3d-force-graph, (2) engram-gui/ - a Next.js 15 App Router project with Tailwind CSS 4.
 
 **Tech Stack:**
 - Graph: Three.js r169 + 3d-force-graph 1.77.x from CDN (pinned). Vanilla JS. No build step.
@@ -39,7 +39,7 @@ The /graph?depth=N&max=N endpoint returns nodes with fields: id (mN/eN/pN), labe
 
 ---
 
-### Task G1: Minimal working graph -- data fetch + basic render
+### Task G1: Minimal working graph - data fetch + basic render
 - [ ] **Complete**
 
 **File:** engram-gui/public/graph.html
@@ -60,7 +60,7 @@ Create the minimal graph.html that: (1) Loads Three.js r169 and 3d-force-graph 1
 
 ---
 
-### Task G2: Texture atlas -- organism textures
+### Task G2: Texture atlas - organism textures
 - [ ] **Complete**
 
 **File:** engram-gui/public/graph.html
@@ -68,9 +68,9 @@ Create the minimal graph.html that: (1) Loads Three.js r169 and 3d-force-graph 1
 **Time estimate:** 5 min
 **Depends on:** G1
 
-Create 8 organism texture variants on a single 512x256 atlas canvas (4x2 grid, 128x128 cells). Each variant has: corona gradient (subtle outer glow), membrane ring (faint circle at r=28), 4-10 organelles (bright dots, seeded random positions), nucleus (bright center radial gradient), 3 internal filaments (curved arcs), circular mask (eliminates square artifacts under bloom). All white/neutral tones -- color applied via InstancedMesh color attribute.
+Create 8 organism texture variants on a single 512x256 atlas canvas (4x2 grid, 128x128 cells). Each variant has: corona gradient (subtle outer glow), membrane ring (faint circle at r=28), 4-10 organelles (bright dots, seeded random positions), nucleus (bright center radial gradient), 3 internal filaments (curved arcs), circular mask (eliminates square artifacts under bloom). All white/neutral tones - color applied via InstancedMesh color attribute.
 
-**Functions:** seededRng(seed, n) -- deterministic PRNG identical to reference (LCG: (s * 1103515245 + 12345) & 0x7fffffff). drawOrganismCell(ctx, ox, oy, size, seed) -- draws one organism variant at offset, same visuals as reference lines 101-184. createTextureAtlas(THREE) -- creates 512x256 canvas, returns { texture, CELL:128, COLS:4, ROWS:2 }. createRingTexture(THREE) -- 64x64 canvas, golden ring gradient for static nodes.
+**Functions:** seededRng(seed, n) - deterministic PRNG identical to reference (LCG: (s * 1103515245 + 12345) & 0x7fffffff). drawOrganismCell(ctx, ox, oy, size, seed) - draws one organism variant at offset, same visuals as reference lines 101-184. createTextureAtlas(THREE) - creates 512x256 canvas, returns { texture, CELL:128, COLS:4, ROWS:2 }. createRingTexture(THREE) - 64x64 canvas, golden ring gradient for static nodes.
 
 **Verification:** 8 distinct organism variants visible on atlas. No bleeding between cells.
 
@@ -140,9 +140,9 @@ Breathing animation entirely in vertex shader. Only uTime uniform updated per fr
 
 **desaturate(hex, amount) helper:** Convert to HSL via THREE.Color, reduce saturation by amount, return hex string.
 
-**Layer 1 -- Topology (always visible):** linkWidth(0.15), linkOpacity(link => 0.08 + link.weight * 0.12), linkColor(desaturate(source node category color, 0.5)), linkCurvature(0.2), linkCurveRotation(0).
+**Layer 1 - Topology (always visible):** linkWidth(0.15), linkOpacity(link => 0.08 + link.weight * 0.12), linkColor(desaturate(source node category color, 0.5)), linkCurvature(0.2), linkCurveRotation(0).
 
-**Layer 2 -- Flow particles (strong connections):** Pre-compute particleEdgeSet: filter edges weight >= 0.5, sort by weight desc, take top 200. linkDirectionalParticles(min(6, floor(weight*6))) for set members, 0 otherwise. linkDirectionalParticleWidth(2). linkDirectionalParticleSpeed(0.003 + weight*0.008). Particle color = source node category color at full saturation.
+**Layer 2 - Flow particles (strong connections):** Pre-compute particleEdgeSet: filter edges weight >= 0.5, sort by weight desc, take top 200. linkDirectionalParticles(min(6, floor(weight*6))) for set members, 0 otherwise. linkDirectionalParticleWidth(2). linkDirectionalParticleSpeed(0.003 + weight*0.008). Particle color = source node category color at full saturation.
 
 **Edge LOD (every 10 frames in onEngineTick):** Check camera distance. far(>2000): show weight >= 0.5 only. mid(800-2000): weight >= 0.2. close(<800): all edges visible.
 
@@ -164,7 +164,7 @@ Breathing animation entirely in vertex shader. Only uTime uniform updated per fr
 
 Import UnrealBloomPass from three/addons/postprocessing/UnrealBloomPass.js. Add to graph.postProcessingComposer().
 
-**LOCKED VALUES -- DO NOT CHANGE:** strength=1.3, radius=0.5, threshold=0.12. Threshold 0.12 naturally isolates bright node centers from dim edges (opacity 0.08-0.20) and near-black background (#050a0a).
+**LOCKED VALUES - DO NOT CHANGE:** strength=1.3, radius=0.5, threshold=0.12. Threshold 0.12 naturally isolates bright node centers from dim edges (opacity 0.08-0.20) and near-black background (#050a0a).
 
 **Star field:** 400 dim points spread across 5000-unit cube. THREE.Points with PointsMaterial: size 0.8, vertexColors true, transparent true, opacity 0.7, sizeAttenuation true. Colors: 0.3-1.0 brightness with slight blue tint. Added to graph.scene() on default layer (no bloom).
 
@@ -482,12 +482,12 @@ Dynamic route page. Extract id from params. Load client.getMemory(id) on mount. 
 
 ## Execution Order
 
-**Phase 1 (Graph -- critical path, do first):**
+**Phase 1 (Graph - critical path, do first):**
 G1 -> G2 -> G3 -> G4 -> G5 -> G6 -> G7 -> G8 -> G9 -> G10
 
 Each task builds on the previous. G9 (force tuning) can technically be applied right after G1 since it is just d3Force configuration, but it is listed at G9 to keep the layering clean.
 
-**Phase 2 (GUI -- can start after G1, runs parallel with remaining graph):**
+**Phase 2 (GUI - can start after G1, runs parallel with remaining graph):**
 N1 -> N2 -> N3 -> N4 -> [N5, N6, N7, N8, N9, N10, N11 in parallel] -> N12
 
 N5-N11 are independent pages and can be implemented in any order or in parallel. N12 (Docker) depends only on N1.

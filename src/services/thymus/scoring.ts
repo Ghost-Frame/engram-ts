@@ -1,5 +1,5 @@
 // ============================================================================
-// Thymus scoring engine — rubric evaluations + quality metrics
+// Thymus scoring engine - rubric evaluations + quality metrics
 // Ported from standalone Thymus service (thymus/src/eval.ts)
 // ============================================================================
 
@@ -13,7 +13,7 @@ import {
   rubricCount, evaluationCount, metricCount,
 } from "./db.ts";
 
-// -- Rubrics --
+// - Rubrics --
 
 export function createRubric(name: string, description: string | null | undefined, criteria: unknown[]) {
   const info = insertRubric.run(name, description ?? null, JSON.stringify(criteria));
@@ -57,7 +57,7 @@ export function deleteRubric(id: number): boolean {
   return info.changes > 0;
 }
 
-// -- Evaluations --
+// - Evaluations --
 
 export function evaluate(
   rubricId: number,
@@ -169,7 +169,7 @@ export function getAgentScores(agent: string, opts?: { rubric_id?: number; since
   return { agent, overall_avg: overallCount > 0 ? overallSum / overallCount : 0, evaluation_count: overallCount, by_criterion };
 }
 
-// -- Metrics --
+// - Metrics --
 
 export function recordMetric(agent: string, metric: string, value: number, tags?: Record<string, unknown>) {
   const info = insertMetric.run(agent, metric, value, JSON.stringify(tags ?? {}));
@@ -207,7 +207,7 @@ export function getMetricSummary(agent: string, metric: string, since?: string) 
   return { agent, metric, avg: row.avg ?? 0, min: row.min ?? 0, max: row.max ?? 0, count: row.count };
 }
 
-// -- Stats --
+// - Stats --
 
 export function getStats() {
   const rubrics = (rubricCount.get() as any).count;

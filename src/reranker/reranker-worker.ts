@@ -1,5 +1,5 @@
 // ============================================================================
-// RERANKER WORKER -- Runs cross-encoder ONNX inference off the main event loop
+// RERANKER WORKER - Runs cross-encoder ONNX inference off the main event loop
 // This file runs in a Worker thread. It receives rerank requests via
 // parentPort and returns scored results.
 // ============================================================================

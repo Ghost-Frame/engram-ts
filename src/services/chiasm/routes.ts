@@ -1,5 +1,5 @@
 // ============================================================================
-// Chiasm routes -- task tracking, activity feed
+// Chiasm routes - task tracking, activity feed
 // Prefixes: /tasks/*, /feed
 // ============================================================================
 
@@ -23,7 +23,7 @@ export async function handleChiasmRoutes(
   // Only handle /tasks*, /feed, nothing else
   if (!path.startsWith("/tasks") && path !== "/feed") return null;
 
-  // -- Tasks --
+  // - Tasks --
 
   if (path === "/tasks" && method === "GET") {
     return json(listTasks({
@@ -93,7 +93,7 @@ export async function handleChiasmRoutes(
     return json({ ok: true });
   }
 
-  // -- Feed --
+  // - Feed --
 
   if (path === "/feed" && method === "GET") {
     const limit = bounded(url.searchParams.get("limit"), 1, 200, 50);

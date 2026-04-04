@@ -1,5 +1,5 @@
 // ============================================================================
-// Axon routes -- event bus, pub/sub, SSE streaming, webhooks
+// Axon routes - event bus, pub/sub, SSE streaming, webhooks
 // Prefix: /axon/*
 // ============================================================================
 
@@ -26,7 +26,7 @@ export async function handleAxonRoutes(
 
   const sub = path.slice("/axon".length); // e.g. "/publish" or "/events/5"
 
-  // -- Publish --
+  // - Publish --
 
   if (sub === "/publish" && method === "POST") {
     const { body: rawBody } = getContext(req);
@@ -40,7 +40,7 @@ export async function handleAxonRoutes(
     return json({ ok: true }, 201);
   }
 
-  // -- Events --
+  // - Events --
 
   if (sub === "/events" && method === "GET") {
     const since_id = url.searchParams.has("since_id") ? parseInt(url.searchParams.get("since_id")!, 10) : undefined;
@@ -60,7 +60,7 @@ export async function handleAxonRoutes(
     return json(event);
   }
 
-  // -- Channels --
+  // - Channels --
 
   if (sub === "/channels" && method === "GET") {
     return json(listChannels());
@@ -79,7 +79,7 @@ export async function handleAxonRoutes(
     }
   }
 
-  // -- Subscriptions --
+  // - Subscriptions --
 
   if (sub === "/subscribe" && method === "POST") {
     const { body: rawBody } = getContext(req);
@@ -110,7 +110,7 @@ export async function handleAxonRoutes(
     return json(getSubscriptions(url.searchParams.get("agent") ?? undefined));
   }
 
-  // -- Poll --
+  // - Poll --
 
   if (sub === "/poll" && method === "GET") {
     const agent = url.searchParams.get("agent");
@@ -121,7 +121,7 @@ export async function handleAxonRoutes(
     return json(poll(agent, channel, limit));
   }
 
-  // -- SSE Stream --
+  // - SSE Stream --
 
   if (sub === "/stream" && method === "GET") {
     const agent = url.searchParams.get("agent");
@@ -135,7 +135,7 @@ export async function handleAxonRoutes(
     return startSSE(agent, channels, filterType, lastEventId !== undefined && Number.isFinite(lastEventId) ? lastEventId : undefined);
   }
 
-  // -- Stats --
+  // - Stats --
 
   if (sub === "/stats" && method === "GET") {
     return json(getStats());

@@ -1,5 +1,5 @@
 // ============================================================================
-// INTELLIGENCE DOMAIN -- Type definitions and constants
+// INTELLIGENCE DOMAIN - Type definitions and constants
 // ============================================================================
 
 /** Valid reflection period values */

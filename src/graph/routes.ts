@@ -1,5 +1,5 @@
 // ============================================================================
-// GRAPH DOMAIN -- Route handlers (entities, graph, facts, cooccurrences)
+// GRAPH DOMAIN - Route handlers (entities, graph, facts, cooccurrences)
 // ============================================================================
 
 import { readFile } from "fs/promises";
@@ -37,7 +37,7 @@ export function registerGraphRoutes(router: Router): void {
 
   // -- Graph visualization ----------------------------------------------------
 
-  // GET /graph -- build graph with BFS + caching
+  // GET /graph - build graph with BFS + caching
   router.get("/graph", async (req) => {
     const { auth, url } = getContext(req);
     try {
@@ -54,7 +54,7 @@ export function registerGraphRoutes(router: Router): void {
     }
   });
 
-  // GET /graph/raw -- raw dump of all memories and links
+  // GET /graph/raw - raw dump of all memories and links
   router.get("/graph/raw", async (req) => {
     const { auth } = getContext(req);
     const memories = getAllMemoriesForGraph.all(auth.user_id);
@@ -62,7 +62,7 @@ export function registerGraphRoutes(router: Router): void {
     return json({ memories, links });
   });
 
-  // GET /graph/view -- serve the graph visualization HTML page
+  // GET /graph/view - serve the graph visualization HTML page
   router.get("/graph/view", async (_req) => {
     const graphHtml = await readFile(resolve(DATA_DIR, "..", "engram-graph.html"), "utf-8").catch(() => null);
     if (!graphHtml) return errorResponse("Graph view not found. Place engram-graph.html in the project root", 404);
@@ -71,7 +71,7 @@ export function registerGraphRoutes(router: Router): void {
 
   // -- Entities CRUD ----------------------------------------------------------
 
-  // POST /entities -- create entity
+  // POST /entities - create entity
   router.post("/entities", async (req) => {
     const { auth, body } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -90,7 +90,7 @@ export function registerGraphRoutes(router: Router): void {
     }
   });
 
-  // GET /entities -- list entities (optionally filtered by type or search query)
+  // GET /entities - list entities (optionally filtered by type or search query)
   router.get("/entities", async (req) => {
     const { auth, url } = getContext(req);
     const type = url.searchParams.get("type");
@@ -110,7 +110,7 @@ export function registerGraphRoutes(router: Router): void {
     return json({ entities, count: entities.length });
   });
 
-  // GET /entities/:id -- get single entity with details
+  // GET /entities/:id - get single entity with details
   router.get("/entities/:id", async (req, params) => {
     const { auth, url } = getContext(req);
     const id = Number(params.id);
@@ -129,7 +129,7 @@ export function registerGraphRoutes(router: Router): void {
     return json(entity);
   });
 
-  // PUT /entities/:id -- update entity
+  // PUT /entities/:id - update entity
   router.put("/entities/:id", async (req, params) => {
     const { auth, body } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -148,7 +148,7 @@ export function registerGraphRoutes(router: Router): void {
     }
   });
 
-  // DELETE /entities/:id -- delete entity
+  // DELETE /entities/:id - delete entity
   router.delete("/entities/:id", async (req, params) => {
     const { auth } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -160,7 +160,7 @@ export function registerGraphRoutes(router: Router): void {
 
   // -- Memory-entity linking --------------------------------------------------
 
-  // PUT /entities/:eid/memories/:mid -- link memory to entity
+  // PUT /entities/:eid/memories/:mid - link memory to entity
   router.put("/entities/:eid/memories/:mid", async (req, params) => {
     const { auth } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -174,7 +174,7 @@ export function registerGraphRoutes(router: Router): void {
     return json({ linked: true, entity_id: entityId, memory_id: memoryId });
   });
 
-  // DELETE /entities/:eid/memories/:mid -- unlink memory from entity
+  // DELETE /entities/:eid/memories/:mid - unlink memory from entity
   router.delete("/entities/:eid/memories/:mid", async (req, params) => {
     const { auth } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -190,7 +190,7 @@ export function registerGraphRoutes(router: Router): void {
 
   // -- Entity relationships ---------------------------------------------------
 
-  // POST /entities/:id/relationships -- create relationship
+  // POST /entities/:id/relationships - create relationship
   router.post("/entities/:id/relationships", async (req, params) => {
     const { auth, body } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -209,7 +209,7 @@ export function registerGraphRoutes(router: Router): void {
     }
   });
 
-  // DELETE /entities/:id/relationships -- delete relationship
+  // DELETE /entities/:id/relationships - delete relationship
   router.delete("/entities/:id/relationships", async (req, params) => {
     const { auth, body } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -230,7 +230,7 @@ export function registerGraphRoutes(router: Router): void {
 
   // -- Entity-scoped search ---------------------------------------------------
 
-  // POST /entities/:id/search -- search memories within an entity
+  // POST /entities/:id/search - search memories within an entity
   router.post("/entities/:id/search", async (req, params) => {
     const { auth } = getContext(req);
     try {
@@ -256,7 +256,7 @@ export function registerGraphRoutes(router: Router): void {
 
   // -- Entity cooccurrences ---------------------------------------------------
 
-  // GET /entities/:id/cooccurrences -- get co-occurring entities
+  // GET /entities/:id/cooccurrences - get co-occurring entities
   router.get("/entities/:id/cooccurrences", async (req, params) => {
     const { auth, url } = getContext(req);
     try {
@@ -272,7 +272,7 @@ export function registerGraphRoutes(router: Router): void {
 
   // -- Structured facts -------------------------------------------------------
 
-  // GET /facts -- query extracted quantifiable facts
+  // GET /facts - query extracted quantifiable facts
   router.get("/facts", async (req) => {
     const { auth, url } = getContext(req);
     try {

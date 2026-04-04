@@ -1,5 +1,5 @@
 /**
- * Engram SDK -- Thin TypeScript client for the Engram memory API.
+ * Engram SDK - Thin TypeScript client for the Engram memory API.
  *
  * Usage:
  *   import { Engram } from "@zanfiel/engram/sdk";

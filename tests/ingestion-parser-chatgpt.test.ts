@@ -163,7 +163,7 @@ describe("chatgptParser", () => {
     it("filters out null messages (walks tree correctly from root)", async () => {
       const input = JSON.stringify(testConversation);
       const docs = await collect(chatgptParser.parse(input));
-      // root has null message -- should not appear in text
+      // root has null message - should not appear in text
       assert.ok(docs[0].text.trim().length > 0, "Should have some text content");
       // Should only have user + assistant messages
       const lines = docs[0].text.trim().split("\n").filter((l: string) => l.trim());

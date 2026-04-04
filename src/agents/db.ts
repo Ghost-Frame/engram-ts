@@ -1,5 +1,5 @@
 // ============================================================================
-// AGENTS DOMAIN -- Database prepared statements
+// AGENTS DOMAIN - Database prepared statements
 // ============================================================================
 
 import { db } from "../db/connection.ts";

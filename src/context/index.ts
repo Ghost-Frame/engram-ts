@@ -1,5 +1,5 @@
 // ============================================================================
-// CONTEXT DOMAIN -- Progressive disclosure algorithm and token budget management
+// CONTEXT DOMAIN - Progressive disclosure algorithm and token budget management
 // ============================================================================
 
 import type {
@@ -93,7 +93,7 @@ export function truncateToTokenBudget(content: string, maxMemoryTokens: number):
 }
 
 // ---------------------------------------------------------------------------
-// Cosine similarity (inline -- avoids circular import on the embeddings domain)
+// Cosine similarity (inline - avoids circular import on the embeddings domain)
 // ---------------------------------------------------------------------------
 
 export function cosineSimilarity(a: Float32Array, b: Float32Array): number {
@@ -125,7 +125,7 @@ export function buildAttribution(block: ContextBlock): string {
 /**
  * Assembles the final context string from layers of blocks plus supplementary
  * sections (working memory, current state, personality, preferences, facts).
- * This is the formatting step only -- no DB calls here.
+ * This is the formatting step only - no DB calls here.
  */
 export function assembleContextString(
   blocks: ContextBlock[],
@@ -226,7 +226,7 @@ export function resolveStaticBudgetFraction(strategy: ContextStrategy): number {
 }
 
 // ---------------------------------------------------------------------------
-// assembleContext -- pure function (delegates DB calls via injected helpers)
+// assembleContext - pure function (delegates DB calls via injected helpers)
 // ---------------------------------------------------------------------------
 
 /**
@@ -248,7 +248,7 @@ export interface ContextDeps {
     queryEmb: Float32Array | null,
     sourceFilter: string | undefined,
   ): Promise<any[]>;
-  /** Cross-encoder rerank (optional -- only called when reranker is ready) */
+  /** Cross-encoder rerank (optional - only called when reranker is ready) */
   crossEncoderRerank?(query: string, results: any[], batchSize: number): Promise<any[]>;
   isRerankerReady(): boolean;
   /** Get all cached embeddings for deduplication */
@@ -268,7 +268,7 @@ export interface ContextDeps {
   /** Call LLM for inference */
   callLLM?(systemPrompt: string, userPrompt: string): Promise<string | null>;
   isLLMAvailable(): boolean;
-  /** Working memory -- scratch entries for context */
+  /** Working memory - scratch entries for context */
   listScratchEntriesForContext(userId: number, session: string | null): any[];
   buildWorkingMemoryBlock(rows: any[]): string | null;
   /** Current state KV pairs */

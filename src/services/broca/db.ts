@@ -1,12 +1,12 @@
 // ============================================================================
-// Broca DB -- Schema + prepared statements
+// Broca DB - Schema + prepared statements
 // Migrations run at module scope so tables exist before statements compile.
 // ============================================================================
 
 import { db } from "../../db/index.ts";
 import { log } from "../../config/logger.ts";
 
-// -- Schema (module-scope migration) --
+// - Schema (module-scope migration) --
 
 function migrate(sql: string) {
   try { db.exec(sql); } catch (e: any) {
@@ -34,7 +34,7 @@ migrate(`CREATE INDEX IF NOT EXISTS idx_broca_actions_service ON broca_actions(s
 migrate(`CREATE INDEX IF NOT EXISTS idx_broca_actions_action ON broca_actions(action, created_at DESC)`);
 migrate(`CREATE INDEX IF NOT EXISTS idx_broca_actions_created ON broca_actions(created_at DESC)`);
 
-// -- Prepared statements --
+// - Prepared statements --
 
 export const insertAction = db.prepare(
   "INSERT INTO broca_actions (agent, service, action, payload, narrative, axon_event_id) VALUES (?, ?, ?, ?, ?, ?)"

@@ -1,5 +1,5 @@
 // ============================================================================
-// LLM -- Client, fact extraction, reranker
+// LLM - Client, fact extraction, reranker
 // Supports: Anthropic, MiniMax, Vertex AI, OpenAI-compatible (Ollama, LiteLLM, vLLM, Gemini, Groq, DeepSeek)
 // Set via env: LLM_API_KEY, LLM_URL, LLM_MODEL
 // ============================================================================
@@ -189,7 +189,7 @@ const FACT_EXTRACTION_PROMPT = `You are a fact extraction engine for a persisten
 
 Given the NEW CONTENT and up to 3 SIMILAR EXISTING MEMORIES, you must:
 1. Determine if this new content updates, extends, or duplicates any existing memory
-2. Classify whether each fact is STATIC (permanent, unlikely to change — like preferences, identity, infrastructure) or DYNAMIC (temporary, likely to change — like current tasks, recent events, moods)
+2. Classify whether each fact is STATIC (permanent, unlikely to change - like preferences, identity, infrastructure) or DYNAMIC (temporary, likely to change - like current tasks, recent events, moods)
 3. For dynamic facts, estimate when they should be forgotten (if applicable)
 4. Rate importance 1-10
 
@@ -244,7 +244,7 @@ Rules:
 - Include "preferences", "state_updates" if applicable`;
 
 // ============================================================================
-// ROBUST JSON PARSING -- repair common LLM output issues
+// ROBUST JSON PARSING - repair common LLM output issues
 // ============================================================================
 
 export function repairAndParseJSON(raw: string): unknown | null {
@@ -382,10 +382,10 @@ import { emitWebhookEvent } from "../platform/webhooks.ts";
 
 function propagateConfidence(memoryId: number, relationType: string, existingMemoryId: number, userId: number): void {
   if (relationType === "updates") {
-    // Old memory's confidence drops — it's been superseded
+    // Old memory's confidence drops - it's been superseded
     updateConfidence.run(0.3, existingMemoryId);
   } else if (relationType === "contradicts") {
-    // Both memories get reduced confidence — conflict needs resolution
+    // Both memories get reduced confidence - conflict needs resolution
     const existing = getMemoryWithoutEmbedding.get(existingMemoryId) as any;
     const current = getMemoryWithoutEmbedding.get(memoryId) as any;
     if (existing) {
@@ -403,7 +403,7 @@ function propagateConfidence(memoryId: number, relationType: string, existingMem
       existing_content: existing?.content,
     }, userId);
   } else if (relationType === "extends") {
-    // Extended memory gets a small confidence boost — it's been corroborated
+    // Extended memory gets a small confidence boost - it's been corroborated
     const existing = getMemoryWithoutEmbedding.get(existingMemoryId) as any;
     if (existing) {
       const newConf = Math.min(1.0, (existing.confidence || 1.0) * 1.05);

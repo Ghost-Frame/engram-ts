@@ -1,5 +1,5 @@
 // ============================================================================
-// Loom routes -- workflow orchestration, runs, steps, logs
+// Loom routes - workflow orchestration, runs, steps, logs
 // Prefix: /loom/*
 // ============================================================================
 
@@ -26,7 +26,7 @@ export async function handleLoomRoutes(
 
   const sub = path.slice("/loom".length); // e.g. "/workflows" or "/runs/5"
 
-  // -- Workflows --
+  // - Workflows --
 
   if (sub === "/workflows" && method === "GET") {
     return json(listWorkflows());
@@ -99,7 +99,7 @@ export async function handleLoomRoutes(
     return json({ ok: true });
   }
 
-  // -- Runs --
+  // - Runs --
 
   if (sub === "/runs" && method === "POST") {
     const { body: rawBody } = getContext(req);
@@ -167,7 +167,7 @@ export async function handleLoomRoutes(
     }));
   }
 
-  // -- Step external callbacks --
+  // - Step external callbacks --
 
   const stepCompleteMatch = sub.match(/^\/steps\/(\d+)\/complete$/);
   if (stepCompleteMatch && method === "POST") {
@@ -194,7 +194,7 @@ export async function handleLoomRoutes(
     }
   }
 
-  // -- Stats --
+  // - Stats --
 
   if (sub === "/stats" && method === "GET") {
     return json(getStats());

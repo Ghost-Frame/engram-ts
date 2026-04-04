@@ -1,5 +1,5 @@
 // ============================================================================
-// EPISODES DOMAIN -- Business logic (pure functions)
+// EPISODES DOMAIN - Business logic (pure functions)
 // ============================================================================
 
 /** LLM prompt for summarizing a conversation into an episodic narrative */

@@ -1,5 +1,5 @@
 // ============================================================================
-// FSRS DOMAIN -- Route handlers
+// FSRS DOMAIN - Route handlers
 // ============================================================================
 
 import type { Router } from "../router/types.ts";
@@ -11,7 +11,7 @@ import { trackAccessWithFSRS } from "../db/index.ts";
 
 export function registerFsrsRoutes(router: Router): void {
 
-  // POST /fsrs/review -- Record a review grade for a memory
+  // POST /fsrs/review - Record a review grade for a memory
   router.post("/fsrs/review", async (req) => {
     const { auth, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -28,7 +28,7 @@ export function registerFsrsRoutes(router: Router): void {
     } catch (e: any) { return errorResponse(e.message, 400); }
   });
 
-  // GET /fsrs/state -- Get FSRS state for a memory
+  // GET /fsrs/state - Get FSRS state for a memory
   router.get("/fsrs/state", async (req) => {
     const { auth, url } = getContext(req);
     const id = Number(url.searchParams.get("id"));
@@ -47,7 +47,7 @@ export function registerFsrsRoutes(router: Router): void {
     return json({ id, retrievability, next_review_days: nextReview, ...row });
   });
 
-  // POST /fsrs/init -- Backfill FSRS state for all memories that lack it
+  // POST /fsrs/init - Backfill FSRS state for all memories that lack it
   router.post("/fsrs/init", async (req) => {
     const { auth } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);

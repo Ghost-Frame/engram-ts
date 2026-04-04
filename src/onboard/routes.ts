@@ -1,5 +1,5 @@
 // ============================================================================
-// ONBOARD DOMAIN -- Route handlers (/onboard, /fetch)
+// ONBOARD DOMAIN - Route handlers (/onboard, /fetch)
 // ============================================================================
 
 import { randomUUID } from "crypto";
@@ -22,7 +22,7 @@ export function registerOnboardRoutes(router: Router): void {
     try {
       const testMem = db.prepare(
         `INSERT INTO memories (content, category, source, user_id) VALUES (?, ?, ?, ?) RETURNING id`
-      ).get("Engram onboarding test memory -- safe to delete", "system", "onboarding", auth.user_id) as any;
+      ).get("Engram onboarding test memory - safe to delete", "system", "onboarding", auth.user_id) as any;
       checks.store = { passed: true, detail: `Created test memory id=${testMem.id}` };
       try {
         const results = await hybridSearch("onboarding test", 1, false, false, true, auth.user_id);

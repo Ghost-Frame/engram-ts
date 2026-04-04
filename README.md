@@ -58,9 +58,9 @@ The `/ingest` endpoint accepts large document uploads and processes them through
 
 ### Recent Changes
 
-**Modular server refactor** -- The monolithic `routes/index.ts` has been decomposed into domain modules (`memory/`, `search/`, `ingestion/`, `admin/`, `auth/`, etc.) with a shared router. Each module owns its routes, types, and logic. The single-file entrypoint still works for backwards compatibility.
+**Modular server refactor** - The monolithic `routes/index.ts` has been decomposed into domain modules (`memory/`, `search/`, `ingestion/`, `admin/`, `auth/`, etc.) with a shared router. Each module owns its routes, types, and logic. The single-file entrypoint still works for backwards compatibility.
 
-**Embedding and reranker model swap** -- Embeddings moved from gte-Qwen2-1.5B-instruct to [BAAI/bge-m3](https://huggingface.co/BAAI/bge-m3) (1024-dim, SentencePiece Unigram tokenizer). Reranker moved from bge-reranker-base to [IBM granite-embedding-reranker-english-r2](https://huggingface.co/ibm-granite/granite-embedding-reranker-english-r2) (ByteLevel BPE tokenizer, INT8 quantized). Both run as ONNX models in dedicated Worker threads and are drop-in replaceable via `ENGRAM_MODEL_DIR` and `ENGRAM_RERANKER_MODEL_DIR`.
+**Embedding and reranker model swap** - Embeddings moved from gte-Qwen2-1.5B-instruct to [BAAI/bge-m3](https://huggingface.co/BAAI/bge-m3) (1024-dim, SentencePiece Unigram tokenizer). Reranker moved from bge-reranker-base to [IBM granite-embedding-reranker-english-r2](https://huggingface.co/ibm-granite/granite-embedding-reranker-english-r2) (ByteLevel BPE tokenizer, INT8 quantized). Both run as ONNX models in dedicated Worker threads and are drop-in replaceable via `ENGRAM_MODEL_DIR` and `ENGRAM_RERANKER_MODEL_DIR`.
 
 ---
 

@@ -1,6 +1,6 @@
 # Engram Security & Architecture Audit
 
-**Instructions for Codex**: This is a read-only audit. Do NOT make edits. Analyze the entire codebase and return a structured report covering all sections below. Be specific -- cite file paths, line numbers, and code snippets for every finding.
+**Instructions for Codex**: This is a read-only audit. Do NOT make edits. Analyze the entire codebase and return a structured report covering all sections below. Be specific - cite file paths, line numbers, and code snippets for every finding.
 
 ---
 
@@ -10,7 +10,7 @@
 - Trace the full API key authentication flow from request to database validation
 - Check for endpoints that bypass or skip authentication
 - Audit the bootstrap token mechanism for first-run API key creation
-- Check open-access mode (`ENGRAM_OPEN_ACCESS`) for unintended exposure -- does it properly block admin endpoints?
+- Check open-access mode (`ENGRAM_OPEN_ACCESS`) for unintended exposure - does it properly block admin endpoints?
 - Look for timing attacks in key comparison
 - Check if API keys are stored hashed or plaintext in the database
 
@@ -22,9 +22,9 @@
 - Look for path traversal in any file-handling code (model downloads, data directory resolution)
 
 ### ONNX Model Security
-- Audit model download flow in `src/embeddings/index.ts` and `src/reranker/index.ts` -- are URLs hardcoded or user-controllable?
+- Audit model download flow in `src/embeddings/index.ts` and `src/reranker/index.ts` - are URLs hardcoded or user-controllable?
 - Check for TOCTOU race conditions in model file download (tmp file -> rename)
-- Verify Worker thread isolation -- can a malicious ONNX model escape the worker sandbox?
+- Verify Worker thread isolation - can a malicious ONNX model escape the worker sandbox?
 - Check if custom model directories (`ENGRAM_MODEL_DIR`, `ENGRAM_RERANKER_MODEL_DIR`) are validated
 
 ### Network & Transport
@@ -44,7 +44,7 @@
 ### Database Layer (`src/db/`)
 - Audit the libsql schema for proper indexing
 - Check the vector index rebuild mechanism (`rebuildVectorIndex`) for data loss potential
-- Review embedding cache lifecycle -- memory leaks, stale entries, cache invalidation
+- Review embedding cache lifecycle - memory leaks, stale entries, cache invalidation
 - Check if database migrations are handled safely (what happens on schema version mismatch?)
 
 ### Embedding Pipeline (`src/embeddings/`)
@@ -58,14 +58,14 @@
 - Trace the full reranking flow: query + candidates -> tokenizer -> ONNX -> scores -> re-sort
 - Audit the ByteLevel BPE tokenizer for correctness (bytes-to-unicode mapping, merge algorithm)
 - Verify token_type_ids are correctly set (segment 0 for query, segment 1 for document)
-- Check the 15-second timeout handling -- does it properly clean up pending requests?
-- Review score blending formula in `crossEncoderRerank` -- is the boost calculation sound?
+- Check the 15-second timeout handling - does it properly clean up pending requests?
+- Review score blending formula in `crossEncoderRerank` - is the boost calculation sound?
 
 ### Bulk Ingestion (`src/ingestion/`)
 - Audit the job queue mechanism for race conditions
 - Check memory pressure during large ingestion batches
-- Review chunking strategy -- are there edge cases that produce empty or malformed chunks?
-- Check error recovery -- what happens if ingestion fails mid-batch?
+- Review chunking strategy - are there edge cases that produce empty or malformed chunks?
+- Check error recovery - what happens if ingestion fails mid-batch?
 
 ### Server & Routes (`src/routes/`, `src/server.ts`)
 - Check for missing error handlers that could crash the process

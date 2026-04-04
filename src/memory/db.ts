@@ -1,5 +1,5 @@
 // ============================================================================
-// MEMORY DOMAIN -- Database prepared statements
+// MEMORY DOMAIN - Database prepared statements
 // ============================================================================
 
 import { db } from "../db/connection.ts";

@@ -22,17 +22,17 @@ A future second project migrates the lightweight router to Hono once the decompo
 
 Five new infrastructure pieces that all domain modules depend on:
 
-**`src/db/connection.ts`** — Database connection setup, schema migrations, WAL/pragma configuration. Exports a single `db` object. Replaces the connection portion of `src/db/index.ts`.
+**`src/db/connection.ts`**  -  Database connection setup, schema migrations, WAL/pragma configuration. Exports a single `db` object. Replaces the connection portion of `src/db/index.ts`.
 
-**`src/router/index.ts`** — Lightweight router (~100 lines). Supports path parameters (`/memory/:id`), HTTP method dispatch, middleware chains, and route grouping. Each domain exports a `registerRoutes(router)` function.
+**`src/router/index.ts`**  -  Lightweight router (~100 lines). Supports path parameters (`/memory/:id`), HTTP method dispatch, middleware chains, and route grouping. Each domain exports a `registerRoutes(router)` function.
 
-**`src/middleware/auth.ts`** — Auth and scope checking. Extracts the `hasScope(auth, "write")`, `canAccessOwnedRow()`, and API key validation currently copy-pasted into every route handler. Applied as router middleware.
+**`src/middleware/auth.ts`**  -  Auth and scope checking. Extracts the `hasScope(auth, "write")`, `canAccessOwnedRow()`, and API key validation currently copy-pasted into every route handler. Applied as router middleware.
 
-**`src/middleware/validate.ts`** — Request body parsing and validation. Replaces the manual `typeof body.content === "string"` checks. Simple schema objects per route.
+**`src/middleware/validate.ts`**  -  Request body parsing and validation. Replaces the manual `typeof body.content === "string"` checks. Simple schema objects per route.
 
-**`src/middleware/audit.ts`** — Audit logging middleware. Extracts the `audit()` calls scattered across ~30 routes.
+**`src/middleware/audit.ts`**  -  Audit logging middleware. Extracts the `audit()` calls scattered across ~30 routes.
 
-**New server entry point** — Fresh `server.ts` that creates the router, mounts domain routes, and starts listening. The old `server-split.ts` stays untouched until the swap.
+**New server entry point**  -  Fresh `server.ts` that creates the router, mounts domain routes, and starts listening. The old `server-split.ts` stays untouched until the swap.
 
 ### Domain Module Pattern
 
@@ -40,10 +40,10 @@ Every domain follows the ingestion template:
 
 ```
 src/<domain>/
-  types.ts     — Interfaces, enums, constants
-  routes.ts    — Route definitions (thin: parse request, call logic, format response)
-  db.ts        — All SQL queries for this domain
-  index.ts     — Business logic
+  types.ts     - Interfaces, enums, constants
+  routes.ts    - Route definitions (thin: parse request, call logic, format response)
+  db.ts        - All SQL queries for this domain
+  index.ts     - Business logic
 ```
 
 Some domains add more files when logic is complex enough to split. But the base 4-file pattern is the minimum.
@@ -61,9 +61,9 @@ The current `src/db/index.ts` is decomposed: connection setup goes to `src/db/co
 Lightweight custom router. No framework dependency. Approximately 100 lines.
 
 Features:
-- `router.get("/path/:id", handler)` — method + path registration with named parameters
-- `router.use(middleware)` — global middleware (auth, logging)
-- `router.group("/prefix", groupFn)` — route grouping for domains
+- `router.get("/path/:id", handler)`  -  method + path registration with named parameters
+- `router.use(middleware)`  -  global middleware (auth, logging)
+- `router.group("/prefix", groupFn)`  -  route grouping for domains
 - Path parameter extraction into handler arguments
 - 404 fallback for unmatched routes
 
@@ -104,110 +104,110 @@ searchRoutes(router);
 
 ### Wave 1: Core (depends on Foundation)
 
-**memory** — Memory CRUD, store pipeline (SimHash dedup, embedding, quota enforcement, episode auto-creation, status handling). 18 routes. Heaviest domain.
+**memory**  -  Memory CRUD, store pipeline (SimHash dedup, embedding, quota enforcement, episode auto-creation, status handling). 18 routes. Heaviest domain.
 - Routes: `/store`, `/memory`, `/memory/:id`, `/memory/:id/update`, `/memory/:id/forget`, `/memory/:id/archive`, `/memory/:id/unarchive`, `/memory/:id/tags`, `/correct`, `/feedback`, `/feedback/stats`, `/memory-health`, `/list`, `/duplicates`, `/deduplicate`, `/backfill`
 
-**search** — Hybrid search with mode presets, cross-encoder reranking, temporal sort, tag/episode filtering. Recall with 5-layer stacking (static + semantic + important + recent + tags). 4 routes.
+**search**  -  Hybrid search with mode presets, cross-encoder reranking, temporal sort, tag/episode filtering. Recall with 5-layer stacking (static + semantic + important + recent + tags). 4 routes.
 - Routes: `/search`, `/recall`, `/decay/refresh`, `/decay/scores`
 
-**episodes** — Episode lifecycle: create, list, fetch, update, finalize with LLM summary. Auto-creation triggered by memory store. 6 routes.
+**episodes**  -  Episode lifecycle: create, list, fetch, update, finalize with LLM summary. Auto-creation triggered by memory store. 6 routes.
 - Routes: `/episodes`, `/episodes/:id`, `/episodes/:id/memories/:mid`, `/episodes/:id/finalize`
 
 ### Wave 2: Knowledge (depends on Wave 1)
 
-**graph** — Knowledge graph: BFS traversal, batch link fetching, node sizing, response caching. Entity CRUD, relationships, cooccurrence, scoped search. Facts listing. 15 routes.
+**graph**  -  Knowledge graph: BFS traversal, batch link fetching, node sizing, response caching. Entity CRUD, relationships, cooccurrence, scoped search. Facts listing. 15 routes.
 - Routes: `/graph`, `/graph/raw`, `/graph/view`, `/entities`, `/entities/:id`, `/entities/:id/memories/:mid`, `/entities/:id/relationships`, `/entities/:id/search`, `/entities/:id/cooccurrences`, `/facts`
 
-**projects** — Project CRUD with memory linking and scoped search. 7 routes.
+**projects**  -  Project CRUD with memory linking and scoped search. 7 routes.
 - Routes: `/projects`, `/projects/:id`, `/projects/:id/memories/:mid`, `/projects/:id/search`
 
-**intelligence** — Reflection generation, contradiction detection/resolution, time travel (version history), consolidation (cluster + summarize + archive). 8 routes.
+**intelligence**  -  Reflection generation, contradiction detection/resolution, time travel (version history), consolidation (cluster + summarize + archive). 8 routes.
 - Routes: `/reflect`, `/reflections`, `/contradictions`, `/contradictions/resolve`, `/timetravel`, `/consolidate`, `/consolidations`, `/digests`
 
-**tier4** — Causal inference, reconsolidation, predictive modeling, valence scoring. Already well-isolated in `src/tier4/`. Needs routes extracted. 0 routes currently exposed (called internally).
+**tier4**  -  Causal inference, reconsolidation, predictive modeling, valence scoring. Already well-isolated in `src/tier4/`. Needs routes extracted. 0 routes currently exposed (called internally).
 
 ### Wave 3: Integration (depends on Waves 1+2)
 
-**context** — Progressive disclosure context assembly. Multi-phase token budget management, 8-layer disclosure (static, recent, episodes, linked, inference), dedup via cosine similarity, sentence boundary truncation. 1 route but 150+ lines of algorithmic logic.
+**context**  -  Progressive disclosure context assembly. Multi-phase token budget management, 8-layer disclosure (static, recent, episodes, linked, inference), dedup via cosine similarity, sentence boundary truncation. 1 route but 150+ lines of algorithmic logic.
 - Routes: `/context`
 
-**pack** — Token budget packing. Greedy knapsack selection with format switching (text/json/xml). 1 route.
+**pack**  -  Token budget packing. Greedy knapsack selection with format switching (text/json/xml). 1 route.
 - Routes: `/pack`
 
-**conversations** — Conversation sessions, message CRUD, bulk insert, upsert dedup, message search. 9 routes.
+**conversations**  -  Conversation sessions, message CRUD, bulk insert, upsert dedup, message search. 9 routes.
 - Routes: `/conversations`, `/conversations/:id`, `/conversations/:id/messages`, `/conversations/bulk`, `/conversations/upsert`, `/messages/search`
 
-**ingestion** — Already extracted in v5.12.0. Wire its routes into the new router. 7 routes.
+**ingestion**  -  Already extracted in v5.12.0. Wire its routes into the new router. 7 routes.
 - Routes: `/ingest`, `/import/bulk`, `/import/mem0`, `/import/supermemory`, `/import/json`, `/derive`, `/add`
 
 ### Wave 4: Platform (mostly independent)
 
-**auth** — Authentication, API key management, spaces, bootstrap, user CRUD. MFA, rate limiting, lockout tracking. 9 routes.
+**auth**  -  Authentication, API key management, spaces, bootstrap, user CRUD. MFA, rate limiting, lockout tracking. 9 routes.
 - Routes: `/gui/auth`, `/gui/logout`, `/bootstrap`, `/users`, `/keys`, `/keys/:id`, `/keys/rotate`, `/spaces`
 
-**admin** — Maintenance operations: reembed, backfill facts, rebuild cooccurrences, detect communities, rebuild FTS, compact, GC, schema check, cold storage, scale report, SLA metrics. 20+ routes.
+**admin**  -  Maintenance operations: reembed, backfill facts, rebuild cooccurrences, detect communities, rebuild FTS, compact, GC, schema check, cold storage, scale report, SLA metrics. 20+ routes.
 - Routes: `/admin/*`, `/export`, `/import`, `/reset`, `/checkpoint`, `/backup`, `/tenants/*`
 
-**fsrs** — Spaced repetition: FSRS review, state, initialization. Already mostly in `src/fsrs/`. Needs routes extracted. 3 routes.
+**fsrs**  -  Spaced repetition: FSRS review, state, initialization. Already mostly in `src/fsrs/`. Needs routes extracted. 3 routes.
 - Routes: `/fsrs/review`, `/fsrs/state`, `/fsrs/init`
 
-**webhooks** — Webhook subscriptions and sync protocol (change polling, conflict resolution). 5 routes.
+**webhooks**  -  Webhook subscriptions and sync protocol (change polling, conflict resolution). 5 routes.
 - Routes: `/webhooks`, `/webhooks/:id`, `/sync/changes`, `/sync/receive`
 
-**agents** — Agent registration, passport generation, execution tracking, credential verification. 8 routes.
+**agents**  -  Agent registration, passport generation, execution tracking, credential verification. 8 routes.
 - Routes: `/agents`, `/agents/:id`, `/agents/:agent/passport`, `/agents/:agent/link-key`, `/agents/:id/executions`, `/agents/:id/revoke`, `/verify`
 
-**scratch** — Working memory scratch pad with TTL, promotion to permanent memory, LLM summarization. 6 routes.
+**scratch**  -  Working memory scratch pad with TTL, promotion to permanent memory, LLM summarization. 6 routes.
 - Routes: `/scratch`, `/scratch/:session/:key`, `/scratch/:session`, `/scratch/:session/promote`, `/scratch/:session/summarize`
 
-**skills** — Skill registry, search, upload, execution, auto-fix. 7 routes.
+**skills**  -  Skill registry, search, upload, execution, auto-fix. 7 routes.
 - Routes: `/skills`, `/skills/sync`, `/skills/search`, `/skills/upload`, `/skills/execute`, `/skills/:name`, `/skills/:name/fix`
 
-**inbox** — Pending memory moderation: list, approve, reject, edit, bulk operations. 5 routes.
+**inbox**  -  Pending memory moderation: list, approve, reject, edit, bulk operations. 5 routes.
 - Routes: `/inbox`, `/inbox/:id/approve`, `/inbox/:id/reject`, `/inbox/:id/edit`, `/inbox/bulk`
 
-**health** — Health checks, readiness, metrics, OpenAPI, audit log. 7 routes.
+**health**  -  Health checks, readiness, metrics, OpenAPI, audit log. 7 routes.
 - Routes: `/health`, `/live`, `/ready`, `/metrics`, `/openapi.json`, `/api/examples`, `/audit`
 
-**prompts** — System prompt templates and task header generation. 2 routes.
+**prompts**  -  System prompt templates and task header generation. 2 routes.
 - Routes: `/prompt`, `/header`
 
-**guard** — Content moderation and credential verification. 2 routes.
+**guard**  -  Content moderation and credential verification. 2 routes.
 - Routes: `/guard`, `/verify`
 
-**docs** — Documentation resolution, error reporting with auto-fix suggestions. 3 routes.
+**docs**  -  Documentation resolution, error reporting with auto-fix suggestions. 3 routes.
 - Routes: `/docs/resolve`, `/errors`
 
 ## Extraction Waves
 
 ### Foundation (sequential, no parallelism)
 
-1. `src/db/connection.ts` — Extract connection setup from `src/db/index.ts`
-2. `src/router/index.ts` — Build lightweight router
-3. `src/middleware/auth.ts` — Extract auth/scope guards
-4. `src/middleware/validate.ts` — Extract request validation
-5. `src/middleware/audit.ts` — Extract audit logging
+1. `src/db/connection.ts`  -  Extract connection setup from `src/db/index.ts`
+2. `src/router/index.ts`  -  Build lightweight router
+3. `src/middleware/auth.ts`  -  Extract auth/scope guards
+4. `src/middleware/validate.ts`  -  Extract request validation
+5. `src/middleware/audit.ts`  -  Extract audit logging
 6. New `server.ts` entry point wiring router + middleware + domain mounting
 
 ### Wave 1: Core (parallel extraction, 3 subagents)
 
-- **memory** — Largest domain. Store pipeline, CRUD, health diagnostics.
-- **search** — Hybrid search, recall layering, decay scoring.
-- **episodes** — Episode lifecycle, auto-creation, finalization.
+- **memory**  -  Largest domain. Store pipeline, CRUD, health diagnostics.
+- **search**  -  Hybrid search, recall layering, decay scoring.
+- **episodes**  -  Episode lifecycle, auto-creation, finalization.
 
 ### Wave 2: Knowledge (parallel extraction, 4 subagents)
 
-- **graph** — BFS, entities, relationships, cooccurrence, facts.
-- **projects** — Project CRUD with scoped search.
-- **intelligence** — Reflections, contradictions, consolidation, digests.
-- **tier4** — Wire existing `src/tier4/` into routes.
+- **graph**  -  BFS, entities, relationships, cooccurrence, facts.
+- **projects**  -  Project CRUD with scoped search.
+- **intelligence**  -  Reflections, contradictions, consolidation, digests.
+- **tier4**  -  Wire existing `src/tier4/` into routes.
 
 ### Wave 3: Integration (parallel extraction, 3 subagents)
 
-- **context** — Progressive disclosure context assembly.
-- **pack** — Token budget packing algorithm.
-- **conversations** — Conversation/message CRUD and search.
-- **ingestion** — Wire existing `src/ingestion/` into new router.
+- **context**  -  Progressive disclosure context assembly.
+- **pack**  -  Token budget packing algorithm.
+- **conversations**  -  Conversation/message CRUD and search.
+- **ingestion**  -  Wire existing `src/ingestion/` into new router.
 
 ### Wave 4: Platform (parallel extraction, batches of 4-5 subagents)
 

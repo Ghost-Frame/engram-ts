@@ -1,5 +1,5 @@
 // ============================================================================
-// GRAPH DOMAIN -- Type definitions, constants
+// GRAPH DOMAIN - Type definitions, constants
 // ============================================================================
 
 /** Graph node (memory, entity, or project) */

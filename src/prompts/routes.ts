@@ -1,5 +1,5 @@
 // ============================================================================
-// PROMPTS DOMAIN -- Route handlers (/prompt, /header)
+// PROMPTS DOMAIN - Route handlers (/prompt, /header)
 // ============================================================================
 
 import type { Router } from "../router/types.ts";

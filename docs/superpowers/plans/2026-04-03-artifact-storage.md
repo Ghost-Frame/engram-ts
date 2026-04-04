@@ -78,7 +78,7 @@ describe("Artifact Storage", () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cd C:/Users/Zan/Projects/Engram && node --test tests/artifacts.test.mjs`
-Expected: FAIL -- /store does not handle `artifacts` field yet.
+Expected: FAIL - /store does not handle `artifacts` field yet.
 
 - [ ] **Step 3: Add artifacts table migration to connection.ts**
 
@@ -186,7 +186,7 @@ describe("Artifact retrieval", () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cd C:/Users/Zan/Projects/Engram && node --test tests/artifacts.test.mjs`
-Expected: FAIL -- endpoints don't exist yet.
+Expected: FAIL - endpoints don't exist yet.
 
 - [ ] **Step 3: Add config vars to config/index.ts**
 
@@ -289,7 +289,7 @@ git commit -m "feat: add artifact config vars and disk storage utilities"
 
 ---
 
-### Task 3: Store Handler -- Accept Artifacts
+### Task 3: Store Handler - Accept Artifacts
 
 **Files:**
 - Modify: `src/memory/routes.ts` (extend /store to process artifacts)
@@ -471,7 +471,7 @@ Then add the route handler:
 - [ ] **Step 4: Run all artifact tests**
 
 Run: `cd C:/Users/Zan/Projects/Engram && node --test tests/artifacts.test.mjs`
-Expected: All tests pass -- store, list, and download.
+Expected: All tests pass - store, list, and download.
 
 - [ ] **Step 5: Commit**
 
@@ -524,7 +524,7 @@ describe("Search integration", () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cd C:/Users/Zan/Projects/Engram && node --test tests/artifacts.test.mjs`
-Expected: FAIL -- search results don't include artifacts yet.
+Expected: FAIL - search results don't include artifacts yet.
 
 - [ ] **Step 3: Add artifact metadata to search response formatting**
 
@@ -619,7 +619,7 @@ describe("Cleanup on delete", () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cd C:/Users/Zan/Projects/Engram && node --test tests/artifacts.test.mjs`
-Expected: FAIL -- forget doesn't clean up artifacts (CASCADE handles DB rows, but disk files need manual cleanup).
+Expected: FAIL - forget doesn't clean up artifacts (CASCADE handles DB rows, but disk files need manual cleanup).
 
 - [ ] **Step 3: Add disk cleanup to the forget/delete handler**
 
@@ -805,7 +805,7 @@ describe("Context integration", () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cd C:/Users/Zan/Projects/Engram && node --test tests/artifacts.test.mjs`
-Expected: FAIL -- /context doesn't include artifacts yet.
+Expected: FAIL - /context doesn't include artifacts yet.
 
 - [ ] **Step 3: Add artifact enrichment to /context handler**
 

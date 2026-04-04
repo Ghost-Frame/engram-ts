@@ -1,5 +1,5 @@
 // ============================================================================
-// ARTIFACTS DOMAIN -- Route handlers
+// ARTIFACTS DOMAIN - Route handlers
 // ============================================================================
 
 import type { Router } from "../router/types.ts";
@@ -21,7 +21,7 @@ export function enrichWithArtifacts<T extends { id: number }>(results: T[]): (T 
 
 export function registerArtifactRoutes(router: Router): void {
 
-  // GET /artifacts/stats -- storage usage stats
+  // GET /artifacts/stats - storage usage stats
   router.get("/artifacts/stats", async (_req) => {
     const stats = getArtifactStats.get() as {
       total_count: number; total_bytes: number;
@@ -36,7 +36,7 @@ export function registerArtifactRoutes(router: Router): void {
     });
   });
 
-  // GET /artifacts/:memoryId -- list artifacts for a memory
+  // GET /artifacts/:memoryId - list artifacts for a memory
   router.get("/artifacts/:memoryId", async (_req, params) => {
     const memoryId = Number(params.memoryId);
     if (isNaN(memoryId)) return json({ error: "Invalid memory ID" }, 400);
@@ -47,7 +47,7 @@ export function registerArtifactRoutes(router: Router): void {
     return json({ artifacts: rows, memory_id: memoryId });
   });
 
-  // GET /artifact/:id -- download a single artifact
+  // GET /artifact/:id - download a single artifact
   router.get("/artifact/:id", async (_req, params) => {
     const artifactId = Number(params.id);
     if (isNaN(artifactId)) return json({ error: "Invalid artifact ID" }, 400);

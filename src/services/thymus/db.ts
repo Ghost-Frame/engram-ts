@@ -1,12 +1,12 @@
 // ============================================================================
-// Thymus DB — Schema + prepared statements
+// Thymus DB - Schema + prepared statements
 // Migrations run at module scope so tables exist before statements compile.
 // ============================================================================
 
 import { db } from "../../db/index.ts";
 import { log } from "../../config/logger.ts";
 
-// -- Schema (module-scope migration) --
+// - Schema (module-scope migration) --
 
 function migrate(sql: string) {
   try { db.exec(sql); } catch (e: any) {
@@ -58,7 +58,7 @@ migrate(`CREATE INDEX IF NOT EXISTS idx_evaluations_agent_created ON evaluations
 migrate(`CREATE INDEX IF NOT EXISTS idx_evaluations_rubric_created ON evaluations(rubric_id, created_at DESC)`);
 migrate(`CREATE INDEX IF NOT EXISTS idx_quality_metrics_agent_metric ON quality_metrics(agent, metric, recorded_at DESC)`);
 
-// -- Prepared statements --
+// - Prepared statements --
 
 export const insertRubric = db.prepare(
   "INSERT INTO rubrics (name, description, criteria) VALUES (?, ?, ?)"

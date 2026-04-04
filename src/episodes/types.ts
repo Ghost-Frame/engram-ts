@@ -1,5 +1,5 @@
 // ============================================================================
-// EPISODES DOMAIN -- Type definitions and constants
+// EPISODES DOMAIN - Type definitions and constants
 // ============================================================================
 
 /** Shape of an episode row from the database */

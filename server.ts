@@ -1,6 +1,6 @@
 #!/usr/bin/env -S node --experimental-strip-types
 // ============================================================================
-// ENGRAM SERVER v6 -- Modular entry point
+// ENGRAM SERVER v6 - Modular entry point
 // ============================================================================
 
 import "./src/tracing.ts";
@@ -144,7 +144,7 @@ router.fallback(synthesosFallback);
 
 
 // ============================================================================
-// JOB QUEUE -- Register handlers and start drain loop
+// JOB QUEUE - Register handlers and start drain loop
 // ============================================================================
 
 import { registerJobHandler, drainJobs, recoverStuckJobs } from "./src/jobs/index.ts";

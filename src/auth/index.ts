@@ -1,5 +1,5 @@
 // ============================================================================
-// AUTH — API key authentication, rate limiting, RBAC
+// AUTH - API key authentication, rate limiting, RBAC
 // ============================================================================
 
 import { createHash } from "crypto";
@@ -60,7 +60,7 @@ export function authenticate(req: Request): AuthContext | AuthError | null {
     }
   }
 
-  // Rate limiting -- hybrid: in-memory fast path + DB persistence
+  // Rate limiting - hybrid: in-memory fast path + DB persistence
   const now = Date.now();
   let rl = rateLimitMap.get(row.id);
   if (!rl || now > rl.reset) {
@@ -84,7 +84,7 @@ export function authenticate(req: Request): AuthContext | AuthError | null {
   // Batch last_used_at updates
   lastUsedBatch.add(row.id);
 
-  // Determine space — only filter by space if explicitly requested
+  // Determine space - only filter by space if explicitly requested
   let space_id: number | null = null;
   const spaceHeader = req.headers.get("X-Space") || req.headers.get("X-Engram-Space");
   if (spaceHeader) {
@@ -107,7 +107,7 @@ export function authenticate(req: Request): AuthContext | AuthError | null {
     effectiveScopes = keyScopes.filter((s: string) => s !== "admin");
   }
 
-  // Resolve agent identity — check if key is linked to an active agent
+  // Resolve agent identity - check if key is linked to an active agent
   let agent_id: number | null = row.agent_id ?? null;
   if (agent_id) {
     const agent = db.prepare("SELECT id FROM agents WHERE id = ? AND is_active = 1").get(agent_id) as any;
@@ -128,7 +128,7 @@ export function getAuthOrDefault(req: Request, guiAuthed: (req: Request) => bool
   const auth = authenticate(req);
   if (isAuthError(auth)) return auth; // propagate rate limit, bad space, etc.
   if (auth) return auth;
-  // GUI cookie auth -- single-user mode. All browser sessions with the GUI password
+  // GUI cookie auth - single-user mode. All browser sessions with the GUI password
   // operate as owner (user_id=1) with read+write. This is intentional for personal deployments.
   // For multi-tenant use, disable GUI auth and require per-user API keys.
   if (guiAuthed(req)) {

@@ -8,13 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [6.0.0] - 2026-04-03
 
 ### Added
-- **Artifact storage** -- attach files and binary data to memories. Hybrid storage: inline BLOB under 1MB, disk with SHA-256 dedup for larger files. Artifact metadata surfaced in /search, /recall, and /context responses. Disk cleanup on memory forget/delete. Endpoints: `GET /artifacts/:memoryId`, `GET /artifact/:id`, `GET /artifacts/stats`.
-- **Skills engine** -- filesystem skill registry with SKILL.md discovery, hybrid FTS5+vector search with RRF fusion, LLM-driven skill fixer, OpenSpace cloud search and upload. HTTP routes for sync, search, execute, fix, upload, and CRUD. MCP tools: `skill_search`, `skill_fix`, `skill_upload`, `skill_execute`. Auto-syncs `ENGRAM_SKILL_DIRS` at startup.
-- **Modular server architecture** -- monolith decomposed into 23 domain modules with a lightweight router, auth middleware with request context, audit logging, and request validation. New entry point at `server.ts` replaces the old monolith.
-- **Bulk ingestion pipeline** -- ZIP parser, file type detection, chunking, and processing pipeline. CLI `ingest` command and `POST /import/bulk` endpoint for batch memory import.
-- **Embedding model upgrade** -- swapped to BGE-M3 embeddings and IBM Granite reranker. Configurable model directories via `ENGRAM_RERANKER_MODEL_DIR`. OpenAI-compatible embedding provider for custom model support.
-- **Personality auto-injection** -- personality profile automatically included in /recall and /context responses.
-- **GUI overhaul** -- living organism nodes with flow trail connections, reactive graph controls (labels, weight, clusters), bloom effects, spread layout. README redesign with animated GIFs.
+- **Artifact storage** - attach files and binary data to memories. Hybrid storage: inline BLOB under 1MB, disk with SHA-256 dedup for larger files. Artifact metadata surfaced in /search, /recall, and /context responses. Disk cleanup on memory forget/delete. Endpoints: `GET /artifacts/:memoryId`, `GET /artifact/:id`, `GET /artifacts/stats`.
+- **Skills engine** - filesystem skill registry with SKILL.md discovery, hybrid FTS5+vector search with RRF fusion, LLM-driven skill fixer, OpenSpace cloud search and upload. HTTP routes for sync, search, execute, fix, upload, and CRUD. MCP tools: `skill_search`, `skill_fix`, `skill_upload`, `skill_execute`. Auto-syncs `ENGRAM_SKILL_DIRS` at startup.
+- **Modular server architecture** - monolith decomposed into 23 domain modules with a lightweight router, auth middleware with request context, audit logging, and request validation. New entry point at `server.ts` replaces the old monolith.
+- **Bulk ingestion pipeline** - ZIP parser, file type detection, chunking, and processing pipeline. CLI `ingest` command and `POST /import/bulk` endpoint for batch memory import.
+- **Embedding model upgrade** - swapped to BGE-M3 embeddings and IBM Granite reranker. Configurable model directories via `ENGRAM_RERANKER_MODEL_DIR`. OpenAI-compatible embedding provider for custom model support.
+- **Personality auto-injection** - personality profile automatically included in /recall and /context responses.
+- **GUI overhaul** - living organism nodes with flow trail connections, reactive graph controls (labels, weight, clusters), bloom effects, spread layout. README redesign with animated GIFs.
 
 ### Fixed
 - Docker entrypoint switched from server-split.ts to server.ts
@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [5.11.0] - 2026-03-26
 
 ### Added
-- **Syntheos Phase 2: Axon, Loom, Broca consolidation** -- Three more standalone microservices absorbed into the Engram monolith under `src/services/`. All six Syntheos services now run as native modules.
+- **Syntheos Phase 2: Axon, Loom, Broca consolidation** - Three more standalone microservices absorbed into the Engram monolith under `src/services/`. All six Syntheos services now run as native modules.
 - **Axon** (`src/services/axon/`): Real-time event bus with pub/sub channels, SSE streaming via Web ReadableStream, webhook fan-out with SSRF validation, and cursor-based polling. Replaces the Phase 1 no-op stub. Endpoints under `/axon/*`.
 - **Loom** (`src/services/loom/`): Workflow orchestration engine with dependency-based step execution. Supports webhook, LLM, and transform step types with retry logic. Endpoints under `/loom/*`.
 - **Broca** (`src/services/broca/`): Agent action logger with 30+ template-based narratives and LLM fallback. Natural language query gateway (`POST /broca/ask`) routes questions to internal services via direct function calls. Endpoints under `/broca/*`.
@@ -139,9 +139,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 - **Multi-tenant data isolation**: Complete audit and fix of 30+ cross-tenant data boundaries
-  - `getCachedEmbeddings` now accepts optional `userId` filter — all callers in search, auto-link, contradiction detection, deduplication, and fact extraction pass the authenticated user's ID
-  - `autoLink` scoped to same-user memories — prevents cross-user link creation
-  - `addToEmbeddingCache` now includes `user_id` — fixes cache filtering for newly added memories
+  - `getCachedEmbeddings` now accepts optional `userId` filter  -  all callers in search, auto-link, contradiction detection, deduplication, and fact extraction pass the authenticated user's ID
+  - `autoLink` scoped to same-user memories  -  prevents cross-user link creation
+  - `addToEmbeddingCache` now includes `user_id`  -  fixes cache filtering for newly added memories
   - Conversation prepared statements (`listConversations`, `listConversationsByAgent`, `searchMessages`, `getConversationBySession`, `deleteConversation`) all filter by `user_id`
   - Conversation CRUD endpoints (`GET/PATCH/DELETE /conversations/:id`, `POST /conversations/:id/messages`, `POST /conversations/bulk`, `POST /conversations/upsert`, `POST /messages/search`) have ownership checks and write scope guards
   - `/contradictions` and `/contradictions/resolve` scoped to authenticated user with ownership verification
@@ -163,46 +163,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - "updates" relation: sets superseded memory confidence to 0.3
   - "contradicts" relation: reduces both memories' confidence, fires `contradiction.detected` webhook
   - "extends" relation: boosts corroborated memory confidence by 5%
-- `insertConversation` and `insertConversationTx` now include `user_id` column — conversations are attributed to the authenticated user at insert time instead of via follow-up UPDATE
+- `insertConversation` and `insertConversationTx` now include `user_id` column  -  conversations are attributed to the authenticated user at insert time instead of via follow-up UPDATE
 
 ### Added
-- API test suite: `tests/api.test.mjs` — 33 tests across 14 suites covering health, store, search, recall, memory CRUD, conversations, stats, contradictions, duplicates, graph, episodes, entities, projects, FSRS, and cleanup
+- API test suite: `tests/api.test.mjs`  -  33 tests across 14 suites covering health, store, search, recall, memory CRUD, conversations, stats, contradictions, duplicates, graph, episodes, entities, projects, FSRS, and cleanup
 
 ## [5.5.0] - 2026-03-13
 
 ### Changed
 - **Modular architecture**: Monolith `server.ts` split into focused modules under `src/`
-  - `src/config/` — environment config and logger
-  - `src/db/` — schema, migrations, prepared statements
-  - `src/embeddings/` — model init, in-memory cache, similarity
-  - `src/fsrs/` — FSRS-6 spaced repetition engine
-  - `src/intelligence/` — fact extraction, consolidation
-  - `src/llm/` — LLM client, reranking
-  - `src/memory/` — hybrid search, auto-linking, profile
-  - `src/platform/` — webhooks, digests
-  - `src/auth/` — authentication middleware
-  - `src/tier4/` — causal chains, predictive recall, emotional valence, reconsolidation
-  - `src/routes/` — all HTTP handlers
+  - `src/config/`  -  environment config and logger
+  - `src/db/`  -  schema, migrations, prepared statements
+  - `src/embeddings/`  -  model init, in-memory cache, similarity
+  - `src/fsrs/`  -  FSRS-6 spaced repetition engine
+  - `src/intelligence/`  -  fact extraction, consolidation
+  - `src/llm/`  -  LLM client, reranking
+  - `src/memory/`  -  hybrid search, auto-linking, profile
+  - `src/platform/`  -  webhooks, digests
+  - `src/auth/`  -  authentication middleware
+  - `src/tier4/`  -  causal chains, predictive recall, emotional valence, reconsolidation
+  - `src/routes/`  -  all HTTP handlers
 - Entry point is now `server-split.ts` (imports from `src/`)
 
 ### Fixed
-- `FSRSRating` is now both a const value and a type (declaration merging) — fixes TypeScript errors across FSRS consumers
+- `FSRSRating` is now both a const value and a type (declaration merging)  -  fixes TypeScript errors across FSRS consumers
 - Exported `FSRSMemoryState` interface from `src/fsrs/`
 - Aliased `calculateDecayScore` import to resolve shadowing by local route wrapper
 - Exported `graphCache` + `setGraphCache` from `src/embeddings/` to break module boundary
-- Added `"corrects"` to `FactExtractionResult` relation type union — was in the LLM prompt but missing from the TypeScript type
+- Added `"corrects"` to `FactExtractionResult` relation type union  -  was in the LLM prompt but missing from the TypeScript type
 - Fixed `trackAccessWithFSRS` local wrapper to accept optional `grade` parameter
 - Fixed `addToEmbeddingCache` calls missing `user_id` field
 
 ## [5.4.0] - 2026-03-10
 
 ### Security
-- **S1**: Cookie verification now uses `timingSafeEqual` — prevents timing attacks on GUI auth
-- **S2**: Fixed undefined `reason` variable in inbox reject — was crashing on every reject
-- **S3**: Fixed `require("fs")` in ESM backup cleanup — temp files were never deleted
-- **S4**: Fixed `extractFacts()` call signatures in `/add` and `/ingest` — was passing memory ID as content and Float32Array as similar memories, sending garbage to LLM
-- **S5**: Added per-IP rate limiting for `OPEN_ACCESS` mode — prevents DoS
-- **S6**: Added webhook URL validation — blocks SSRF to private/internal IP ranges
+- **S1**: Cookie verification now uses `timingSafeEqual`  -  prevents timing attacks on GUI auth
+- **S2**: Fixed undefined `reason` variable in inbox reject  -  was crashing on every reject
+- **S3**: Fixed `require("fs")` in ESM backup cleanup  -  temp files were never deleted
+- **S4**: Fixed `extractFacts()` call signatures in `/add` and `/ingest`  -  was passing memory ID as content and Float32Array as similar memories, sending garbage to LLM
+- **S5**: Added per-IP rate limiting for `OPEN_ACCESS` mode  -  prevents DoS
+- **S6**: Added webhook URL validation  -  blocks SSRF to private/internal IP ranges
 - **S7**: Split `/health` into light (unauthenticated: status + version + count) and full (authenticated: all config + stats)
 - Added `Strict-Transport-Security` header (HSTS)
 - Added `Content-Security-Policy` header on all responses
@@ -230,15 +230,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - FSRS-6 spaced repetition system (21 trained weights from Anki dataset)
-- Dual-strength model (Bjork & Bjork 1992) — storage strength vs retrieval strength
+- Dual-strength model (Bjork & Bjork 1992)  -  storage strength vs retrieval strength
 - LLM-based fact extraction with relationship detection (updates, extends, contradicts, caused_by, prerequisite_for)
 - Contradiction detection and resolution (`/contradictions`, `/contradictions/resolve`)
-- Time travel queries (`/timetravel`) — query memory state at any past timestamp
+- Time travel queries (`/timetravel`)  -  query memory state at any past timestamp
 - Smart context builder (`/context`) with token-budgeted packing and strategies (balanced/precision/breadth)
-- Memory reflections (`/reflect`) — periodic meta-analysis with theme detection
-- Scheduled digests (`/digests`) — webhook delivery of memory summaries
-- Derived memories (`/derive`) — LLM inference of new facts from existing clusters
-- Auto-consolidation — summarizes large memory clusters automatically
+- Memory reflections (`/reflect`)  -  periodic meta-analysis with theme detection
+- Scheduled digests (`/digests`)  -  webhook delivery of memory summaries
+- Derived memories (`/derive`)  -  LLM inference of new facts from existing clusters
+- Auto-consolidation  -  summarizes large memory clusters automatically
 - Import from Mem0 and SuperMemory formats
 - Entity and project management with scoped search
 - Review queue / inbox (`/inbox`) with approve/reject/edit workflow

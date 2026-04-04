@@ -1,5 +1,5 @@
 // ============================================================================
-// GUI — Web GUI authentication, cookie signing, HTML serving
+// GUI - Web GUI authentication, cookie signing, HTML serving
 // ============================================================================
 
 import { createHash, randomUUID, timingSafeEqual } from "crypto";
@@ -79,7 +79,7 @@ export function guiAuthed(req: Request): boolean {
   return guiVerifyCookie(ck.split("=").slice(1).join("="));
 }
 
-// HTML serving — prefer SvelteKit build, fall back to legacy single HTML
+// HTML serving - prefer SvelteKit build, fall back to legacy single HTML
 const GUI_BUILD_DIR = resolve(SERVER_DIR, "gui/build");
 const USE_SVELTE_BUILD = existsSync(resolve(GUI_BUILD_DIR, "index.html"));
 

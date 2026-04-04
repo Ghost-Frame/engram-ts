@@ -1,5 +1,5 @@
 // ============================================================================
-// EPISODES DOMAIN -- Route handlers (thin wrappers)
+// EPISODES DOMAIN - Route handlers (thin wrappers)
 // ============================================================================
 
 import type { Router } from "../router/types.ts";
@@ -49,7 +49,7 @@ import { getMemoryWithoutEmbedding } from "../db/index.ts";
 
 export function registerEpisodeRoutes(router: Router): void {
 
-  // POST /episodes -- create a new episode
+  // POST /episodes - create a new episode
   router.post("/episodes", async (req) => {
     const { auth } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -100,7 +100,7 @@ export function registerEpisodeRoutes(router: Router): void {
     }
   });
 
-  // GET /episodes -- list, search (temporal, semantic, FTS), or default recent
+  // GET /episodes - list, search (temporal, semantic, FTS), or default recent
   router.get("/episodes", async (req) => {
     const { auth, url } = getContext(req);
     const limit = Math.min(Number(url.searchParams.get("limit") || 20), 100);
@@ -158,7 +158,7 @@ export function registerEpisodeRoutes(router: Router): void {
     return json({ episodes });
   });
 
-  // GET /episodes/:id -- get episode by id with its memories
+  // GET /episodes/:id - get episode by id with its memories
   router.get("/episodes/:id", async (req, params) => {
     const { auth } = getContext(req);
     const id = Number(params.id);
@@ -172,7 +172,7 @@ export function registerEpisodeRoutes(router: Router): void {
     return json({ ...episode, memories });
   });
 
-  // PATCH /episodes/:id -- update episode fields
+  // PATCH /episodes/:id - update episode fields
   router.patch("/episodes/:id", async (req, params) => {
     const { auth } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -200,7 +200,7 @@ export function registerEpisodeRoutes(router: Router): void {
     }
   });
 
-  // POST /episodes/:id/memories -- assign memory IDs to an episode
+  // POST /episodes/:id/memories - assign memory IDs to an episode
   router.post("/episodes/:id/memories", async (req, params) => {
     const { auth } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -226,7 +226,7 @@ export function registerEpisodeRoutes(router: Router): void {
     }
   });
 
-  // POST /episodes/:id/finalize -- generate summary, embed, set ended_at
+  // POST /episodes/:id/finalize - generate summary, embed, set ended_at
   router.post("/episodes/:id/finalize", async (req, params) => {
     const { auth } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);

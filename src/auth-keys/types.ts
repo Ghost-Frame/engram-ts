@@ -1,5 +1,5 @@
 // ============================================================================
-// AUTH-KEYS DOMAIN -- Type definitions for users, API keys, and spaces
+// AUTH-KEYS DOMAIN - Type definitions for users, API keys, and spaces
 // ============================================================================
 
 /** A user row as returned from the users table */

@@ -1,5 +1,5 @@
 // ============================================================================
-// PROJECTS DOMAIN -- Database prepared statements
+// PROJECTS DOMAIN - Database prepared statements
 // ============================================================================
 
 import { db } from "../db/connection.ts";

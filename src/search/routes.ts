@@ -1,5 +1,5 @@
 // ============================================================================
-// SEARCH DOMAIN -- Route handlers (thin wrappers)
+// SEARCH DOMAIN - Route handlers (thin wrappers)
 // ============================================================================
 
 import type { Router } from "../router/types.ts";

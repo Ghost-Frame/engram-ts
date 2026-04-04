@@ -1,5 +1,5 @@
 // ============================================================================
-// Soma registry -- agent CRUD, heartbeat, groups, logs, stats
+// Soma registry - agent CRUD, heartbeat, groups, logs, stats
 // Ported from standalone Soma service (soma/src/registry.ts)
 // ============================================================================
 
@@ -14,7 +14,7 @@ import {
   agentCount, onlineCount, groupCount,
 } from "./db.ts";
 
-// -- Agents --
+// - Agents --
 
 export function registerAgent(data: {
   name: string; type: string; description?: string | null;
@@ -100,7 +100,7 @@ export function deregisterAgent(id: number): boolean {
   return info.changes > 0;
 }
 
-// -- Heartbeat --
+// - Heartbeat --
 
 export function heartbeat(agentId: number, status?: string) {
   const fields = ["heartbeat_at = datetime('now')", "updated_at = datetime('now')"];
@@ -124,7 +124,7 @@ export function getStaleAgents(minutes: number) {
   return parseJsonFieldsAll(rows, "capabilities", "config");
 }
 
-// -- Groups --
+// - Groups --
 
 export function createGroup(data: { name: string; description?: string | null }) {
   const info = insertGroupStmt.run(data.name, data.description ?? null);
@@ -145,7 +145,7 @@ export function deleteGroup(id: number): boolean {
   return info.changes > 0;
 }
 
-// -- Agent-Group membership --
+// - Agent-Group membership --
 
 export function addToGroup(agentId: number, groupId: number) {
   addToGroupStmt.run(agentId, groupId);
@@ -164,7 +164,7 @@ export function getGroupMembers(groupId: number) {
   return parseJsonFieldsAll(rows, "capabilities", "config");
 }
 
-// -- Capability search --
+// - Capability search --
 
 export function findByCapability(cap: string) {
   const rows = db.prepare(
@@ -174,7 +174,7 @@ export function findByCapability(cap: string) {
   return parsed.filter((r: any) => Array.isArray(r.capabilities) && r.capabilities.includes(cap));
 }
 
-// -- Logs --
+// - Logs --
 
 export function addLog(agentId: number, data: { level?: string; message: string; data?: Record<string, unknown> }) {
   const info = insertLog.run(agentId, data.level ?? "info", data.message, JSON.stringify(data.data ?? {}));
@@ -195,7 +195,7 @@ export function getLogs(agentId: number, opts?: { level?: string; limit?: number
   return parseJsonFieldsAll(rows, "data");
 }
 
-// -- Stats --
+// - Stats --
 
 export function getStats() {
   const agents = (agentCount.get() as any).count;

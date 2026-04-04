@@ -1,5 +1,5 @@
 // ============================================================================
-// ADMIN DOMAIN -- Prepared statements for admin operations
+// ADMIN DOMAIN - Prepared statements for admin operations
 // ============================================================================
 
 import { db } from "../db/connection.ts";
@@ -10,7 +10,7 @@ export const countAuditLog = db.prepare(
   "SELECT COUNT(*) as count FROM audit_log"
 );
 
-/** Build dynamic audit query -- returns both the sql string and params array. */
+/** Build dynamic audit query - returns both the sql string and params array. */
 export function buildAuditQuery(action?: string | null, limit = 50, offset = 0): { sql: string; params: unknown[] } {
   let sql = "SELECT * FROM audit_log WHERE 1=1";
   const params: unknown[] = [];

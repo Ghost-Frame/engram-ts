@@ -1,5 +1,5 @@
 // ============================================================================
-// PROJECTS DOMAIN -- Route handlers (thin wrappers)
+// PROJECTS DOMAIN - Route handlers (thin wrappers)
 // ============================================================================
 
 import type { Router } from "../router/types.ts";
@@ -30,7 +30,7 @@ import { trackAccessWithFSRS } from "../db/index.ts";
 
 export function registerProjectRoutes(router: Router): void {
 
-  // POST /projects -- create a new project
+  // POST /projects - create a new project
   router.post("/projects", async (req) => {
     const { auth } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -48,7 +48,7 @@ export function registerProjectRoutes(router: Router): void {
     }
   });
 
-  // GET /projects -- list projects, optionally filtered by status
+  // GET /projects - list projects, optionally filtered by status
   router.get("/projects", async (req) => {
     const { auth, url } = getContext(req);
     const status = url.searchParams.get("status");
@@ -61,7 +61,7 @@ export function registerProjectRoutes(router: Router): void {
     return json({ projects, count: projects.length });
   });
 
-  // GET /projects/:id -- get single project with its memories
+  // GET /projects/:id - get single project with its memories
   router.get("/projects/:id", async (req, params) => {
     const { auth, url } = getContext(req);
     const id = Number(params.id);
@@ -78,7 +78,7 @@ export function registerProjectRoutes(router: Router): void {
     return json(project);
   });
 
-  // PUT /projects/:id -- update project fields
+  // PUT /projects/:id - update project fields
   router.put("/projects/:id", async (req, params) => {
     const { auth } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -97,7 +97,7 @@ export function registerProjectRoutes(router: Router): void {
     }
   });
 
-  // DELETE /projects/:id -- delete a project
+  // DELETE /projects/:id - delete a project
   router.delete("/projects/:id", async (req, params) => {
     const { auth } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -107,7 +107,7 @@ export function registerProjectRoutes(router: Router): void {
     return json({ deleted: true, id });
   });
 
-  // PUT /projects/:id/memories/:mid -- link a memory to a project
+  // PUT /projects/:id/memories/:mid - link a memory to a project
   router.put("/projects/:id/memories/:mid", async (req, params) => {
     const { auth } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -121,7 +121,7 @@ export function registerProjectRoutes(router: Router): void {
     return json({ linked: true, project_id: projectId, memory_id: memoryId });
   });
 
-  // DELETE /projects/:id/memories/:mid -- unlink a memory from a project
+  // DELETE /projects/:id/memories/:mid - unlink a memory from a project
   router.delete("/projects/:id/memories/:mid", async (req, params) => {
     const { auth } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -135,7 +135,7 @@ export function registerProjectRoutes(router: Router): void {
     return json({ unlinked: true, project_id: projectId, memory_id: memoryId });
   });
 
-  // POST /projects/:id/search -- search memories within a project
+  // POST /projects/:id/search - search memories within a project
   router.post("/projects/:id/search", async (req, params) => {
     const { auth } = getContext(req);
     try {

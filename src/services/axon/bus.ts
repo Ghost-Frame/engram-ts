@@ -1,5 +1,5 @@
 // ============================================================================
-// Axon bus engine -- pub/sub, SSE streaming, webhook fan-out, cursor polling
+// Axon bus engine - pub/sub, SSE streaming, webhook fan-out, cursor polling
 // Replaces the no-op axon-stub.ts with a real event bus.
 // ============================================================================
 
@@ -15,7 +15,7 @@ import {
   channelCount, eventCount, subscriptionCount,
 } from "./db.ts";
 
-// -- SSE client tracking --
+// - SSE client tracking --
 
 interface SSEClient {
   controller: ReadableStreamDefaultController;
@@ -29,7 +29,7 @@ let clientIdCounter = 0;
 
 const encoder = new TextEncoder();
 
-// -- Publish --
+// - Publish --
 
 export function publish(channel: string, source: string, type: string, payload: Record<string, unknown>): void {
   if (type.includes("\n")) {
@@ -72,7 +72,7 @@ export function publish(channel: string, source: string, type: string, payload: 
   }
 }
 
-// -- Query events --
+// - Query events --
 
 export function getEvents(opts: {
   channel?: string;
@@ -103,7 +103,7 @@ export function getEvent(id: number) {
   return parseJsonFields(row, "payload");
 }
 
-// -- Channels --
+// - Channels --
 
 export function listChannels() {
   return db.prepare(`
@@ -122,7 +122,7 @@ export function createChannel(name: string, description?: string, retainHours?: 
   return db.prepare("SELECT * FROM axon_channels WHERE name = ?").get(name);
 }
 
-// -- Subscriptions --
+// - Subscriptions --
 
 export async function subscribe(
   agent: string,
@@ -151,7 +151,7 @@ export function getSubscriptions(agent?: string) {
   return db.prepare("SELECT * FROM axon_subscriptions ORDER BY id").all();
 }
 
-// -- Cursor-based polling --
+// - Cursor-based polling --
 
 export function poll(agent: string, channel: string, limit: number) {
   const cursor = getCursor.get(agent, channel) as { last_event_id: number } | undefined;
@@ -171,7 +171,7 @@ export function poll(agent: string, channel: string, limit: number) {
   return { events, cursor: { agent, channel, last_event_id: events.length > 0 ? (events[events.length - 1] as any).id : lastId } };
 }
 
-// -- SSE streaming --
+// - SSE streaming --
 
 export function startSSE(
   agent: string,
@@ -237,7 +237,7 @@ export function startSSE(
   });
 }
 
-// -- Pruning --
+// - Pruning --
 
 export function pruneEvents() {
   const prune = db.transaction(() => {
@@ -261,7 +261,7 @@ export function pruneEvents() {
   return deleted;
 }
 
-// -- Stats --
+// - Stats --
 
 export function getStats() {
   const channels = (channelCount.get() as any).count;

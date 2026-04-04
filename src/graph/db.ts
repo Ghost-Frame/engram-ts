@@ -1,5 +1,5 @@
 // ============================================================================
-// GRAPH DOMAIN -- Database prepared statements (entities, relationships, graph)
+// GRAPH DOMAIN - Database prepared statements (entities, relationships, graph)
 // ============================================================================
 
 import { db } from "../db/connection.ts";

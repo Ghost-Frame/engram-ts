@@ -1,5 +1,5 @@
 // ============================================================================
-// ADMIN DOMAIN -- Heavy operations (reembed, rebuild FTS, compact, GC, etc.)
+// ADMIN DOMAIN - Heavy operations (reembed, rebuild FTS, compact, GC, etc.)
 // ============================================================================
 
 import { db } from "../db/connection.ts";
@@ -14,7 +14,7 @@ import type { GcResult } from "./types.ts";
 
 /**
  * Triggers a full re-embed sweep using the current embedding provider.
- * Heavy operation -- may take minutes on large corpora.
+ * Heavy operation - may take minutes on large corpora.
  * TODO: Move progress tracking to a background job for async reporting.
  */
 export async function runReembed(triggeredBy: number): Promise<Record<string, unknown>> {

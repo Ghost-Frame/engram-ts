@@ -1,5 +1,5 @@
 // ============================================================================
-// CONTEXT DOMAIN -- Route handlers
+// CONTEXT DOMAIN - Route handlers
 // ============================================================================
 
 import type { Router } from "../router/types.ts";

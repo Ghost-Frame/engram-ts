@@ -1,5 +1,5 @@
 // ============================================================================
-// INGESTION DOMAIN -- Route handlers
+// INGESTION DOMAIN - Route handlers
 // POST /add, /ingest, /derive, /import/mem0, /import/supermemory,
 //      /import/bulk, /import/json
 // ============================================================================
@@ -25,13 +25,13 @@ import { bulkInsertConvo } from "../conversations/db.ts";
 export function registerIngestionRoutes(router: Router): void {
 
   // --------------------------------------------------------------------------
-  // POST /add -- add from conversation (LLM fact extraction)
+  // POST /add - add from conversation (LLM fact extraction)
   // --------------------------------------------------------------------------
 
   router.post("/add", async (req) => {
     const { auth, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
-    if (!isLLMAvailable()) return errorResponse("LLM not configured — /add requires fact extraction", 400);
+    if (!isLLMAvailable()) return errorResponse("LLM not configured - /add requires fact extraction", 400);
     try {
       const body = rawBody as any;
       const messages = body.messages as Array<{ role: string; content: string }>;
@@ -62,7 +62,7 @@ Rules:
   - tags: 2-5 lowercase keyword tags
 - Detect temporal facts and set forget_after if appropriate (ISO datetime or null)
 
-CRITICAL — Correction detection:
+CRITICAL - Correction detection:
 - If a USER message corrects the assistant (e.g. "no, X is Y", "that's wrong", "actually...", "I told you", "you forgot"), the corrected fact should:
   - Have is_correction: true
   - Have is_static: true (corrections are permanent by default)
@@ -206,13 +206,13 @@ If no meaningful facts, return {"facts": []}`;
   });
 
   // --------------------------------------------------------------------------
-  // POST /ingest -- ingest URL content or raw text (LLM fact extraction)
+  // POST /ingest - ingest URL content or raw text (LLM fact extraction)
   // --------------------------------------------------------------------------
 
   router.post("/ingest", async (req) => {
     const { auth, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
-    if (!isLLMAvailable()) return errorResponse("LLM not configured — /ingest requires fact extraction", 400);
+    if (!isLLMAvailable()) return errorResponse("LLM not configured - /ingest requires fact extraction", 400);
     try {
       const body = rawBody as any;
       const { url: ingestUrl, text: ingestText, entity_ids, project_ids, episode_id, source } = body;
@@ -425,13 +425,13 @@ Return JSON:
   });
 
   // --------------------------------------------------------------------------
-  // POST /derive -- derive entities/insights from memories (LLM inference)
+  // POST /derive - derive entities/insights from memories (LLM inference)
   // --------------------------------------------------------------------------
 
   router.post("/derive", async (req) => {
     const { auth, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
-    if (!isLLMAvailable()) return errorResponse("LLM not configured — /derive requires inference", 400);
+    if (!isLLMAvailable()) return errorResponse("LLM not configured - /derive requires inference", 400);
     try {
       const body = rawBody as any;
       const context = body.context || "";
@@ -462,7 +462,7 @@ Return JSON:
       const derivePrompt = `You are an inference engine for a memory system. Given a collection of memories, identify patterns, connections, and inferences that are NOT explicitly stated but can be logically derived.
 
 Rules:
-- Only derive facts that are NOT already stored — don't repeat existing memories
+- Only derive facts that are NOT already stored - don't repeat existing memories
 - Each derived fact must cite which memory IDs it was inferred from (source_ids)
 - Confidence should reflect how certain the inference is (0.3-0.9, never 1.0)
 - Prefer actionable insights over trivial observations
@@ -560,7 +560,7 @@ If no meaningful inferences, return {"derived": []}`;
   });
 
   // --------------------------------------------------------------------------
-  // POST /import/mem0 -- import from Mem0 format
+  // POST /import/mem0 - import from Mem0 format
   // --------------------------------------------------------------------------
 
   router.post("/import/mem0", async (req) => {
@@ -611,7 +611,7 @@ If no meaningful inferences, return {"derived": []}`;
   });
 
   // --------------------------------------------------------------------------
-  // POST /import/supermemory -- import from SuperMemory format
+  // POST /import/supermemory - import from SuperMemory format
   // --------------------------------------------------------------------------
 
   router.post("/import/supermemory", async (req) => {
@@ -682,7 +682,7 @@ If no meaningful inferences, return {"derived": []}`;
   });
 
   // --------------------------------------------------------------------------
-  // POST /import/bulk -- async bulk document ingestion pipeline
+  // POST /import/bulk - async bulk document ingestion pipeline
   // --------------------------------------------------------------------------
 
   router.post("/import/bulk", async (req) => {
@@ -766,7 +766,7 @@ If no meaningful inferences, return {"derived": []}`;
   });
 
   // --------------------------------------------------------------------------
-  // POST /import/json -- import Engram JSON export format
+  // POST /import/json - import Engram JSON export format
   // --------------------------------------------------------------------------
 
   router.post("/import/json", async (req) => {

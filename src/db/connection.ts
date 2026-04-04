@@ -1,5 +1,5 @@
 // ============================================================================
-// DATABASE CONNECTION — Schema, migrations, write lock
+// DATABASE CONNECTION - Schema, migrations, write lock
 // ============================================================================
 
 import Database from 'libsql';
@@ -124,7 +124,7 @@ function migrateCritical(sql: string, description: string) {
     const msg = String(e);
     if (msg.includes("duplicate column") || msg.includes("already exists")) return;
     log.error({ msg: "critical_migration_failed", description, sql: sql.slice(0, 120), error: msg });
-    throw new Error(`Critical migration failed: ${description} -- ${msg}`);
+    throw new Error(`Critical migration failed: ${description} - ${msg}`);
   }
 }
 
@@ -149,7 +149,7 @@ migrate("ALTER TABLE memories ADD COLUMN importance INTEGER NOT NULL DEFAULT 5")
 migrate("ALTER TABLE memories ADD COLUMN model TEXT");
 migrate("ALTER TABLE memories ADD COLUMN embedding BLOB");
 
-// Columns referenced by prepared statements -- must run before they're compiled
+// Columns referenced by prepared statements - must run before they're compiled
 migrate("ALTER TABLE memories ADD COLUMN recall_hits INTEGER NOT NULL DEFAULT 0");
 migrate("ALTER TABLE memories ADD COLUMN recall_misses INTEGER NOT NULL DEFAULT 0");
 migrate("ALTER TABLE memories ADD COLUMN adaptive_score REAL");
@@ -165,7 +165,7 @@ migrate("CREATE INDEX IF NOT EXISTS idx_memories_latest ON memories(is_latest) W
 migrate("CREATE INDEX IF NOT EXISTS idx_memories_forgotten ON memories(is_forgotten)");
 migrate("CREATE INDEX IF NOT EXISTS idx_memories_forget_after ON memories(forget_after) WHERE forget_after IS NOT NULL");
 
-// v4.1 — Access tracking, tags, episodes
+// v4.1 - Access tracking, tags, episodes
 const v41Columns: [string, string][] = [
   ["last_accessed_at", "TEXT"],
   ["access_count", "INTEGER NOT NULL DEFAULT 0"],
@@ -201,7 +201,7 @@ migrate(`
   `);
 
 
-// v5.7 — Episode embeddings, FSRS, FTS
+// v5.7 - Episode embeddings, FSRS, FTS
 migrate("ALTER TABLE episodes ADD COLUMN embedding BLOB");
 migrate("ALTER TABLE episodes ADD COLUMN embedding_vec_1024 FLOAT32(1024)");
 migrate("ALTER TABLE episodes ADD COLUMN duration_seconds INTEGER");
@@ -243,7 +243,7 @@ migrate("ALTER TABLE consolidations ADD COLUMN user_id INTEGER NOT NULL DEFAULT 
 migrate("CREATE INDEX IF NOT EXISTS idx_consolidations_user ON consolidations(user_id)");
 
 
-// v4.2 — Confidence, sync, webhooks
+// v4.2 - Confidence, sync, webhooks
 const v42Columns: [string, string][] = [
   ["confidence", "REAL NOT NULL DEFAULT 1.0"],
   ["sync_id", "TEXT"],  // UUID for cross-instance sync
@@ -253,11 +253,11 @@ for (const [col, def] of v42Columns) {
 }
 migrate("CREATE UNIQUE INDEX IF NOT EXISTS idx_memories_sync_id ON memories(sync_id) WHERE sync_id IS NOT NULL");
 
-// v5.1 — Review queue: status column (pending/approved/rejected)
+// v5.1 - Review queue: status column (pending/approved/rejected)
 migrate("ALTER TABLE memories ADD COLUMN status TEXT NOT NULL DEFAULT 'approved'");
 migrate("CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status)");
 
-// v5.0 — FSRS-6 spaced repetition columns
+// v5.0 - FSRS-6 spaced repetition columns
 const v50Columns: [string, string][] = [
   ["fsrs_stability", "REAL"],
   ["fsrs_difficulty", "REAL"],
@@ -273,17 +273,17 @@ for (const [col, def] of v50Columns) {
 }
 migrate("CREATE INDEX IF NOT EXISTS idx_memories_fsrs_stability ON memories(fsrs_stability) WHERE fsrs_stability IS NOT NULL");
 
-// v5.0 — Native vector column (libsql FLOAT32) — SKIP if already dropped by v60 migration
+// v5.0 - Native vector column (libsql FLOAT32) - SKIP if already dropped by v60 migration
 if (_getSchemaVersion() < 60) {
   migrate("ALTER TABLE memories ADD COLUMN embedding_vec FLOAT32(384)");
   migrate("CREATE INDEX IF NOT EXISTS memories_vec_idx ON memories(libsql_vector_idx(embedding_vec))");
 }
 
-// v5.7 — BGE-large 1024-dim vector column
+// v5.7 - BGE-large 1024-dim vector column
 migrate("ALTER TABLE memories ADD COLUMN embedding_vec_1024 FLOAT32(1024)");
 migrate("CREATE INDEX IF NOT EXISTS memories_vec_1024_idx ON memories(libsql_vector_idx(embedding_vec_1024))");
 
-// v5.9 — Dynamic vector column matching configured EMBEDDING_DIM
+// v5.9 - Dynamic vector column matching configured EMBEDDING_DIM
 // When provider changes (e.g., local=1024, google/vertex=768), create the right column
 export const VECTOR_COL = `embedding_vec_${EMBEDDING_DIM}`;
 const EP_VECTOR_COL = `ep_embedding_vec_${EMBEDDING_DIM}`;
@@ -294,7 +294,7 @@ if (EMBEDDING_DIM !== 384 && EMBEDDING_DIM !== 1024) {
   migrate(`CREATE INDEX IF NOT EXISTS episodes_vec_${EMBEDDING_DIM}_idx ON episodes(libsql_vector_idx(${VECTOR_COL}))`);
 }
 
-// v5.9.1 — Drop unused 384-dim ghost vector column (0 rows populated, contributes to vtab corruption)
+// v5.9.1 - Drop unused 384-dim ghost vector column (0 rows populated, contributes to vtab corruption)
 if (_getSchemaVersion() < 60) {
   migrate("DROP INDEX IF EXISTS memories_vec_idx");
   try { db.exec("ALTER TABLE memories DROP COLUMN embedding_vec"); } catch {}
@@ -337,7 +337,7 @@ migrate("CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DE
 migrate("CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action)");
 migrate("CREATE INDEX IF NOT EXISTS idx_audit_target ON audit_log(target_type, target_id)");
 
-// v5.8 — Agent Identity & Trust
+// v5.8 - Agent Identity & Trust
 migrate(`
   CREATE TABLE IF NOT EXISTS agents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -373,7 +373,7 @@ migrate("ALTER TABLE audit_log ADD COLUMN execution_hash TEXT");
 migrate("ALTER TABLE audit_log ADD COLUMN signature TEXT");
 migrate("CREATE INDEX IF NOT EXISTS idx_audit_agent ON audit_log(agent_id)");
 
-// v4.3 — Entities, Projects
+// v4.3 - Entities, Projects
 migrate(`
     CREATE TABLE IF NOT EXISTS entities (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -429,7 +429,7 @@ migrate(`
     CREATE INDEX IF NOT EXISTS idx_mp_project ON memory_projects(project_id);
   `);
 
-// v5.5 — Structured Intelligence Tables (bench-driven improvements)
+// v5.5 - Structured Intelligence Tables (bench-driven improvements)
 migrate(`
     CREATE TABLE IF NOT EXISTS structured_facts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -452,14 +452,14 @@ migrate(`
     CREATE INDEX IF NOT EXISTS idx_sf_user ON structured_facts(user_id);
 `);
 
-// v5.8 — Fact decomposition dimensions (from Hindsight WHAT/WHEN/WHERE/WHO/WHY pattern)
+// v5.8 - Fact decomposition dimensions (from Hindsight WHAT/WHEN/WHERE/WHO/WHY pattern)
 migrate("ALTER TABLE structured_facts ADD COLUMN location TEXT DEFAULT NULL");
 migrate("ALTER TABLE structured_facts ADD COLUMN context TEXT DEFAULT NULL");
 migrate("ALTER TABLE structured_facts ADD COLUMN episode_id INTEGER DEFAULT NULL");
 migrate("CREATE INDEX IF NOT EXISTS idx_sf_episode ON structured_facts(episode_id) WHERE episode_id IS NOT NULL");
 migrate("CREATE INDEX IF NOT EXISTS idx_sf_location ON structured_facts(location COLLATE NOCASE) WHERE location IS NOT NULL");
 
-// v5.8 — Bi-temporal fact tracking (from Graphiti/Zep pattern)
+// v5.8 - Bi-temporal fact tracking (from Graphiti/Zep pattern)
 // valid_at = when fact became true, invalid_at = when superseded/contradicted
 migrate("ALTER TABLE structured_facts ADD COLUMN valid_at TEXT DEFAULT NULL");
 migrate("ALTER TABLE structured_facts ADD COLUMN invalid_at TEXT DEFAULT NULL");
@@ -504,7 +504,7 @@ migrate(`
 
 
 
-// v5.8 — Entity cooccurrence tracking (from Hindsight pattern)
+// v5.8 - Entity cooccurrence tracking (from Hindsight pattern)
 migrate(`
     CREATE TABLE IF NOT EXISTS entity_cooccurrences (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -524,7 +524,7 @@ migrate(`
     CREATE INDEX IF NOT EXISTS idx_ec_user ON entity_cooccurrences(user_id);
 `);
 
-// v4.5 — Digests, Reflections, Contradiction tracking
+// v4.5 - Digests, Reflections, Contradiction tracking
 migrate(`
     CREATE TABLE IF NOT EXISTS digests (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -563,7 +563,7 @@ migrate("ALTER TABLE digests ADD COLUMN failure_count INTEGER NOT NULL DEFAULT 0
 
 
 // ============================================================================
-// SCHEMA v4 — Multi-tenant: users, API keys, spaces
+// SCHEMA v4 - Multi-tenant: users, API keys, spaces
 // ============================================================================
 
 db.exec(`
@@ -605,7 +605,7 @@ db.exec(`
 // Deferred from agents section: link API keys to agent identities (api_keys now exists)
 migrate("ALTER TABLE api_keys ADD COLUMN agent_id INTEGER REFERENCES agents(id)");
 
-// Scratchpad — short-term working memory with TTL
+// Scratchpad - short-term working memory with TTL
 migrate(`
   CREATE TABLE IF NOT EXISTS scratchpad (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -625,7 +625,7 @@ migrate(`
   CREATE INDEX IF NOT EXISTS idx_scratchpad_agent ON scratchpad(user_id, agent);
 `);
 
-// v4 migrations — add user_id and space_id columns to memories
+// v4 migrations - add user_id and space_id columns to memories
 // NOTE: conversations ALTER is deferred until AFTER conversations CREATE TABLE (below)
 for (const [tbl, col, def] of [
   ["memories", "user_id", "INTEGER NOT NULL DEFAULT 1"],
@@ -639,7 +639,7 @@ migrate("CREATE INDEX IF NOT EXISTS idx_memories_space ON memories(space_id)");
 // RBAC: add role column (admin/writer/reader)
 migrate("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'");
 
-// Ensure default user exists (backwards compat — all existing data is user_id=1)
+// Ensure default user exists (backwards compat - all existing data is user_id=1)
 const defaultUser = db.prepare("SELECT id FROM users WHERE id = 1").get();
 if (!defaultUser) {
   db.exec("INSERT INTO users (id, username, is_admin) VALUES (1, 'owner', 1)");
@@ -654,7 +654,7 @@ if (!defaultSpace) {
 }
 
 // ============================================================================
-// MEMORY LINKS TABLE — v3 with typed relationships
+// MEMORY LINKS TABLE - v3 with typed relationships
 // ============================================================================
 
 db.exec(`
@@ -721,15 +721,15 @@ db.exec(`
   END;
 `);
 
-// v4 migration (deferred) — add user_id to conversations now that the table exists
+// v4 migration (deferred) - add user_id to conversations now that the table exists
 migrate("ALTER TABLE conversations ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1");
 migrate("CREATE INDEX IF NOT EXISTS idx_conv_user ON conversations(user_id)");
 
 // ============================================================================
-// TIER 4 SCHEMA — Novel features
+// TIER 4 SCHEMA - Novel features
 // ============================================================================
 
-// Causal chains — temporal cause-effect relationships between memories
+// Causal chains - temporal cause-effect relationships between memories
 migrate(`
   CREATE TABLE IF NOT EXISTS causal_chains (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -754,7 +754,7 @@ migrate(`
   CREATE INDEX IF NOT EXISTS idx_cl_memory ON causal_links(memory_id);
 `);
 
-// Emotional valence — sentiment/affect tracking per memory
+// Emotional valence - sentiment/affect tracking per memory
 migrate("ALTER TABLE memories ADD COLUMN valence REAL");
 migrate("ALTER TABLE memories ADD COLUMN arousal REAL");
 migrate("ALTER TABLE memories ADD COLUMN dominant_emotion TEXT");
@@ -791,7 +791,7 @@ migrate(`
 `);
 
 // ============================================================================
-// PERSONALITY ENGINE — signals + cached profiles
+// PERSONALITY ENGINE - signals + cached profiles
 // ============================================================================
 
 migrate(`
@@ -880,7 +880,7 @@ migrate(`
 `);
 
 // ============================================================================
-// v6.0 -- Skills registry (OpenSpace native integration)
+// v6.0 - Skills registry (OpenSpace native integration)
 // ============================================================================
 
 migrate(`

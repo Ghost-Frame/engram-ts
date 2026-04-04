@@ -1,4 +1,4 @@
-# Bulk Ingestion Pipeline -- Implementation Plan
+# Bulk Ingestion Pipeline - Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
@@ -684,7 +684,7 @@ export interface IngestProgress {
 - Requires LLM to be available
 
 **Implementation:**
-1. Keep the URL fetching and SSRF protection (lines 1896-1953) inline in the route -- this is route-level validation.
+1. Keep the URL fetching and SSRF protection (lines 1896-1953) inline in the route - this is route-level validation.
 2. Replace the chunking logic (lines 1972-1994) with: `const chunks = chunkDocument({title, text: rawText, metadata: {}, source: ingestSource})`
 3. Replace the extraction loop (lines 2000-2106) with: call extractProcessor.process(chunks, processOptions)
 4. Map the processor result back to the existing response format

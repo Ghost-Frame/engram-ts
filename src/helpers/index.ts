@@ -1,5 +1,5 @@
 // ============================================================================
-// HELPERS — Response builders, security headers, FTS sanitization
+// HELPERS - Response builders, security headers, FTS sanitization
 // ============================================================================
 
 import { CORS_ORIGIN, PKG_VERSION, WEBHOOK_ALLOWED_HOSTS } from "../config/index.ts";
@@ -120,7 +120,7 @@ export function errorResponse(message: string, status = 400, requestId?: string)
   return json({ error: message, ...(requestId ? { request_id: requestId } : {}) }, status);
 }
 
-// S7 FIX: Safe error response — logs real error, returns generic message to client
+// S7 FIX: Safe error response - logs real error, returns generic message to client
 export function safeError(label: string, e: any, status = 500, requestId?: string): Response {
   log.error({ msg: `${label}_failed`, error: e?.message, stack: e?.stack?.split("\n")[1]?.trim() });
   return errorResponse(`${label} failed`, status, requestId);

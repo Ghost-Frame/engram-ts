@@ -1,5 +1,5 @@
 // Tests for the raw ingestion processor.
-// Structural tests only -- integration tests require a running Engram instance
+// Structural tests only - integration tests require a running Engram instance
 // with an initialized embedding provider and database.
 
 import { describe, it } from "node:test";

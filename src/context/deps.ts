@@ -1,5 +1,5 @@
 // ============================================================================
-// CONTEXT DOMAIN -- Dependency wiring
+// CONTEXT DOMAIN - Dependency wiring
 // Builds the ContextDeps object from existing module exports.
 // ============================================================================
 

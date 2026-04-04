@@ -1,5 +1,5 @@
 // ============================================================================
-// DOCS DOMAIN -- Route handlers (/docs/resolve, /errors)
+// DOCS DOMAIN - Route handlers (/docs/resolve, /errors)
 // ============================================================================
 
 import { randomUUID } from "crypto";

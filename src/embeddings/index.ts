@@ -1,5 +1,5 @@
 // ============================================================================
-// EMBEDDINGS -- Pluggable providers: local ONNX, Google AI Studio, Vertex AI
+// EMBEDDINGS - Pluggable providers: local ONNX, Google AI Studio, Vertex AI
 // Provider selected via ENGRAM_EMBEDDING_PROVIDER env var
 // ============================================================================
 
@@ -97,7 +97,7 @@ async function vertexEmbed(text: string): Promise<Float32Array> {
 }
 
 // ============================================================================
-// OPENAI-COMPATIBLE EMBEDDINGS -- Any server exposing /v1/embeddings
+// OPENAI-COMPATIBLE EMBEDDINGS - Any server exposing /v1/embeddings
 // Works with: Ollama, LM Studio, text-embeddings-inference, LocalAI, vLLM, etc.
 // ============================================================================
 
@@ -125,7 +125,7 @@ async function openaiEmbed(text: string): Promise<Float32Array> {
 }
 
 // ============================================================================
-// LOCAL ONNX EMBEDDINGS -- Worker thread implementation
+// LOCAL ONNX EMBEDDINGS - Worker thread implementation
 // ONNX inference runs in a dedicated Worker thread to avoid blocking the
 // main event loop. The main thread sends text, the worker returns Float32Array.
 // ============================================================================
@@ -156,7 +156,7 @@ async function ensureModelFiles(): Promise<void> {
   for (const file of needed) {
     const dest = resolve(MODEL_DIR, file);
     if (existsSync(dest)) continue;
-    // Custom model dir: files must be placed there manually -- no auto-download
+    // Custom model dir: files must be placed there manually - no auto-download
     if (CUSTOM_MODEL_DIR) throw new Error(`Model file missing from custom ENGRAM_MODEL_DIR: ${dest}`);
     const url = MODEL_URLS[file];
     log.info({ msg: "downloading_model_file", file, url });
@@ -164,7 +164,7 @@ async function ensureModelFiles(): Promise<void> {
     if (!res.ok || !res.body) throw new Error(`Failed to download ${file}: ${res.status}`);
     const tmp = dest + ".tmp";
     const ws = createWriteStream(tmp);
-    // @ts-ignore -- Node 22 ReadableStream
+    // @ts-ignore - Node 22 ReadableStream
     for await (const chunk of res.body) ws.write(Buffer.from(chunk));
     await new Promise<void>((ok, fail) => { ws.end(() => ok()); ws.on("error", fail); });
     renameSync(tmp, dest);
@@ -250,7 +250,7 @@ async function localEmbed(text: string): Promise<Float32Array> {
 }
 
 // ============================================================================
-// PUBLIC API -- Provider dispatcher
+// PUBLIC API - Provider dispatcher
 // ============================================================================
 
 export async function initEmbedder(): Promise<void> {

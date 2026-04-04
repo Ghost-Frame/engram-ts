@@ -438,7 +438,7 @@ export function classifyQuestion(query: string): QuestionType {
   return "fact_recall";
 }
 
-// Returns confidence weights for each question type — allows blended multi-strategy retrieval.
+// Returns confidence weights for each question type - allows blended multi-strategy retrieval.
 // Weights are normalized to sum to 1.0. Use with blendStrategies() for mixed queries.
 export function classifyQuestionMixed(query: string): Partial<Record<QuestionType, number>> {
   const q = query.toLowerCase();
@@ -783,7 +783,7 @@ export async function hybridSearch(
   for (const r of results.values()) {
     const rrf = rrfScores.get(r.id) || 0;
 
-    // Live FSRS retrievability — NOT the stale cached decay_score
+    // Live FSRS retrievability - NOT the stale cached decay_score
     let retrievability: number;
     if (r.is_static) {
       retrievability = 1.0;

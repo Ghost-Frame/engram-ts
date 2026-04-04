@@ -9,10 +9,10 @@ Agents generate artifacts (configs, code, reports, etc.) that live on the filesy
 
 ## Requirements
 
-- Unified store -- artifacts searchable alongside memories, no filesystem grepping
-- Hybrid storage -- small files inline (BLOB), large files on disk (path reference)
-- Always attached to a memory -- no orphan artifacts
-- One-to-many -- a memory can have multiple artifacts
+- Unified store - artifacts searchable alongside memories, no filesystem grepping
+- Hybrid storage - small files inline (BLOB), large files on disk (path reference)
+- Always attached to a memory - no orphan artifacts
+- One-to-many - a memory can have multiple artifacts
 
 ## Data Model
 
@@ -40,7 +40,7 @@ CREATE INDEX idx_artifacts_hash ON artifacts(sha256);
 
 **Dedup by hash:** If an artifact with the same sha256 already exists on disk, reference the same path. No duplicate disk storage. Inline BLOBs do not dedup (not worth the complexity for small files).
 
-**CASCADE delete:** When a memory is deleted/forgotten, its artifacts go with it. On CASCADE, check refcount on disk_path -- only delete the file when no other artifact rows reference it.
+**CASCADE delete:** When a memory is deleted/forgotten, its artifacts go with it. On CASCADE, check refcount on disk_path - only delete the file when no other artifact rows reference it.
 
 ## Disk Storage Layout
 
@@ -63,11 +63,11 @@ Content-addressable. Same file never stored twice. Nested by prefix to avoid one
 
 `POST /store` gains two new input modes for artifacts:
 
-**Option 1 -- multipart/form-data:**
+**Option 1 - multipart/form-data:**
 - `metadata` part (application/json): the normal JSON payload (content, category, source, etc.)
 - `files` parts (one or more, field name `files`): the artifacts to attach
 
-**Option 2 -- JSON with base64:**
+**Option 2 - JSON with base64:**
 ```json
 {
   "content": "Generated nginx config for bav-apps",
@@ -83,7 +83,7 @@ Content-addressable. Same file never stored twice. Nested by prefix to avoid one
 }
 ```
 
-Both paths store the memory and all artifacts in a single write-lock transaction. Atomic -- everything lands or nothing does.
+Both paths store the memory and all artifacts in a single write-lock transaction. Atomic - everything lands or nothing does.
 
 **Response** gains an `artifacts` array:
 ```json
@@ -98,8 +98,8 @@ Both paths store the memory and all artifacts in a single write-lock transaction
 
 ### Retrieve
 
-- `GET /artifacts/:memory_id` -- list all artifacts for a memory (metadata only, no blob)
-- `GET /artifact/:id` -- download a single artifact (streams BLOB or file from disk)
+- `GET /artifacts/:memory_id` - list all artifacts for a memory (metadata only, no blob)
+- `GET /artifact/:id` - download a single artifact (streams BLOB or file from disk)
 
 ### Search Integration
 
@@ -117,7 +117,7 @@ Both paths store the memory and all artifacts in a single write-lock transaction
 ```
 
 - Metadata only in search results. Agents fetch content via `GET /artifact/:id`.
-- LEFT JOIN -- memories without artifacts return `artifacts: []`.
+- LEFT JOIN - memories without artifacts return `artifacts: []`.
 - Artifacts do not affect search ranking. The memory's text content is the signal, the artifact is cargo.
 
 ### Delete
@@ -141,7 +141,7 @@ Handled by existing memory deletion. CASCADE handles cleanup. No separate delete
 
 ## Non-Goals
 
-- Artifact-level search (searching inside file contents) -- out of scope
-- Standalone artifacts without a parent memory -- explicitly rejected
-- Streaming uploads -- not needed at these sizes
-- Encryption at rest for artifacts -- relies on existing disk/volume encryption
+- Artifact-level search (searching inside file contents) - out of scope
+- Standalone artifacts without a parent memory - explicitly rejected
+- Streaming uploads - not needed at these sizes
+- Encryption at rest for artifacts - relies on existing disk/volume encryption

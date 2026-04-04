@@ -1,5 +1,5 @@
 // ============================================================================
-// INTELLIGENCE DOMAIN -- Route handlers
+// INTELLIGENCE DOMAIN - Route handlers
 // ============================================================================
 
 import type { Router } from "../router/types.ts";
@@ -13,13 +13,13 @@ import { runConsolidationSweep, consolidateCluster } from "./consolidation.ts";
 
 export function registerIntelligenceRoutes(router: Router): void {
 
-  // POST /reflect -- Generate reflection
+  // POST /reflect - Generate reflection
   // TODO: LLM integration needed - callLLM not yet extracted
   router.post("/reflect", async (req) => {
-    return errorResponse("LLM not configured -- /reflect requires inference", 400);
+    return errorResponse("LLM not configured - /reflect requires inference", 400);
   });
 
-  // GET /reflections -- List reflections
+  // GET /reflections - List reflections
   router.get("/reflections", async (req) => {
     const { auth, url } = getContext(req);
     const limit = Math.min(Number(url.searchParams.get("limit") || 10), 50);
@@ -31,7 +31,7 @@ export function registerIntelligenceRoutes(router: Router): void {
     return json({ reflections, total: reflections.length });
   });
 
-  // GET /contradictions -- Get contradictions
+  // GET /contradictions - Get contradictions
   router.get("/contradictions", async (req) => {
     const { auth, url } = getContext(req);
     const _threshold = Number(url.searchParams.get("threshold") || 0.6);
@@ -56,7 +56,7 @@ export function registerIntelligenceRoutes(router: Router): void {
     return json({ contradictions, total: contradictions.length });
   });
 
-  // POST /contradictions/resolve -- Resolve a contradiction
+  // POST /contradictions/resolve - Resolve a contradiction
   router.post("/contradictions/resolve", async (req) => {
     const { auth, body } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -70,7 +70,7 @@ export function registerIntelligenceRoutes(router: Router): void {
     return json({ resolved: true, resolution, memory_a_id: b.memory_a_id, memory_b_id: b.memory_b_id });
   });
 
-  // POST /consolidate -- Run consolidation
+  // POST /consolidate - Run consolidation
   router.post("/consolidate", async (req) => {
     const { auth, body } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -87,7 +87,7 @@ export function registerIntelligenceRoutes(router: Router): void {
     }
   });
 
-  // GET /consolidations -- List consolidations
+  // GET /consolidations - List consolidations
   router.get("/consolidations", async (req) => {
     const { auth } = getContext(req);
     const rows = listConsolidations.all(auth.user_id) as any[];

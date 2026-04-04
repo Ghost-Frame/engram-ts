@@ -1,5 +1,5 @@
 // ============================================================================
-// PAGERANK -- iterative weighted PageRank for memory graph
+// PAGERANK - iterative weighted PageRank for memory graph
 // Ranks memories by structural importance: a memory linked to by important
 // memories is itself more important. Uses type-aware edge weights.
 // ============================================================================

@@ -1,5 +1,5 @@
 // ============================================================================
-// SEARCH DOMAIN -- Business logic (pure functions, no Request/Response)
+// SEARCH DOMAIN - Business logic (pure functions, no Request/Response)
 // ============================================================================
 
 import { SEARCH_MODES, type SearchMode, type SearchModeConfig, type RecallEntry, type RecallSource, type RecallBreakdown } from "./types.ts";

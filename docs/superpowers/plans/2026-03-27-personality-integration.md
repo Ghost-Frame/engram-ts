@@ -40,7 +40,7 @@ export function getProfileForInjection(userId: number): { profile: string; isSta
 }
 ```
 
-**Verification:** `grep -n "getAnyPersonalityProfile" src/db/index.ts src/intelligence/personality.ts` -- should show both files.
+**Verification:** `grep -n "getAnyPersonalityProfile" src/db/index.ts src/intelligence/personality.ts` - should show both files.
 
 ---
 
@@ -68,7 +68,7 @@ registerJobHandler("profile_resynthesize", async (payload) => {
 });
 ```
 
-Import `synthesizePersonalityProfile` -- it is already imported in `server-split.ts` at line 89 via `src/intelligence/personality.ts`. Verify that `synthesizePersonalityProfile` is already listed in the import. If not, add it.
+Import `synthesizePersonalityProfile` - it is already imported in `server-split.ts` at line 89 via `src/intelligence/personality.ts`. Verify that `synthesizePersonalityProfile` is already listed in the import. If not, add it.
 
 - [ ] **Step 4:** In `src/intelligence/personality.ts`, add a helper function `queueResynthesisIfStale` that enqueues the job with dedup (don't queue if a pending job already exists for this user):
 
@@ -89,7 +89,7 @@ export function queueResynthesisIfStale(userId: number): void {
 }
 ```
 
-**Verification:** `grep -n "profile_resynthesize" server-split.ts src/intelligence/personality.ts` -- should show both registrations.
+**Verification:** `grep -n "profile_resynthesize" server-split.ts src/intelligence/personality.ts` - should show both registrations.
 
 ---
 
@@ -119,7 +119,7 @@ describe("Recall personality injection", () => {
 });
 ```
 
-**Verification:** Run `ENGRAM_URL=http://127.0.0.1:4201 node --test tests/api.test.mjs` -- this test should FAIL because `/recall` doesn't return `personality_profile` yet.
+**Verification:** Run `ENGRAM_URL=http://127.0.0.1:4201 node --test tests/api.test.mjs` - this test should FAIL because `/recall` doesn't return `personality_profile` yet.
 
 ---
 
@@ -164,7 +164,7 @@ count: sorted.length,
 
 Note: We always include the key (even when null) so callers can reliably check for it without guessing whether the field exists.
 
-**Verification:** Run `ENGRAM_URL=http://127.0.0.1:4201 node --test tests/api.test.mjs` -- the "Recall personality injection" test should now PASS.
+**Verification:** Run `ENGRAM_URL=http://127.0.0.1:4201 node --test tests/api.test.mjs` - the "Recall personality injection" test should now PASS.
 
 ---
 
@@ -202,7 +202,7 @@ describe("Context personality injection", () => {
 });
 ```
 
-**Verification:** Run tests -- both should FAIL.
+**Verification:** Run tests - both should FAIL.
 
 ---
 
@@ -269,7 +269,7 @@ breakdown: {
 },
 ```
 
-**Verification:** Run tests -- both context personality tests should PASS.
+**Verification:** Run tests - both context personality tests should PASS.
 
 ---
 
@@ -317,7 +317,7 @@ case "memory_recall": {
 }
 ```
 
-**Verification:** The MCP `memory_context` tool already passes through `result.context` which will now include the `## Personality` section. No changes needed for `memory_context`. Verify by searching the output: `grep -n "memory_context" mcp-server.ts` -- it returns `result.context` which is the assembled string.
+**Verification:** The MCP `memory_context` tool already passes through `result.context` which will now include the `## Personality` section. No changes needed for `memory_context`. Verify by searching the output: `grep -n "memory_context" mcp-server.ts` - it returns `result.context` which is the assembled string.
 
 ---
 
@@ -329,9 +329,9 @@ case "memory_recall": {
 ENGRAM_URL=http://127.0.0.1:4201 node --test tests/api.test.mjs
 ```
 
-All existing tests must pass. The new personality tests should pass (they check for the key's existence; the profile value will be null if no signals have been extracted yet, which is fine -- the key is always present).
+All existing tests must pass. The new personality tests should pass (they check for the key's existence; the profile value will be null if no signals have been extracted yet, which is fine - the key is always present).
 
-- [ ] **Step 15:** Manual integration test -- curl the endpoints directly to verify the shape:
+- [ ] **Step 15:** Manual integration test - curl the endpoints directly to verify the shape:
 
 ```bash
 # Recall

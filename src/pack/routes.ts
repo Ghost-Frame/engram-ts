@@ -1,5 +1,5 @@
 // ============================================================================
-// PACK DOMAIN -- Route handlers
+// PACK DOMAIN - Route handlers
 // ============================================================================
 
 import type { Router } from "../router/types.ts";
@@ -9,7 +9,7 @@ import { packMemories, type PackFormat } from "./index.ts";
 
 export function registerPackRoutes(router: Router): void {
 
-  // POST /pack -- greedy knapsack memory packing
+  // POST /pack - greedy knapsack memory packing
   router.post("/pack", async (req) => {
     const { auth, body: rawBody } = getContext(req);
     try {

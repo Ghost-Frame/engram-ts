@@ -1,5 +1,5 @@
 // ============================================================================
-// SCHEDULER LEASES -- Prevent duplicate background job execution
+// SCHEDULER LEASES - Prevent duplicate background job execution
 // Makes multi-instance deployment safe
 // ============================================================================
 

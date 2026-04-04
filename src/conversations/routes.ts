@@ -1,5 +1,5 @@
 // ============================================================================
-// CONVERSATIONS DOMAIN -- Route handlers (thin wrappers)
+// CONVERSATIONS DOMAIN - Route handlers (thin wrappers)
 // ============================================================================
 
 import type { Router } from "../router/types.ts";
@@ -30,7 +30,7 @@ import type {
 
 export function registerConversationRoutes(router: Router): void {
 
-  // POST /conversations -- create a new conversation
+  // POST /conversations - create a new conversation
   router.post("/conversations", async (req) => {
     const { auth } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -50,7 +50,7 @@ export function registerConversationRoutes(router: Router): void {
     }
   });
 
-  // GET /conversations -- list conversations (optionally filtered by agent)
+  // GET /conversations - list conversations (optionally filtered by agent)
   router.get("/conversations", async (req) => {
     const { auth, url } = getContext(req);
     const limit = Math.min(Number(url.searchParams.get("limit") || 50), 500);
@@ -61,7 +61,7 @@ export function registerConversationRoutes(router: Router): void {
     return json({ results });
   });
 
-  // GET /conversations/:id -- get conversation with messages
+  // GET /conversations/:id - get conversation with messages
   router.get("/conversations/:id", async (req, params) => {
     const { auth, url } = getContext(req);
     const id = Number(params.id);
@@ -74,7 +74,7 @@ export function registerConversationRoutes(router: Router): void {
     return json({ conversation: conv, messages: msgs });
   });
 
-  // PATCH /conversations/:id -- update title/metadata
+  // PATCH /conversations/:id - update title/metadata
   router.patch("/conversations/:id", async (req, params) => {
     const { auth } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -96,7 +96,7 @@ export function registerConversationRoutes(router: Router): void {
     }
   });
 
-  // DELETE /conversations/:id -- delete a conversation
+  // DELETE /conversations/:id - delete a conversation
   router.delete("/conversations/:id", async (req, params) => {
     const { auth } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -106,7 +106,7 @@ export function registerConversationRoutes(router: Router): void {
     return json({ deleted: true, id });
   });
 
-  // POST /conversations/:id/messages -- add one or more messages
+  // POST /conversations/:id/messages - add one or more messages
   router.post("/conversations/:id/messages", async (req, params) => {
     const { auth } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -132,7 +132,7 @@ export function registerConversationRoutes(router: Router): void {
     }
   });
 
-  // POST /conversations/bulk -- create conversation with messages in one transaction
+  // POST /conversations/bulk - create conversation with messages in one transaction
   router.post("/conversations/bulk", async (req) => {
     const { auth } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -159,7 +159,7 @@ export function registerConversationRoutes(router: Router): void {
     }
   });
 
-  // POST /conversations/upsert -- find-or-create by agent+session_id, append messages
+  // POST /conversations/upsert - find-or-create by agent+session_id, append messages
   router.post("/conversations/upsert", async (req) => {
     const { auth } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -206,7 +206,7 @@ export function registerConversationRoutes(router: Router): void {
     }
   });
 
-  // POST /messages/search -- full-text search across messages
+  // POST /messages/search - full-text search across messages
   router.post("/messages/search", async (req) => {
     const { auth } = getContext(req);
     try {

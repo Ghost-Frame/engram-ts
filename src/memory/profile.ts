@@ -1,5 +1,5 @@
 // ============================================================================
-// MEMORY PROFILE — Dynamic user profile generation
+// MEMORY PROFILE - Dynamic user profile generation
 // ============================================================================
 
 import { db, getStaticMemories, getRecentDynamicMemories, getNoEmbedding, getMemory, updateMemoryEmbedding, updateMemoryVec, embeddingToVectorJSON } from "../db/index.ts";

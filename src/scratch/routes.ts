@@ -1,5 +1,5 @@
 // ============================================================================
-// SCRATCH PAD DOMAIN -- Route handlers
+// SCRATCH PAD DOMAIN - Route handlers
 // ============================================================================
 
 import type { Router } from "../router/types.ts";
@@ -27,7 +27,7 @@ import type { ScratchEntryRow } from "./types.ts";
 
 export function registerScratchRoutes(router: Router): void {
 
-  // GET /scratch -- list scratch entries
+  // GET /scratch - list scratch entries
   router.get("/scratch", async (req) => {
     const { auth, url } = getContext(req);
     if (!hasScope(auth, "read")) return errorResponse("Read scope required", 403);
@@ -59,7 +59,7 @@ export function registerScratchRoutes(router: Router): void {
     }
   });
 
-  // PUT /scratch -- upsert scratch entries
+  // PUT /scratch - upsert scratch entries
   router.put("/scratch", async (req) => {
     const { auth, body, clientIp, requestId } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -117,7 +117,7 @@ export function registerScratchRoutes(router: Router): void {
     }
   });
 
-  // DELETE /scratch/:session/:key -- delete specific key
+  // DELETE /scratch/:session/:key - delete specific key
   router.delete("/scratch/:session/:key", async (req, params) => {
     const { auth, clientIp } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -133,7 +133,7 @@ export function registerScratchRoutes(router: Router): void {
     }
   });
 
-  // DELETE /scratch/:session -- delete session (auto-summarize if LLM available)
+  // DELETE /scratch/:session - delete session (auto-summarize if LLM available)
   router.delete("/scratch/:session", async (req, params) => {
     const { auth, clientIp } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -189,7 +189,7 @@ export function registerScratchRoutes(router: Router): void {
     }
   });
 
-  // POST /scratch/:session/promote -- promote session entries to permanent memories
+  // POST /scratch/:session/promote - promote session entries to permanent memories
   router.post("/scratch/:session/promote", async (req, params) => {
     const { auth, body, clientIp } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -257,7 +257,7 @@ export function registerScratchRoutes(router: Router): void {
     }
   });
 
-  // POST /scratch/:session/summarize -- LLM-summarize session and store as memory
+  // POST /scratch/:session/summarize - LLM-summarize session and store as memory
   router.post("/scratch/:session/summarize", async (req, params) => {
     const { auth, body, clientIp } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);

@@ -1,5 +1,5 @@
 // ============================================================================
-// Thymus routes -- quality scoring, rubric evaluations, metrics
+// Thymus routes - quality scoring, rubric evaluations, metrics
 // Prefix: /thymus/*
 // ============================================================================
 
@@ -26,7 +26,7 @@ export async function handleThymusRoutes(
   // Strip prefix for cleaner matching
   const sub = path.slice("/thymus".length); // e.g. "/rubrics" or "/rubrics/5"
 
-  // -- Rubrics --
+  // - Rubrics --
 
   if (sub === "/rubrics" && method === "GET") {
     return json(listRubrics());
@@ -68,7 +68,7 @@ export async function handleThymusRoutes(
     return json({ ok: true });
   }
 
-  // -- Evaluations --
+  // - Evaluations --
 
   if (sub === "/evaluate" && method === "POST") {
     const { body: rawBody } = getContext(req);
@@ -101,7 +101,7 @@ export async function handleThymusRoutes(
     return json(evaluation);
   }
 
-  // -- Agent Scores --
+  // - Agent Scores --
 
   const agentScoresMatch = sub.match(/^\/agents\/([^/]+)\/scores$/);
   if (agentScoresMatch && method === "GET") {
@@ -112,7 +112,7 @@ export async function handleThymusRoutes(
     }));
   }
 
-  // -- Metrics --
+  // - Metrics --
 
   if (sub === "/metrics" && method === "POST") {
     const { body: rawBody } = getContext(req);
@@ -141,7 +141,7 @@ export async function handleThymusRoutes(
     return json(getMetricSummary(agent, metric, url.searchParams.get("since") ?? undefined));
   }
 
-  // -- Stats --
+  // - Stats --
 
   if (sub === "/stats" && method === "GET") {
     return json(getStats());

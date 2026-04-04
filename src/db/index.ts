@@ -1,5 +1,5 @@
 // ============================================================================
-// DATABASE — Prepared statements, query functions, audit
+// DATABASE - Prepared statements, query functions, audit
 // ============================================================================
 
 import { log, opsCounters } from '../config/logger.ts';
@@ -18,7 +18,7 @@ export function audit(userId: number | null, action: string, targetType: string 
 }
 
 // ============================================================================
-// PREPARED STATEMENTS — memories (v3)
+// PREPARED STATEMENTS - memories (v3)
 // ============================================================================
 
 export const insertMemory = db.prepare(
@@ -40,14 +40,14 @@ export let updateMemoryVec = db.prepare(
 /** Write vector column for a newly inserted memory (call after insertMemory) */
 export function writeVec(memoryId: number, embArray: Float32Array | null): void {
   if (!embArray) return;
-  // Validate BEFORE attempting DB write -- reject poison data at the gate
+  // Validate BEFORE attempting DB write - reject poison data at the gate
   let vecJson: string;
   try {
     vecJson = embeddingToVectorJSON(embArray);
   } catch (e: any) {
     log.warn({ msg: "vec_write_rejected_invalid_embedding", id: memoryId, error: e.message });
     opsCounters.vec_write_failures++;
-    return; // Do NOT write invalid data -- skip silently
+    return; // Do NOT write invalid data - skip silently
   }
   try {
     updateMemoryVec.run(vecJson, memoryId);
@@ -65,7 +65,7 @@ export function writeVec(memoryId: number, embArray: Float32Array | null): void 
   }
 }
 
-/** Fast corruption probe — tries a no-op vector update in a transaction, rolls back. Returns true if healthy. */
+/** Fast corruption probe - tries a no-op vector update in a transaction, rolls back. Returns true if healthy. */
 export function probeVectorHealth(): boolean {
   try {
     const testRow = db.prepare(`SELECT id FROM memories WHERE ${VECTOR_COL} IS NOT NULL LIMIT 1`).get() as { id: number } | undefined;
@@ -99,7 +99,7 @@ export function rebuildVectorIndex(): { dropped: number; recreated: number; repo
   let dropped = 0, recreated = 0, repopulated = 0;
 
   try {
-    // Phase 1: Schema changes (DROP + ADD) -- must be outside transaction (DDL in libsql)
+    // Phase 1: Schema changes (DROP + ADD) - must be outside transaction (DDL in libsql)
     // Drop all vector indexes
     for (const idx of [
       "memories_vec_idx", "memories_vec_1024_idx",
@@ -292,7 +292,7 @@ export const getExpiredMemories = db.prepare(
    AND is_forgotten = 0`
 );
 
-// Memory links — v3 typed
+// Memory links - v3 typed
 export const insertLink = db.prepare(
   `INSERT OR IGNORE INTO memory_links (source_id, target_id, similarity, type) VALUES (?, ?, ?, ?)`
 );
@@ -825,7 +825,7 @@ export const getAllLinksForGraph = db.prepare(
 );
 
 // ============================================================================
-// PREPARED STATEMENTS — conversations (unchanged)
+// PREPARED STATEMENTS - conversations (unchanged)
 // ============================================================================
 
 export const insertConversation = db.prepare(
@@ -871,7 +871,7 @@ export const touchConversation = db.prepare(
   `UPDATE conversations SET updated_at = datetime('now') WHERE id = ?`
 );
 
-// Transaction-safe inserts (no RETURNING — avoids libsql "statements in progress" bug)
+// Transaction-safe inserts (no RETURNING - avoids libsql "statements in progress" bug)
 export const insertConversationTx = db.prepare(
   `INSERT INTO conversations (agent, session_id, title, metadata, user_id) VALUES (?, ?, ?, ?, ?)`
 );
@@ -894,7 +894,7 @@ export const bulkInsertConvo = db.transaction(
 );
 
 // ============================================================================
-// AGENT IDENTITY — prepared statements
+// AGENT IDENTITY - prepared statements
 // ============================================================================
 
 export const insertAgent = db.prepare(
@@ -958,7 +958,7 @@ export const getProjectForUser = db.prepare(
 );
 
 // ============================================================================
-// PERSONALITY ENGINE — prepared statements
+// PERSONALITY ENGINE - prepared statements
 // ============================================================================
 
 export const insertPersonalitySignal = db.prepare(
@@ -993,7 +993,7 @@ export const invalidatePersonalityProfile = db.prepare(
 );
 
 // ============================================================================
-// RATE LIMITS — prepared statements
+// RATE LIMITS - prepared statements
 // ============================================================================
 
 export const upsertRateLimit = db.prepare(`
@@ -1019,7 +1019,7 @@ export const cleanupRateLimits = db.prepare(`
 `);
 
 // ============================================================================
-// TENANT QUOTAS — prepared statements
+// TENANT QUOTAS - prepared statements
 // ============================================================================
 
 export const getQuota = db.prepare(
@@ -1044,7 +1044,7 @@ export const getUserMemoryCount = db.prepare(
 );
 
 // ============================================================================
-// USAGE EVENTS — prepared statements
+// USAGE EVENTS - prepared statements
 // ============================================================================
 
 export const recordUsage = db.prepare(
@@ -1071,7 +1071,7 @@ export const cleanupOldUsage = db.prepare(
 );
 
 // ============================================================================
-// SKILLS — prepared statements
+// SKILLS - prepared statements
 // ============================================================================
 
 export const upsertSkill = db.prepare(`
@@ -1191,7 +1191,7 @@ export function detectSchemaDrift(): { missing: string[]; extra: string[] } {
 }
 
 // ============================================================================
-// TIER 4 — prepared statements
+// TIER 4 - prepared statements
 // ============================================================================
 
 export const insertCausalChain = db.prepare(
@@ -1262,7 +1262,7 @@ export const getTemporalPatternsForNow = db.prepare(
 );
 
 // ============================================================================
-// PREPARED STATEMENTS -- artifacts (v5.12)
+// PREPARED STATEMENTS - artifacts (v5.12)
 // ============================================================================
 
 export const insertArtifact = db.prepare(

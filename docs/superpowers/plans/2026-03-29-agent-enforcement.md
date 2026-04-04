@@ -4,7 +4,7 @@
 
 **Goal:** Force all agents to register with Axon on spawn, store at least one memory to Engram before completing, and provide a non-blank summary when closing a Chiasm task.
 
-**Architecture:** Three enforcement layers — Eidolon gate blocks task completion if no Engram stores recorded this session and adds Axon auto-registration on spawn; Chiasm hard-rejects blank summaries at the HTTP layer; Claude Code session-end hook guarantees at least one Engram store and a non-blank Chiasm completion on session exit.
+**Architecture:** Three enforcement layers  -  Eidolon gate blocks task completion if no Engram stores recorded this session and adds Axon auto-registration on spawn; Chiasm hard-rejects blank summaries at the HTTP layer; Claude Code session-end hook guarantees at least one Engram store and a non-blank Chiasm completion on session exit.
 
 **Tech Stack:** Rust (Eidolon daemon at `~/eidolon/eidolon-daemon/` on Rocky), TypeScript/Bun (Chiasm at `C:\Users\Zan\Projects\chiasm\`), Bash (Claude Code hooks at `C:\Users\Zan\.claude\hooks\`)
 
@@ -473,7 +473,7 @@ curl -s -X PATCH "$CHIASM_URL/tasks/1" \
   -d '{"status": "completed"}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d)"
 ```
 
-Expected: `{"error": "summary is required when completing a task -- document what you did"}`
+Expected: `{"error": "summary is required when completing a task - document what you did"}`
 
 ```bash
 # Should return 200 (or 404 if task 1 doesn't exist -- that's fine, means validation passed)
@@ -628,7 +628,7 @@ Open `C:\Users\Zan\.claude\settings.json`. Find the `"hooks"` array. Add a new e
 }
 ```
 
-> Note: Match the exact JSON structure already used in settings.json for SessionStart. The key format may differ — check the existing entries and mirror them exactly.
+> Note: Match the exact JSON structure already used in settings.json for SessionStart. The key format may differ  -  check the existing entries and mirror them exactly.
 
 - [ ] **Step 4: Verify hook fires**
 
@@ -671,6 +671,6 @@ git commit -m "feat: add session-end hook for Engram store and Chiasm completion
 - [x] Deployed to both Rocky and zan-hetzner → Task 5
 
 **Notes for executor:**
-- Find the exact variable names in `tasks.rs` before writing Task 4 code — run `grep -n 'agent\|session_id\|create_session' ~/eidolon/eidolon-daemon/src/routes/tasks.rs` first
-- Chiasm deployment in Task 6 Step 5 — verify actual service name and deploy path with `systemctl cat chiasm` on zan-hetzner before restarting
-- The `engram-cli recall` command in the session-end hook — verify the exact flags with `engram-cli recall --help` before writing the hook
+- Find the exact variable names in `tasks.rs` before writing Task 4 code  -  run `grep -n 'agent\|session_id\|create_session' ~/eidolon/eidolon-daemon/src/routes/tasks.rs` first
+- Chiasm deployment in Task 6 Step 5  -  verify actual service name and deploy path with `systemctl cat chiasm` on zan-hetzner before restarting
+- The `engram-cli recall` command in the session-end hook  -  verify the exact flags with `engram-cli recall --help` before writing the hook

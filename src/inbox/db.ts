@@ -1,5 +1,5 @@
 // ============================================================================
-// INBOX DOMAIN -- Database prepared statements
+// INBOX DOMAIN - Database prepared statements
 // ============================================================================
 
 import { db } from "../db/connection.ts";

@@ -1,5 +1,5 @@
 // ============================================================================
-// Broca ask -- Natural language query gateway
+// Broca ask - Natural language query gateway
 // Routes questions to internal service functions via LLM-planned queries.
 // Key difference from standalone: direct function imports, no HTTP calls.
 // ============================================================================
@@ -7,7 +7,7 @@
 import { log } from "../../config/logger.ts";
 import { callLLM, isLLMAvailable } from "../../llm/index.ts";
 
-// -- Direct service imports (no HTTP, just function calls) --
+// - Direct service imports (no HTTP, just function calls) --
 
 import { listAgents, getAgent, getStats as getSomaStats } from "../soma/registry.ts";
 import { listTasks, getTask, getChiasmStats } from "../chiasm/engine.ts";
@@ -15,7 +15,7 @@ import { listRubrics, listEvaluations, getAgentScores, getStats as getThymusStat
 import { listChannels, getEvents, getStats as getAxonStats } from "../axon/bus.ts";
 import { listWorkflows, listRuns, getRun, getStats as getLoomStats } from "../loom/engine.ts";
 
-// -- Service catalog (describes available queries for the LLM planner) --
+// - Service catalog (describes available queries for the LLM planner) --
 
 const SERVICE_CATALOG = `
 Available services and their query functions:
@@ -48,7 +48,7 @@ Available services and their query functions:
    - getLoomStats() - workflow, run, active run, step counts
 `.trim();
 
-// -- Query plan type --
+// - Query plan type --
 
 interface QueryPlan {
   service: string;
@@ -56,7 +56,7 @@ interface QueryPlan {
   params: Record<string, unknown>;
 }
 
-// -- Function dispatcher --
+// - Function dispatcher --
 
 function dispatch(plan: QueryPlan): unknown {
   const { service, params } = plan;
@@ -99,7 +99,7 @@ function dispatch(plan: QueryPlan): unknown {
   throw new Error(`Unknown function: ${service}.${fn}`);
 }
 
-// -- Main ask() function --
+// - Main ask() function --
 
 export async function ask(question: string): Promise<{ answer: string; plan: QueryPlan | null; raw: unknown }> {
   if (!isLLMAvailable()) {

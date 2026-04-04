@@ -36,11 +36,11 @@ We will use option (c) since it's the most flexible for self-hosted deployments.
 ## TABLE OF CONTENTS
 
 - [PHASE 1: SSRF Allowlist for Internal Services](#phase-1-ssrf-allowlist-for-internal-services)
-- [PHASE 2: Open WebUI Pipeline -- Engram RAG](#phase-2-open-webui-pipeline----engram-rag)
-- [PHASE 3: Open WebUI Pipeline -- Conversation Memory](#phase-3-open-webui-pipeline----conversation-memory)
+- [PHASE 2: Open WebUI Pipeline - Engram RAG](#phase-2-open-webui-pipeline----engram-rag)
+- [PHASE 3: Open WebUI Pipeline - Conversation Memory](#phase-3-open-webui-pipeline----conversation-memory)
 - [PHASE 4: n8n Webhook Receiver](#phase-4-n8n-webhook-receiver)
 - [PHASE 5: n8n Maintenance Workflows](#phase-5-n8n-maintenance-workflows)
-- [PHASE 6: n8n Agent Loop -- Daily Reflection](#phase-6-n8n-agent-loop----daily-reflection)
+- [PHASE 6: n8n Agent Loop - Daily Reflection](#phase-6-n8n-agent-loop----daily-reflection)
 - [PHASE 7: Wiring and Verification](#phase-7-wiring-and-verification)
 
 ---
@@ -79,7 +79,7 @@ import { WEBHOOK_ALLOWED_HOSTS } from "../config/index.ts";
 
 Then find the check that runs before webhook dispatch. There are two places SSRF is validated:
 
-1. `validatePublicWebhookUrl()` -- called at registration time
+1. `validatePublicWebhookUrl()` - called at registration time
 2. The dispatch-time DNS rebinding check in `webhooks.ts`
 
 For both, add an early return if the hostname is in the allowlist:
@@ -95,7 +95,7 @@ if (WEBHOOK_ALLOWED_HOSTS.length > 0) {
 ```
 
 Read `src/helpers/index.ts` and `src/platform/webhooks.ts` to find the exact function names
-and modify them. The pattern will be clear -- look for where `isPrivateHostname` is called
+and modify them. The pattern will be clear - look for where `isPrivateHostname` is called
 and add the allowlist check before it.
 
 ### Task 1.3: Set the env var on Hetzner
@@ -114,7 +114,7 @@ ENGRAM_WEBHOOK_ALLOWED_HOSTS=100.64.0.13,127.0.0.1,localhost
 
 ---
 
-## PHASE 2: Open WebUI Pipeline -- Engram RAG
+## PHASE 2: Open WebUI Pipeline - Engram RAG
 
 **Goal:** Create an Open WebUI Filter pipeline that intercepts every chat message, queries
 Engram for relevant context, and injects it into the system prompt before Ollama sees it.
@@ -340,7 +340,7 @@ If there's a separate pipelines container, put the file there.
 
 ---
 
-## PHASE 3: Open WebUI Pipeline -- Conversation Memory
+## PHASE 3: Open WebUI Pipeline - Conversation Memory
 
 **Goal:** Extend the pipeline to store Open WebUI conversations back into Engram after each
 exchange. This creates a bidirectional loop: Engram feeds context into conversations, and
@@ -529,7 +529,7 @@ curl -s http://127.0.0.1:4200/webhooks \
   }'
 ```
 
-### Task 4.3: Create n8n workflow -- Engram Event Router
+### Task 4.3: Create n8n workflow - Engram Event Router
 
 Create this workflow JSON file. Import it into n8n via the UI (Workflows > Import from File)
 or via the n8n API.
@@ -1015,7 +1015,7 @@ the need for internal cron jobs and giving operators visibility into maintenance
 
 ---
 
-## PHASE 6: n8n Agent Loop -- Daily Reflection
+## PHASE 6: n8n Agent Loop - Daily Reflection
 
 **Goal:** Create an n8n workflow that runs daily, searches Engram for the day's memories,
 feeds them to Ollama for synthesis, and stores the reflection back in Engram. This is the
@@ -1234,9 +1234,9 @@ After deployment, verify each integration:
 
 **Open WebUI + Engram:**
 1. Open chat.zanfiel.com (or Open WebUI directly)
-2. Ask "What programming language does Zan use?" -- Engram should provide context
+2. Ask "What programming language does Zan use?" - Engram should provide context
 3. Have a conversation about something specific
-4. Check Engram: `curl /search -d '{"query": "open-webui conversation"}'` -- should find it
+4. Check Engram: `curl /search -d '{"query": "open-webui conversation"}'` - should find it
 5. Check pipeline is active: Admin Panel > Pipelines > Engram RAG Filter
 
 **n8n + Engram:**
@@ -1262,13 +1262,13 @@ After deployment, verify each integration:
 
 ## IMPLEMENTATION ORDER
 
-1. **Phase 1** (SSRF Allowlist) -- Must be first. Unblocks webhook registration.
-2. **Phase 2** (Open WebUI RAG Pipeline) -- Independent of n8n. Deploy and test.
-3. **Phase 3** (Conversation Memory) -- Extends Phase 2. Test bidirectional flow.
-4. **Phase 4** (n8n Webhook Receiver) -- Requires Phase 1. Deploy and test.
-5. **Phase 5** (n8n Maintenance) -- Independent of Phase 4. Deploy and test.
-6. **Phase 6** (n8n Daily Reflection) -- Requires Phase 4 + Ollama working. Deploy and test.
-7. **Phase 7** (Wiring) -- Deploy script and verification.
+1. **Phase 1** (SSRF Allowlist) - Must be first. Unblocks webhook registration.
+2. **Phase 2** (Open WebUI RAG Pipeline) - Independent of n8n. Deploy and test.
+3. **Phase 3** (Conversation Memory) - Extends Phase 2. Test bidirectional flow.
+4. **Phase 4** (n8n Webhook Receiver) - Requires Phase 1. Deploy and test.
+5. **Phase 5** (n8n Maintenance) - Independent of Phase 4. Deploy and test.
+6. **Phase 6** (n8n Daily Reflection) - Requires Phase 4 + Ollama working. Deploy and test.
+7. **Phase 7** (Wiring) - Deploy script and verification.
 
 ## FILES TO CREATE
 
@@ -1298,6 +1298,6 @@ After deployment, verify each integration:
 5. The n8n workflow JSON files must be valid n8n import format
 6. All HTTP URLs pointing to local services use 127.0.0.1, NOT localhost (IPv6 issues on Hetzner)
 7. All n8n workflows must use the shared "Engram API Key" credential name
-8. The deployment script uses SSH -- it runs from Windows, not from Hetzner
+8. The deployment script uses SSH - it runs from Windows, not from Hetzner
 9. Do NOT hardcode API keys in any file. Use environment variables or n8n credentials.
 10. The Open WebUI pipeline must gracefully degrade if Engram is unreachable (5s timeout, catch all exceptions)

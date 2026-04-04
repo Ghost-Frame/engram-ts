@@ -306,7 +306,7 @@ if (!epLimit.allowed) {
 **Task 1.2.4: Rate limit cleanup on interval**
 
 In `src/db/index.ts`, export `cleanupRateLimits`. Then in `server-split.ts`, add to the hourly
-job cleanup interval (search for `cleanupCompletedJobs` -- it runs in a setInterval). Add
+job cleanup interval (search for `cleanupCompletedJobs` - it runs in a setInterval). Add
 `cleanupRateLimits.run()` in the same interval callback.
 
 **Acceptance criteria:**
@@ -2434,7 +2434,7 @@ at any scale.
 documentation tools have nothing to work with. The 100+ endpoints are only documented in code.
 
 **Goal:** Generate an OpenAPI 3.1 spec from the existing route definitions. Serve it at
-`GET /openapi.json`. This is NOT auto-generated from code analysis -- it's a hand-maintained
+`GET /openapi.json`. This is NOT auto-generated from code analysis - it's a hand-maintained
 spec file that lives in the repo and is served by the server.
 
 **Files to create:**
@@ -3389,32 +3389,32 @@ not before.
 
 Meter these events:
 
-1. **memory.store** -- in the /store handler, after successful insert:
+1. **memory.store** - in the /store handler, after successful insert:
 ```typescript
 recordUsage.run(auth.user_id, "memory.store", 1, null);
 ```
 
-2. **memory.search** -- in the /search handler, after returning results:
+2. **memory.search** - in the /search handler, after returning results:
 ```typescript
 recordUsage.run(auth.user_id, "memory.search", 1, null);
 ```
 
-3. **memory.recall** -- in the /recall handler:
+3. **memory.recall** - in the /recall handler:
 ```typescript
 recordUsage.run(auth.user_id, "memory.recall", 1, null);
 ```
 
-4. **embedding.compute** -- in the post_store job handler, after embedding completes:
+4. **embedding.compute** - in the post_store job handler, after embedding completes:
 ```typescript
 recordUsage.run(userId, "embedding.compute", 1, null);
 ```
 
-5. **conversation.create** -- in the /conversations POST handler:
+5. **conversation.create** - in the /conversations POST handler:
 ```typescript
 recordUsage.run(auth.user_id, "conversation.create", 1, null);
 ```
 
-6. **export.download** -- in the /export handler:
+6. **export.download** - in the /export handler:
 ```typescript
 recordUsage.run(auth.user_id, "export.download", 1, JSON.stringify({ memories: memories.length }));
 ```
@@ -3691,17 +3691,17 @@ if (url.pathname === "/admin/sla/reset" && method === "POST") {
 
 Execute phases in this order. Each phase is independently deployable.
 
-1. **Phase 1** (Security) -- Blocks commercial deployment. Do first.
-2. **Phase 2** (Reliability) -- Reduces operational risk.
-3. **Phase 3** (Observability) -- Required for monitoring Phases 1-2 in production.
-4. **Phase 7** (API Surface) -- Low risk, improves DX immediately.
-5. **Phase 9** (OpenAPI & SDK) -- Unblocks integrators and SDK authors.
-6. **Phase 4** (Multi-Tenant) -- Depends on Phase 1 auth hardening.
-7. **Phase 5** (Data Portability) -- Depends on Phase 7 pagination consistency.
-8. **Phase 6** (Migration Tooling) -- Safety net for all future changes.
-9. **Phase 10** (Admin Tooling) -- Depends on Phase 3 observability.
-10. **Phase 11** (Commercial Path) -- Depends on Phase 4 multi-tenant + Phase 3 metrics.
-11. **Phase 8** (Scale) -- Last. Benefits from all prior observability and admin tooling.
+1. **Phase 1** (Security) - Blocks commercial deployment. Do first.
+2. **Phase 2** (Reliability) - Reduces operational risk.
+3. **Phase 3** (Observability) - Required for monitoring Phases 1-2 in production.
+4. **Phase 7** (API Surface) - Low risk, improves DX immediately.
+5. **Phase 9** (OpenAPI & SDK) - Unblocks integrators and SDK authors.
+6. **Phase 4** (Multi-Tenant) - Depends on Phase 1 auth hardening.
+7. **Phase 5** (Data Portability) - Depends on Phase 7 pagination consistency.
+8. **Phase 6** (Migration Tooling) - Safety net for all future changes.
+9. **Phase 10** (Admin Tooling) - Depends on Phase 3 observability.
+10. **Phase 11** (Commercial Path) - Depends on Phase 4 multi-tenant + Phase 3 metrics.
+11. **Phase 8** (Scale) - Last. Benefits from all prior observability and admin tooling.
 
 ## TESTING STRATEGY
 
@@ -3729,7 +3729,7 @@ critical path.
 5. Do NOT reorganize imports
 6. Do NOT move code between files unless instructed
 7. Do NOT add dependencies to package.json
-8. Do NOT use em dashes anywhere (use -- or "to" or rephrase)
+8. Do NOT use em dashes anywhere (use - or "to" or rephrase)
 9. Do NOT create README files or documentation files
 10. Do NOT add try/catch blocks that swallow errors silently (always log)
 11. Follow existing patterns exactly: if the codebase uses `const x = db.prepare(...)`, do the same

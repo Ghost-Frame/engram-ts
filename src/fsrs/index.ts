@@ -1,5 +1,5 @@
 // ============================================================================
-// FSRS-6 ENGINE — Spaced repetition for AI memory
+// FSRS-6 ENGINE - Spaced repetition for AI memory
 // ============================================================================
 
 import { FSRS_DEFAULT_RETENTION } from "../config/index.ts";
@@ -47,8 +47,8 @@ function fsrsForgettingFactor(w20: number = FSRS6_WEIGHTS[20]): number {
 }
 
 /**
- * FSRS-6 Retrievability — probability of recall at time t
- * R = (1 + factor * t / S)^(-w20)  — power law, more accurate than exponential
+ * FSRS-6 Retrievability - probability of recall at time t
+ * R = (1 + factor * t / S)^(-w20) - power law, more accurate than exponential
  */
 export function fsrsRetrievability(stability: number, elapsedDays: number, w20: number = FSRS6_WEIGHTS[20]): number {
   if (stability <= 0) return 0;
@@ -176,14 +176,14 @@ export function fsrsProcessReview(
   let newS: number, newD: number, newState: number, newLapses: number;
 
   if (isSameDay) {
-    // Same-day review — FSRS-6 special handling
+    // Same-day review - FSRS-6 special handling
     newS = fsrsSameDayStability(state.stability, grade);
     newD = fsrsNextDifficulty(state.difficulty, grade);
     newState = state.learning_state;
     newLapses = state.lapses;
     ds = dualStrengthOnRecall(ds);
   } else if (grade === FSRSRating.Again) {
-    // Lapse — forgot it
+    // Lapse - forgot it
     newS = fsrsForgetStability(state.difficulty, state.stability, R);
     newD = fsrsNextDifficulty(state.difficulty, FSRSRating.Again);
     newState = FSRSState.Relearning;
@@ -226,9 +226,9 @@ export function calculateDecayScore(
   const now = Date.now();
   // Use last_accessed_at if available, otherwise created_at
   const refStr = lastAccessedAt || createdAt;
-  if (!refStr) return importance * 0.5; // No date info — return neutral score
+  if (!refStr) return importance * 0.5; // No date info - return neutral score
   const refTime = new Date(refStr + (refStr.includes("Z") ? "" : "Z")).getTime();
-  if (isNaN(refTime)) return importance * 0.5; // Invalid date — return neutral score
+  if (isNaN(refTime)) return importance * 0.5; // Invalid date - return neutral score
   const elapsedDays = (now - refTime) / (1000 * 60 * 60 * 24);
 
   // Use FSRS stability if available, otherwise estimate from access patterns

@@ -1,5 +1,5 @@
 // ============================================================================
-// FSRS DOMAIN -- Database prepared statements
+// FSRS DOMAIN - Database prepared statements
 // ============================================================================
 
 import { db } from "../db/connection.ts";

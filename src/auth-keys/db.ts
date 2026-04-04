@@ -1,5 +1,5 @@
 // ============================================================================
-// AUTH-KEYS DOMAIN -- Database prepared statements for users, keys, spaces
+// AUTH-KEYS DOMAIN - Database prepared statements for users, keys, spaces
 // ============================================================================
 
 import { db } from "../db/connection.ts";

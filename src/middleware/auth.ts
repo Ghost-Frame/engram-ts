@@ -21,7 +21,7 @@ const contextMap = new WeakMap<Request, RequestContext>();
 
 export function getContext(req: Request): RequestContext {
   const ctx = contextMap.get(req);
-  if (!ctx) throw new Error("Request context not initialized -- auth middleware not applied");
+  if (!ctx) throw new Error("Request context not initialized - auth middleware not applied");
   return ctx;
 }
 

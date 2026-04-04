@@ -1,5 +1,5 @@
 // ============================================================================
-// INBOX DOMAIN -- Route handlers
+// INBOX DOMAIN - Route handlers
 // ============================================================================
 
 import type { Router } from "../router/types.ts";
@@ -16,7 +16,7 @@ import { log } from "../config/logger.ts";
 
 export function registerInboxRoutes(router: Router): void {
 
-  // GET /inbox -- list inbox (pending) items
+  // GET /inbox - list inbox (pending) items
   router.get("/inbox", async (req) => {
     const { auth, url } = getContext(req);
     const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
@@ -29,7 +29,7 @@ export function registerInboxRoutes(router: Router): void {
     return json({ pending, count: pending.length, total, offset, limit });
   });
 
-  // POST /inbox/:id/approve -- approve a pending memory
+  // POST /inbox/:id/approve - approve a pending memory
   router.post("/inbox/:id/approve", async (req, params) => {
     const { auth, clientIp } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -44,7 +44,7 @@ export function registerInboxRoutes(router: Router): void {
     return json({ approved: true, id });
   });
 
-  // POST /inbox/:id/reject -- reject a pending memory
+  // POST /inbox/:id/reject - reject a pending memory
   router.post("/inbox/:id/reject", async (req, params) => {
     const { auth, clientIp, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -63,7 +63,7 @@ export function registerInboxRoutes(router: Router): void {
     return json({ rejected: true, id });
   });
 
-  // POST /inbox/:id/edit -- edit + approve in one shot
+  // POST /inbox/:id/edit - edit + approve in one shot
   router.post("/inbox/:id/edit", async (req, params) => {
     const { auth, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -104,7 +104,7 @@ export function registerInboxRoutes(router: Router): void {
     }
   });
 
-  // POST /inbox/bulk -- bulk approve/reject
+  // POST /inbox/bulk - bulk approve/reject
   router.post("/inbox/bulk", async (req) => {
     const { auth, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -128,7 +128,7 @@ export function registerInboxRoutes(router: Router): void {
     }
   });
 
-  // GET /pending -- legacy alias for GET /inbox
+  // GET /pending - legacy alias for GET /inbox
   router.get("/pending", async (req) => {
     const { auth, url } = getContext(req);
     log.warn({ msg: "deprecated_route", path: "/pending", use: "GET /inbox", user: auth.user_id });
@@ -142,7 +142,7 @@ export function registerInboxRoutes(router: Router): void {
     return json({ pending, count: pending.length, total, offset, limit });
   });
 
-  // POST /approve -- legacy alias for POST /inbox/:id/approve
+  // POST /approve - legacy alias for POST /inbox/:id/approve
   router.post("/approve", async (req) => {
     const { auth, clientIp, body: rawBody } = getContext(req);
     log.warn({ msg: "deprecated_route", path: "/approve", use: "POST /inbox/{id}/approve", user: auth.user_id });

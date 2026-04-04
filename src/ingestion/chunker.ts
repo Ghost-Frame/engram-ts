@@ -38,7 +38,7 @@ export function chunkDocument(
     if (end < text.length && respectStructure) {
       const window = text.slice(pos, end);
 
-      // Priority 1: last heading break (/\n#{1,6}\s/) -- must be after 40% of window
+      // Priority 1: last heading break (/\n#{1,6}\s/) - must be after 40% of window
       const headingRegex = /\n#{1,6}\s/g;
       let headingMatch: RegExpExecArray | null;
       let lastHeadingIndex = -1;
@@ -48,12 +48,12 @@ export function chunkDocument(
       if (lastHeadingIndex > maxSize * 0.4) {
         end = pos + lastHeadingIndex;
       } else {
-        // Priority 2: last paragraph break (\n\n) -- must be after 50% of window
+        // Priority 2: last paragraph break (\n\n) - must be after 50% of window
         const paraIndex = window.lastIndexOf("\n\n");
         if (paraIndex > maxSize * 0.5) {
           end = pos + paraIndex;
         } else {
-          // Priority 3: last sentence break (/[.!?]\s/) -- must be after 50% of window
+          // Priority 3: last sentence break (/[.!?]\s/) - must be after 50% of window
           const sentenceRegex = /[.!?]\s/g;
           let sentenceMatch: RegExpExecArray | null;
           let lastSentenceIndex = -1;

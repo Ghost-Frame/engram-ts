@@ -116,7 +116,7 @@ Read `src/db/index.ts` fully to identify all schema DDL and migration code. Ever
 
 - [ ] **Step 4: Update src/db/index.ts to import from connection.ts**
 
-Change `src/db/index.ts` to import `db` from `./connection.ts` instead of creating it locally. Remove the duplicated connection setup, schema DDL, and migration code. Keep all prepared statements and query functions -- they will be distributed to domains in later tasks.
+Change `src/db/index.ts` to import `db` from `./connection.ts` instead of creating it locally. Remove the duplicated connection setup, schema DDL, and migration code. Keep all prepared statements and query functions - they will be distributed to domains in later tasks.
 
 ```typescript
 // src/db/index.ts -- top becomes:
@@ -921,7 +921,7 @@ EOF
 - Create: `server.ts` (new entry point)
 - Test: manual verification
 
-This task creates the new server entry point that wires the router, middleware, and domain routes together. Initially it mounts NO domain routes -- those are added as each domain is extracted in subsequent tasks. For now, it only handles health/live/ready so we can verify the server boots.
+This task creates the new server entry point that wires the router, middleware, and domain routes together. Initially it mounts NO domain routes - those are added as each domain is extracted in subsequent tasks. For now, it only handles health/live/ready so we can verify the server boots.
 
 - [ ] **Step 1: Create server.ts**
 
@@ -1056,7 +1056,7 @@ server.listen(PORT, HOST, () => {
 Run: `node --experimental-strip-types server.ts`
 Expected: Server starts, logs `server_started` with version and port. Ctrl+C to stop.
 
-Note: The server won't serve domain routes yet -- those are added in subsequent tasks. Health/live/ready will return 404 until the health domain is extracted (Task 26) or we add them as pre-auth routes.
+Note: The server won't serve domain routes yet - those are added in subsequent tasks. Health/live/ready will return 404 until the health domain is extracted (Task 26) or we add them as pre-auth routes.
 
 - [ ] **Step 3: Commit**
 
@@ -1087,7 +1087,7 @@ Every domain extraction task (Tasks 7-27) follows this pattern. Each subagent sh
 
 4. **Extract DB queries** (`db.ts`): Move prepared statements from `src/db/index.ts` to the domain's `db.ts`. Import `db` from `../db/connection.ts`. Update `src/db/index.ts` to re-export from the domain's `db.ts` (temporary, so other code that still imports from db/index.ts keeps working).
 
-5. **Extract business logic** (`index.ts`): Move algorithmic code out of route handlers into pure functions. These functions take typed inputs and return typed outputs -- no Request/Response objects.
+5. **Extract business logic** (`index.ts`): Move algorithmic code out of route handlers into pure functions. These functions take typed inputs and return typed outputs - no Request/Response objects.
 
 6. **Create thin route handlers** (`routes.ts`): Import `getContext` from middleware/auth.ts, call business logic, return Response via `json()` helper. Register with `router.get/post/etc`.
 
@@ -1186,7 +1186,7 @@ describe("memory routes", () => {
 
 **Source lines:** `src/routes/index.ts` lines 3830-4012 (search), 4304-4450 (recall), 5433-5510 (decay)
 **DB statements to extract:** updateDecayScores, updateFSRS, getFSRS, getFSRSForUser, trackAccessWithFSRS
-**Existing module:** `src/memory/search.ts` (hybridSearch, autoLink -- already extracted)
+**Existing module:** `src/memory/search.ts` (hybridSearch, autoLink - already extracted)
 
 **Files:**
 - Create: `src/search/types.ts`
@@ -1423,7 +1423,7 @@ These domains compose from Wave 1+2 domains.
 
 ### Task 14: Context Assembly Domain
 
-**Source lines:** `src/routes/index.ts` lines 2456-2980 (context endpoint -- the most complex single route)
+**Source lines:** `src/routes/index.ts` lines 2456-2980 (context endpoint - the most complex single route)
 
 **Files:**
 - Create: `src/context/types.ts`
@@ -1560,7 +1560,7 @@ GET    /spaces                       -> listSpaces
 DELETE /spaces/:id                   -> deleteSpace
 ```
 
-Note: GUI auth and bootstrap are pre-auth routes (they work without an API key). The router needs to handle this -- either skip auth middleware for these paths, or use a separate pre-auth route set.
+Note: GUI auth and bootstrap are pre-auth routes (they work without an API key). The router needs to handle this - either skip auth middleware for these paths, or use a separate pre-auth route set.
 
 - [ ] Read source, extract, write tests, wire, verify, commit
 - [ ] Commit: `git commit -m "refactor(auth-keys): extract auth, keys, and spaces from monolith"`

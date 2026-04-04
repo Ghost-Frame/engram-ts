@@ -1,5 +1,5 @@
 // ============================================================================
-// MEMORY DOMAIN -- Type definitions and constants
+// MEMORY DOMAIN - Type definitions and constants
 // ============================================================================
 
 /** Validated feedback signal values */

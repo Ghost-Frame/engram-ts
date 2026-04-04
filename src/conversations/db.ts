@@ -1,5 +1,5 @@
 // ============================================================================
-// CONVERSATIONS DOMAIN -- Prepared statements
+// CONVERSATIONS DOMAIN - Prepared statements
 // ============================================================================
 
 import { db } from "../db/connection.ts";

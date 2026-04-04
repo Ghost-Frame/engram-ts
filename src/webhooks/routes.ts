@@ -1,5 +1,5 @@
 // ============================================================================
-// WEBHOOKS DOMAIN -- Route handlers
+// WEBHOOKS DOMAIN - Route handlers
 // ============================================================================
 
 import type { Router } from "../router/types.ts";
@@ -21,7 +21,7 @@ import { writeVec } from "../routes/types.ts";
 
 export function registerWebhookRoutes(router: Router): void {
 
-  // POST /webhooks -- create webhook
+  // POST /webhooks - create webhook
   router.post("/webhooks", async (req) => {
     const { auth, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -39,7 +39,7 @@ export function registerWebhookRoutes(router: Router): void {
     }
   });
 
-  // GET /webhooks -- list webhooks
+  // GET /webhooks - list webhooks
   router.get("/webhooks", async (req) => {
     const { auth } = getContext(req);
     const hooks = listWebhooks.all(auth.user_id) as any[];
@@ -49,7 +49,7 @@ export function registerWebhookRoutes(router: Router): void {
     return json({ webhooks: hooks });
   });
 
-  // DELETE /webhooks/:id -- delete webhook
+  // DELETE /webhooks/:id - delete webhook
   router.delete("/webhooks/:id", async (req, params) => {
     const { auth } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -59,7 +59,7 @@ export function registerWebhookRoutes(router: Router): void {
     return json({ deleted: true, id });
   });
 
-  // GET /sync/changes -- get changes since timestamp
+  // GET /sync/changes - get changes since timestamp
   router.get("/sync/changes", async (req) => {
     const { auth, url } = getContext(req);
     const since = url.searchParams.get("since") || "1970-01-01T00:00:00";
@@ -76,7 +76,7 @@ export function registerWebhookRoutes(router: Router): void {
     });
   });
 
-  // POST /sync/receive -- receive synced changes
+  // POST /sync/receive - receive synced changes
   router.post("/sync/receive", async (req) => {
     const { auth, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);

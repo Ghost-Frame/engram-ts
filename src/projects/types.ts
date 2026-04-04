@@ -1,5 +1,5 @@
 // ============================================================================
-// PROJECTS DOMAIN -- Type definitions and constants
+// PROJECTS DOMAIN - Type definitions and constants
 // ============================================================================
 
 /** Valid project status values */

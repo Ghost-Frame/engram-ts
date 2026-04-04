@@ -1,11 +1,11 @@
 // ============================================================================
-// @zanverse/sign — Cryptographic identity & execution signing for AI agents
+// @zanverse/sign - Cryptographic identity & execution signing for AI agents
 // Zero dependencies. Node >= 18.
 // ============================================================================
 
 import { createHash, createHmac, timingSafeEqual, randomUUID } from "crypto";
 
-/** Deterministic JSON — recursive key sort for canonical representation */
+/** Deterministic JSON - recursive key sort for canonical representation */
 export function canonicalJSON(obj: any): string {
   if (obj === null || obj === undefined) return JSON.stringify(obj);
   if (typeof obj !== "object") return JSON.stringify(obj);

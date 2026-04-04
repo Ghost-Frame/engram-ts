@@ -1,5 +1,5 @@
 // ============================================================================
-// SKILLS DOMAIN -- Prepared statements (re-exported from db/index.ts)
+// SKILLS DOMAIN - Prepared statements (re-exported from db/index.ts)
 // ============================================================================
 
 export {

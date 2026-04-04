@@ -224,7 +224,7 @@ const TOOLS: ToolDefinition[] = [
   },
   {
     name: "structural_detail",
-    description: "Deep structural analysis -- concurrency metrics, critical path, flow depth levels, resilience analysis with bridge implications.",
+    description: "Deep structural analysis - concurrency metrics, critical path, flow depth levels, resilience analysis with bridge implications.",
     inputSchema: {
       type: "object",
       properties: {
@@ -235,7 +235,7 @@ const TOOLS: ToolDefinition[] = [
   },
   {
     name: "structural_between",
-    description: "Betweenness centrality for a node -- what fraction of all shortest paths flow through it. Score 0-1.",
+    description: "Betweenness centrality for a node - what fraction of all shortest paths flow through it. Score 0-1.",
     inputSchema: {
       type: "object",
       properties: {
@@ -273,7 +273,7 @@ const TOOLS: ToolDefinition[] = [
   },
   {
     name: "structural_impact",
-    description: "Blast radius -- remove a node and see what disconnects. Works for any domain: infra, org charts, compliance flows.",
+    description: "Blast radius - remove a node and see what disconnects. Works for any domain: infra, org charts, compliance flows.",
     inputSchema: {
       type: "object",
       properties: {
@@ -490,7 +490,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         });
         const verdict = result.verdict || "unknown";
         const reasons = (result.reasons || []).join("; ");
-        return { content: [{ type: "text", text: `Guard: ${verdict}${reasons ? ` -- ${reasons}` : ""}` }] };
+        return { content: [{ type: "text", text: `Guard: ${verdict}${reasons ? ` - ${reasons}` : ""}` }] };
       }
 
       case "memory_inbox": {
@@ -529,7 +529,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const result = await engram(`/entities?${params}`);
         const entities: any[] = result.entities ?? result ?? [];
         if (entities.length === 0) return { content: [{ type: "text", text: "No entities found." }] };
-        const text = entities.map((e: any) => `[${e.type || "?"}] ${e.name} (id:${e.id})${e.description ? ` -- ${e.description}` : ""}`).join("\n");
+        const text = entities.map((e: any) => `[${e.type || "?"}] ${e.name} (id:${e.id})${e.description ? ` - ${e.description}` : ""}`).join("\n");
         return { content: [{ type: "text", text }] };
       }
 
@@ -539,7 +539,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         const result = await engram(`/projects?${params}`);
         const projects: any[] = result.projects ?? result ?? [];
         if (projects.length === 0) return { content: [{ type: "text", text: "No projects found." }] };
-        const text = projects.map((p: any) => `[${p.status || "?"}] ${p.name} (id:${p.id})${p.description ? ` -- ${p.description}` : ""}`).join("\n");
+        const text = projects.map((p: any) => `[${p.status || "?"}] ${p.name} (id:${p.id})${p.description ? ` - ${p.description}` : ""}`).join("\n");
         return { content: [{ type: "text", text }] };
       }
 
@@ -548,7 +548,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           const result = await engram("/episodes/search", "POST", { query: args!.query, limit: args!.limit ?? 10 });
           const episodes: any[] = result.episodes ?? result ?? [];
           if (episodes.length === 0) return { content: [{ type: "text", text: "No episodes found." }] };
-          const text = episodes.map((e: any) => `[#${e.id}] ${e.title || "Untitled"} (${e.started_at}) -- ${(e.summary || "").slice(0, 150)}`).join("\n");
+          const text = episodes.map((e: any) => `[#${e.id}] ${e.title || "Untitled"} (${e.started_at}) - ${(e.summary || "").slice(0, 150)}`).join("\n");
           return { content: [{ type: "text", text }] };
         }
         const params = new URLSearchParams({ limit: String(args!.limit ?? 10) });
@@ -660,7 +660,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       case "skill_upload": {
         const { skill_dir, visibility = "public", ...rest } = args;
         const result = await engram("/skills/upload", "POST", { skill_dir, visibility, ...rest });
-        return { content: [{ type: "text", text: `Uploaded skill ${result.skill_id}${result.url ? ` -- ${result.url}` : ""}` }] };
+        return { content: [{ type: "text", text: `Uploaded skill ${result.skill_id}${result.url ? ` - ${result.url}` : ""}` }] };
       }
       case "skill_execute": {
         const { task, skill_dirs, search_scope = "all" } = args;

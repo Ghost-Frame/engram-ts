@@ -1,5 +1,5 @@
 // ============================================================================
-// MEMORY DOMAIN -- Business logic (pure validation / normalization)
+// MEMORY DOMAIN - Business logic (pure validation / normalization)
 // ============================================================================
 
 import { DEFAULT_IMPORTANCE, MAX_CONTENT_SIZE, VALID_FEEDBACK_SIGNALS } from "./types.ts";

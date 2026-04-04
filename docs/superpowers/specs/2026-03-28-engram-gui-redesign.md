@@ -160,14 +160,14 @@ These are non-negotiable. If a visual feature breaks the budget, the feature get
 
 From the reference version, refined for visibility:
 
-**Layer 1 -- Topology (always visible):**
+**Layer 1 - Topology (always visible):**
 - All edges with weight >= `weightThreshold` (user-adjustable slider, default 0)
 - Curved lines (quadratic bezier with midpoint offset proportional to distance)
 - Opacity: `0.08 + weight * 0.12` (faint but visible, not invisible)
 - Color: source node's community color, desaturated 50%
 - Line width: 1px constant (not weight-scaled, avoids visual noise)
 
-**Layer 2 -- Flow particles (strong connections):**
+**Layer 2 - Flow particles (strong connections):**
 - Edges with weight >= 0.5, capped at top 200 by weight
 - Particle count per edge: `Math.floor(weight * 6)` (max 6 per edge)
 - Speed: `0.003 + weight * 0.008`
@@ -175,7 +175,7 @@ From the reference version, refined for visibility:
 - Color: source node color, full saturation
 - Total particle budget: 500 max across all edges
 
-**Layer 3 -- Hover amplification:**
+**Layer 3 - Hover amplification:**
 - On node hover: connected edges brighten to opacity 0.6
 - Particle count doubles on hovered edges
 - Non-connected edges fade to 0.02 opacity

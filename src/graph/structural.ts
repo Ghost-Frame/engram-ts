@@ -229,7 +229,7 @@ export function classifyTopology(graph: Graph): TopologyType {
 
   if (hasCycle(graph)) return "Cycle";
 
-  // DAG from here -- check subtypes
+  // DAG from here - check subtypes
   const sources = graph.nodes().filter(n => graph.inDegree(n) === 0);
   const sinks = graph.nodes().filter(n => graph.outDegree(n) === 0);
 

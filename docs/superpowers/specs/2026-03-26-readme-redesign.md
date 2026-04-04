@@ -10,7 +10,7 @@ The current README is a 41KB wall of text. Nobody reads it. The project has evol
 ## Design Decisions
 
 - **Audience**: Hook casual GitHub browsers first, serve technical depth deeper down
-- **Positioning**: "The cognitive layer for AI agents" -- not just memory, but personality, reasoning, and trust
+- **Positioning**: "The cognitive layer for AI agents" - not just memory, but personality, reasoning, and trust
 - **Vibe**: Evocative and memorable (Supabase/Vercel energy, not Postgres energy)
 - **Content strategy**: Punchy hero section up top, collapsible `<details>` for deep dives
 - **Visual hero**: Terminal demo (asciinema SVG) ships now; graph GIF slots in later once GUI is polished
@@ -57,7 +57,7 @@ Four blocks, each 2-3 sentences max. No bullet-point soup.
 FSRS-6 spaced repetition with power-law forgetting. Hybrid search fuses vector similarity, full-text, personality matching, and graph traversal into a single ranked result. Memories strengthen when accessed and fade when ignored, like the real thing.
 
 **Personality**
-Extracts preferences, values, motivations, decisions, emotions, and identity markers from conversations. Your agent doesn't just remember what happened -- it understands who it's talking to.
+Extracts preferences, values, motivations, decisions, emotions, and identity markers from conversations. Your agent doesn't just remember what happened - it understands who it's talking to.
 
 **Reasoning**
 Detects contradictions between memories, generates reflections, derives new memories from existing ones. Time-travel queries let you ask "what did I know on March 1st?" Smart context assembles the right memories for the right moment.

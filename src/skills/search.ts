@@ -26,7 +26,7 @@ export async function searchSkillsLocal(query: string, limit = 20): Promise<Skil
   const ftsQuery = sanitizeFTS(query);
   const ftsLimit = Math.min(limit * 3, 100);
 
-  // FTS pass -- guard against empty sanitizeFTS result (all-punctuation queries return "")
+  // FTS pass - guard against empty sanitizeFTS result (all-punctuation queries return "")
   const ftsRows = ftsQuery.trim()
     ? (searchSkillsFTSStmt.all(ftsQuery, ftsLimit) as any[])
     : [];

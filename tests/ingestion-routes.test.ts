@@ -1,4 +1,4 @@
-// Tests for src/ingestion/routes.ts -- export/type tests only.
+// Tests for src/ingestion/routes.ts - export/type tests only.
 // Does NOT conflict with existing ingestion tests (ingestion-api.test.ts etc.)
 // Run: node --experimental-strip-types --test tests/ingestion-routes.test.ts
 
@@ -6,7 +6,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 // ============================================================================
-// src/ingestion/routes.ts -- exports
+// src/ingestion/routes.ts - exports
 // ============================================================================
 
 describe("registerIngestionRoutes", () => {

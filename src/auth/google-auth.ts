@@ -1,5 +1,5 @@
 // ============================================================================
-// GOOGLE CLOUD AUTH -- Shared JWT service account authentication for Vertex AI
+// GOOGLE CLOUD AUTH - Shared JWT service account authentication for Vertex AI
 // Used by both embedding and LLM providers
 // ============================================================================
 

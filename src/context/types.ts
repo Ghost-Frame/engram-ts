@@ -1,5 +1,5 @@
 // ============================================================================
-// CONTEXT DOMAIN -- Type definitions
+// CONTEXT DOMAIN - Type definitions
 // ============================================================================
 
 /** Context strategy modes */
@@ -67,7 +67,7 @@ export interface ContextTiming {
 /** Input options for context assembly */
 export interface ContextOptions {
   query: string;
-  /** Raw token budget alias -- accepts max_tokens, token_budget, or budget */
+  /** Raw token budget alias - accepts max_tokens, token_budget, or budget */
   max_tokens?: number;
   token_budget?: number;
   budget?: number;

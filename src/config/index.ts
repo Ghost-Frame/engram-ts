@@ -1,5 +1,5 @@
 // ============================================================================
-// CONFIG — All env vars, constants, feature flags
+// CONFIG - All env vars, constants, feature flags
 // ============================================================================
 
 import { resolve, dirname } from "path";
@@ -19,7 +19,7 @@ export const DB_PATH = resolve(DATA_DIR, "memory.db");
 export const PORT = Number(process.env.ENGRAM_PORT || process.env.ZANMEMORY_PORT || 4200);
 export const HOST = process.env.ENGRAM_HOST || process.env.ZANMEMORY_HOST || "0.0.0.0";
 
-// Embedding config -- pluggable provider
+// Embedding config - pluggable provider
 // Provider: "local" = ONNX (default), "openai" = OpenAI-compatible API (Ollama, LM Studio, TEI, etc.)
 //           "google" = Google AI Studio, "vertex" = Vertex AI
 export const EMBEDDING_PROVIDER = (process.env.ENGRAM_EMBEDDING_PROVIDER || "local") as "local" | "openai" | "google" | "vertex";
@@ -37,7 +37,7 @@ export const EMBEDDING_CHUNK_MAX_CHUNKS = Number(process.env.ENGRAM_CHUNK_MAX_CH
 // OpenAI-compatible embedding API (used when EMBEDDING_PROVIDER=openai)
 export const EMBEDDING_API_URL = (process.env.ENGRAM_EMBEDDING_URL || "http://localhost:11434").replace(/\/$/, "");
 export const EMBEDDING_API_KEY = process.env.ENGRAM_EMBEDDING_API_KEY || "";
-// Local ONNX model dir -- set ENGRAM_MODEL_DIR to use a custom model; files must already exist there
+// Local ONNX model dir - set ENGRAM_MODEL_DIR to use a custom model; files must already exist there
 export const CUSTOM_MODEL_DIR = process.env.ENGRAM_MODEL_DIR ? resolve(process.env.ENGRAM_MODEL_DIR) : null;
 export const MODEL_DIR = CUSTOM_MODEL_DIR || resolve(DATA_DIR, "models", "bge-m3");
 export const ONNX_MODEL_FILE = process.env.ENGRAM_EMBEDDING_FP32 === "1" ? "model.onnx" : "model_quantized.onnx";
@@ -64,7 +64,7 @@ export const AUTO_ARCHIVE_MAX_ACCESS = parseInt(process.env.ENGRAM_AUTO_ARCHIVE_
 export const AUTO_LINK_MAX = Number(process.env.AUTO_LINK_MAX ?? 6);
 export const DEFAULT_IMPORTANCE = 5;
 
-// LLM config (for fact extraction) — provider chain with fallbacks or round-robin
+// LLM config (for fact extraction) - provider chain with fallbacks or round-robin
 export const LLM_URL = process.env.LLM_URL || "http://127.0.0.1:4100/v1/chat/completions";
 export const LLM_API_KEY = process.env.LLM_API_KEY || "";
 export const LLM_MODEL = process.env.LLM_MODEL || "gemini-2.5-flash";

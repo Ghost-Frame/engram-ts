@@ -1,5 +1,5 @@
 // ============================================================================
-// Broca routes -- action logging, narration, feed, NL query
+// Broca routes - action logging, narration, feed, NL query
 // Prefix: /broca/*
 // ============================================================================
 
@@ -26,7 +26,7 @@ export async function handleBrocaRoutes(
 
   const sub = path.slice("/broca".length); // e.g. "/actions" or "/actions/5"
 
-  // -- POST /broca/actions -- Log an action --
+  // - POST /broca/actions - Log an action --
 
   if (sub === "/actions" && method === "POST") {
     const { body: rawBody } = getContext(req);
@@ -68,7 +68,7 @@ export async function handleBrocaRoutes(
     return json(result, 201);
   }
 
-  // -- GET /broca/actions -- List actions --
+  // - GET /broca/actions - List actions --
 
   if (sub === "/actions" && method === "GET") {
     const clauses: string[] = [];
@@ -95,7 +95,7 @@ export async function handleBrocaRoutes(
     return json(parseJsonFieldsAll(rows, "payload"));
   }
 
-  // -- GET /broca/actions/:id -- Single action --
+  // - GET /broca/actions/:id - Single action --
 
   const actionIdMatch = sub.match(/^\/actions\/(\d+)$/);
   if (actionIdMatch && method === "GET") {
@@ -104,7 +104,7 @@ export async function handleBrocaRoutes(
     return json(parseJsonFields(row, "payload"));
   }
 
-  // -- GET /broca/actions/:id/narrate -- Generate/return narrative --
+  // - GET /broca/actions/:id/narrate - Generate/return narrative --
 
   const narrateMatch = sub.match(/^\/actions\/(\d+)\/narrate$/);
   if (narrateMatch && method === "GET") {
@@ -129,7 +129,7 @@ export async function handleBrocaRoutes(
     return json({ id: row.id, narrative, cached: false });
   }
 
-  // -- GET /broca/feed -- Recent actions with narratives --
+  // - GET /broca/feed - Recent actions with narratives --
 
   if (sub === "/feed" && method === "GET") {
     const clauses: string[] = [];
@@ -152,7 +152,7 @@ export async function handleBrocaRoutes(
     return json(parseJsonFieldsAll(rows, "payload"));
   }
 
-  // -- POST /broca/narrate -- Bulk narrate --
+  // - POST /broca/narrate - Bulk narrate --
 
   if (sub === "/narrate" && method === "POST") {
     const { body: rawBody } = getContext(req);
@@ -190,7 +190,7 @@ export async function handleBrocaRoutes(
     return json({ narrated: results.length, results });
   }
 
-  // -- POST /broca/ask -- NL query --
+  // - POST /broca/ask - NL query --
 
   if (sub === "/ask" && method === "POST") {
     const { body: rawBody } = getContext(req);
@@ -208,7 +208,7 @@ export async function handleBrocaRoutes(
     }
   }
 
-  // -- GET /broca/stats -- Action counts --
+  // - GET /broca/stats - Action counts --
 
   if (sub === "/stats" && method === "GET") {
     const total = (actionCount.get() as any).count;

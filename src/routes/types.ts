@@ -1,5 +1,5 @@
 // ============================================================================
-// ROUTES -- Shared types and cross-cutting helpers
+// ROUTES - Shared types and cross-cutting helpers
 // ============================================================================
 
 import type { AuthContext } from "../auth/index.ts";

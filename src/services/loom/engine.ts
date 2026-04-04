@@ -1,5 +1,5 @@
 // ============================================================================
-// Loom workflow engine -- multi-step pipelines, dependency execution,
+// Loom workflow engine - multi-step pipelines, dependency execution,
 // step executors for webhooks, LLM calls, and data transforms.
 // ============================================================================
 

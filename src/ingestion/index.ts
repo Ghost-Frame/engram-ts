@@ -1,5 +1,5 @@
 // ============================================================================
-// Ingestion orchestrator -- bulk document ingestion pipeline
+// Ingestion orchestrator - bulk document ingestion pipeline
 // ============================================================================
 
 import { randomUUID } from "node:crypto";
@@ -13,7 +13,7 @@ import { extractProcessor } from "./processors/extract.ts";
 
 export { detectFormat, chunkDocument };
 
-// -- Internal helpers --
+// - Internal helpers --
 
 async function tryCreateChiasmTask(jobId: string): Promise<number> {
   try {
@@ -48,7 +48,7 @@ function tryPublishAxon(channel: string, source: string, type: string, payload: 
   } catch {}
 }
 
-// -- Core pipeline --
+// - Core pipeline --
 
 async function runPipeline(
   input: Buffer | string,
@@ -194,7 +194,7 @@ async function runPipeline(
   };
 }
 
-// -- Public API --
+// - Public API --
 
 export function ingestAsync(
   input: Buffer | string,
@@ -208,7 +208,7 @@ export function ingestAsync(
   const job_id = "ingest_" + randomUUID().slice(0, 8);
 
   // Chiasm task creation is non-fatal; start it synchronously via a resolved promise chain
-  // but we need to return the shape synchronously -- use -1 as placeholder until task is created.
+  // but we need to return the shape synchronously - use -1 as placeholder until task is created.
   // We kick off task creation in the background and thread the real ID into the pipeline.
 
   let chiasm_task_id = -1;

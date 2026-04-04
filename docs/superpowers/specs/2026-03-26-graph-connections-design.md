@@ -31,9 +31,9 @@ Persistent directional particles on stronger connections, creating a sense of in
 
 | Property | Value |
 |----------|-------|
-| Particle count | `Math.floor(weight * 6)` -- 1 to 6, scaling with strength |
-| Particle speed | `0.002 + weight * 0.006` -- slow drift at 0.5, zippy at 1.0 |
-| Particle width | `1.5 + weight * 2` -- subtle to prominent |
+| Particle count | `Math.floor(weight * 6)` - 1 to 6, scaling with strength |
+| Particle speed | `0.002 + weight * 0.006` - slow drift at 0.5, zippy at 1.0 |
+| Particle width | `1.5 + weight * 2` - subtle to prominent |
 | Particle color | Source node's community color (picks up bloom glow) |
 | Performance cap | Top 200 edges by weight (sorted descending, capped) |
 
@@ -69,7 +69,7 @@ NOT touched: node rendering, UI panels, force simulation, clustering, search, st
 ## Performance Considerations
 
 - ~800 nodes, ~1500 edges is the current graph size
-- Layer 1 hairlines are simple GL lines with no texture -- negligible cost
+- Layer 1 hairlines are simple GL lines with no texture - negligible cost
 - Layer 2 particles capped at 200 emitting edges with 1-6 particles each (max 1200 particles)
 - The `particleEdges` Set is computed once (sort + slice), lookups are O(1) per frame
 - ForceGraph3D re-evaluates link callbacks each frame; all callbacks are simple conditionals with Set.has() checks

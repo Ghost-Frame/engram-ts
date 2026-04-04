@@ -1,5 +1,5 @@
 // ============================================================================
-// GRAPH DOMAIN -- Graph builder (BFS frontier, batch fetch, construction)
+// GRAPH DOMAIN - Graph builder (BFS frontier, batch fetch, construction)
 // ============================================================================
 
 import { db } from "../db/connection.ts";

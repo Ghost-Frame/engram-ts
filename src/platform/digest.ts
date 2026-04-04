@@ -1,5 +1,5 @@
 // ============================================================================
-// DIGESTS — Scheduled summary delivery via webhooks
+// DIGESTS - Scheduled summary delivery via webhooks
 // ============================================================================
 
 import { db } from "../db/index.ts";

@@ -1,5 +1,5 @@
 // ============================================================================
-// EMBEDDING WORKER -- Runs ONNX inference off the main event loop
+// EMBEDDING WORKER - Runs ONNX inference off the main event loop
 // This file runs in a Worker thread. It receives embedding requests via
 // parentPort and returns Float32Array results.
 // ============================================================================

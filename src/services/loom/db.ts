@@ -1,12 +1,12 @@
 // ============================================================================
-// Loom DB -- Schema + prepared statements
+// Loom DB - Schema + prepared statements
 // Migrations run at module scope so tables exist before statements compile.
 // ============================================================================
 
 import { db } from "../../db/index.ts";
 import { log } from "../../config/logger.ts";
 
-// -- Schema (module-scope migration) --
+// - Schema (module-scope migration) --
 
 function migrate(sql: string) {
   try { db.exec(sql); } catch (e: any) {
@@ -81,7 +81,7 @@ migrate(`CREATE INDEX IF NOT EXISTS idx_loom_steps_run ON loom_steps(run_id)`);
 migrate(`CREATE INDEX IF NOT EXISTS idx_loom_steps_status ON loom_steps(status)`);
 migrate(`CREATE INDEX IF NOT EXISTS idx_loom_run_logs_run ON loom_run_logs(run_id)`);
 
-// -- Prepared statements --
+// - Prepared statements --
 
 export const insertWorkflow = db.prepare(
   "INSERT INTO loom_workflows (name, description, steps) VALUES (?, ?, ?)"

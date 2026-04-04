@@ -1,5 +1,5 @@
 // ============================================================================
-// FAST FACT EXTRACTION — Regex-based, no LLM needed
+// FAST FACT EXTRACTION - Regex-based, no LLM needed
 // ============================================================================
 
 import { db } from "../db/index.ts";

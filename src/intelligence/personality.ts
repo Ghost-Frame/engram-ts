@@ -1,5 +1,5 @@
 // ============================================================================
-// PERSONALITY ENGINE — extraction, synthesis, caching
+// PERSONALITY ENGINE - extraction, synthesis, caching
 // ============================================================================
 
 import { callLLM, isLLMAvailable, repairAndParseJSON } from "../llm/index.ts";

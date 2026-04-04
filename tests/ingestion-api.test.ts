@@ -11,7 +11,7 @@ import { join } from "node:path";
 
 const ROUTES_FILE = join(import.meta.dirname ?? new URL(".", import.meta.url).pathname, "../src/routes/index.ts");
 
-describe("POST /import/bulk — route registration", () => {
+describe("POST /import/bulk - route registration", () => {
   it("route handler exists in src/routes/index.ts", () => {
     const src = readFileSync(ROUTES_FILE, "utf8");
     assert.ok(
@@ -90,7 +90,7 @@ describe("POST /import/bulk — route registration", () => {
   });
 });
 
-describe("POST /import/bulk — ingestion module contract", () => {
+describe("POST /import/bulk - ingestion module contract", () => {
   it("ingestAsync is exported from src/ingestion/index.ts", async () => {
     const mod = await import("../src/ingestion/index.ts");
     assert.equal(typeof mod.ingestAsync, "function", "ingestAsync must be a function");

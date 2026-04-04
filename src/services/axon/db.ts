@@ -1,12 +1,12 @@
 // ============================================================================
-// Axon DB -- Schema + prepared statements
+// Axon DB - Schema + prepared statements
 // Migrations run at module scope so tables exist before statements compile.
 // ============================================================================
 
 import { db } from "../../db/index.ts";
 import { log } from "../../config/logger.ts";
 
-// -- Schema (module-scope migration) --
+// - Schema (module-scope migration) --
 
 function migrate(sql: string) {
   try { db.exec(sql); } catch (e: any) {
@@ -63,7 +63,7 @@ migrate(`CREATE INDEX IF NOT EXISTS idx_axon_events_channel ON axon_events(chann
 migrate(`CREATE INDEX IF NOT EXISTS idx_axon_events_type ON axon_events(type)`);
 migrate(`CREATE INDEX IF NOT EXISTS idx_axon_subs_channel ON axon_subscriptions(channel)`);
 
-// -- Seed default channels --
+// - Seed default channels --
 
 const seedChannel = db.prepare("INSERT OR IGNORE INTO axon_channels (name, description) VALUES (?, ?)");
 seedChannel.run("system", "System-wide events (startup, shutdown, errors)");
@@ -72,7 +72,7 @@ seedChannel.run("tasks", "Task lifecycle events (created, updated, completed)");
 seedChannel.run("deploy", "Deployment and infrastructure events");
 seedChannel.run("alerts", "Alerts and notifications");
 
-// -- Prepared statements --
+// - Prepared statements --
 
 export const insertEvent = db.prepare(
   "INSERT INTO axon_events (channel, source, type, payload) VALUES (?, ?, ?, ?)"

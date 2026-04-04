@@ -15,7 +15,7 @@ describe("ingestion orchestrator", () => {
     };
     const result = mod.ingest("# Hello\n\nWorld", opts);
     assert.ok(result instanceof Promise, "ingest should return a Promise");
-    // Await to avoid unhandled rejection -- it will likely fail due to no DB
+    // Await to avoid unhandled rejection - it will likely fail due to no DB
     await result.catch(() => {});
   });
 

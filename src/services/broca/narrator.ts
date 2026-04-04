@@ -1,12 +1,12 @@
 // ============================================================================
-// Broca narrator -- template-based action narration with LLM fallback
+// Broca narrator - template-based action narration with LLM fallback
 // 30+ action templates for O(1) narration; falls back to LLM for unknowns.
 // ============================================================================
 
 import { log } from "../../config/logger.ts";
 import { callLLM, isLLMAvailable } from "../../llm/index.ts";
 
-// -- Template map: action -> narrative generator --
+// - Template map: action -> narrative generator --
 
 const TEMPLATES: Record<string, (p: Record<string, unknown>) => string> = {
   // Tasks (Chiasm)
@@ -51,7 +51,7 @@ const TEMPLATES: Record<string, (p: Record<string, unknown>) => string> = {
   "alert.triggered":  p => `Alert triggered: ${p.message || p.name || "unknown"}`,
 };
 
-// -- Template narration (O(1) lookup) --
+// - Template narration (O(1) lookup) --
 
 export function narrateFromTemplate(action: string, payload: Record<string, unknown>): string | null {
   const fn = TEMPLATES[action];
@@ -64,7 +64,7 @@ export function narrateFromTemplate(action: string, payload: Record<string, unkn
   }
 }
 
-// -- LLM fallback narration --
+// - LLM fallback narration --
 
 export async function narrateWithLLM(
   agent: string,
@@ -88,7 +88,7 @@ export async function narrateWithLLM(
   }
 }
 
-// -- Main narration: template first, LLM fallback --
+// - Main narration: template first, LLM fallback --
 
 export async function narrate(
   agent: string,

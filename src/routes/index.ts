@@ -1,5 +1,5 @@
 // ============================================================================
-// ROUTES — All HTTP request handling
+// ROUTES - All HTTP request handling
 // Auto-extracted from server.ts.monolith lines 2881-7283
 // ============================================================================
 
@@ -460,7 +460,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
     }
 
     // ========================================================================
-    // REQUEST MIDDLEWARE — ID, IP check, body limit
+    // REQUEST MIDDLEWARE - ID, IP check, body limit
     // ========================================================================
     opsCounters.request_count++;
     const requestId = req.headers.get("X-Request-Id") || randomUUID().slice(0, 8);
@@ -551,7 +551,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
     }
 
     // ========================================================================
-    // GUI STATIC ASSETS (SvelteKit build output — /_app/*)
+    // GUI STATIC ASSETS (SvelteKit build output - /_app/*)
     // ========================================================================
     if (url.pathname.startsWith("/_app/") && method === "GET") {
       const asset = serveGuiAsset(url.pathname);
@@ -559,7 +559,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
     }
 
     // ========================================================================
-    // WEB GUI (SPA — serves same HTML for all client-side routes)
+    // WEB GUI (SPA - serves same HTML for all client-side routes)
     // ========================================================================
     const acceptsHtml = (req.headers.get("accept") || "").includes("text/html");
     if (GUI_SPA_ROUTES.has(url.pathname) && method === "GET" && acceptsHtml) {
@@ -586,7 +586,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
     }
 
     // ========================================================================
-    // FIRST-RUN BOOTSTRAP — create first admin API key (only works when no keys exist)
+    // FIRST-RUN BOOTSTRAP - create first admin API key (only works when no keys exist)
     // Requires bootstrap token (generated on first access, written to DATA_DIR/.bootstrap_token)
     // or localhost-only access
     // ========================================================================
@@ -632,14 +632,14 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
         log.info({ msg: "bootstrap_admin_key_created", ip: clientIp, rid: requestId });
         // Clean up bootstrap token after successful use
         try { unlinkSync(tokenFile); } catch {}
-        return json({ key, name, scopes: "read,write,admin", user_id: 1, message: "First admin API key created. Save this key -- it cannot be retrieved again." }, 201, { "X-Request-Id": requestId });
+        return json({ key, name, scopes: "read,write,admin", user_id: 1, message: "First admin API key created. Save this key - it cannot be retrieved again." }, 201, { "X-Request-Id": requestId });
       } catch (e: any) {
         return safeError("Bootstrap", e, 500, requestId);
       }
     }
 
     // ========================================================================
-    // AUTH CONTEXT — extract user from API key or require auth
+    // AUTH CONTEXT - extract user from API key or require auth
     // ========================================================================
     const maybeAuth = getAuthOrDefault(req);
     if (isAuthError(maybeAuth)) {
@@ -730,7 +730,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
         const keyResult = db.prepare(
           "INSERT INTO api_keys (user_id, key_prefix, key_hash, name, scopes, rate_limit, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id"
         ).get(targetUserId, prefix, hash, name, scopes, rateLimit, expires_at) as any;
-        return json({ key, id: keyResult.id, name, scopes, rate_limit: rateLimit, user_id: targetUserId, expires_at, message: "Save this key -- it cannot be retrieved again." });
+        return json({ key, id: keyResult.id, name, scopes, rate_limit: rateLimit, user_id: targetUserId, expires_at, message: "Save this key - it cannot be retrieved again." });
       } catch (e: any) {
         return safeError("Operation", e);
       }
@@ -822,7 +822,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
     }
 
     // ========================================================================
-    // EXPORT — full dump of user's memories
+    // EXPORT - full dump of user's memories
     // ========================================================================
 
     if (url.pathname === "/export" && method === "GET") {
@@ -874,7 +874,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
     }
 
     // ========================================================================
-    // IMPORT — bulk import memories
+    // IMPORT - bulk import memories
     // ========================================================================
 
     if (url.pathname === "/import" && method === "POST") {
@@ -949,7 +949,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
     // ========================================================================
     // HEALTH
     // ========================================================================
-    // BENCH RESET -- wipe user-scoped data (only in OPEN_ACCESS mode)
+    // BENCH RESET - wipe user-scoped data (only in OPEN_ACCESS mode)
     // Requires a userId AND confirm: "DESTROY" in the request body. NEVER wipes all users' data.
     if (url.pathname === "/reset" && method === "POST") {
       if (!OPEN_ACCESS) return errorResponse("Reset only available in OPEN_ACCESS mode", 403);
@@ -1003,7 +1003,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
       }
 
       // Full user reset: wipe ALL data for this user_id
-      // Tables with direct user_id column -- delete rows owned by this user
+      // Tables with direct user_id column - delete rows owned by this user
       const userScopedTables = [
         "causal_chains", "temporal_patterns", "scratchpad", "reflections",
         "digests", "webhooks", "structured_facts", "current_state",
@@ -1088,12 +1088,12 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
       return json({ reset: true, user_id: userId, memories_deleted: memIdSet.length, tables_wiped: wiped });
     }
 
-    // /live — minimal liveness probe (process is up, no auth needed)
+    // /live - minimal liveness probe (process is up, no auth needed)
     if (url.pathname === "/live" && method === "GET") {
       return json({ status: "ok" });
     }
 
-    // /ready — readiness probe: DB writable, embedding model loaded, LLM reachable
+    // /ready - readiness probe: DB writable, embedding model loaded, LLM reachable
     if (url.pathname === "/ready" && method === "GET") {
       const checks: Record<string, boolean> = {};
       try { db.prepare("SELECT 1").get(); checks.db = true; } catch { checks.db = false; }
@@ -1283,7 +1283,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
       if (!isAuthed) {
         return json({ status: "ok", version: PKG_VERSION });
       }
-      // Full health for authenticated users — tenant-scoped for non-admins
+      // Full health for authenticated users - tenant-scoped for non-admins
       const uid = healthAuth.user_id;
       const isAdmin = healthAuth.is_admin;
       const memWhere = isAdmin ? "" : " AND user_id = ?";
@@ -1571,7 +1571,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
     }
 
     // ========================================================================
-    // SCRATCH PROMOTE — push scratchpad entries to permanent memories
+    // SCRATCH PROMOTE - push scratchpad entries to permanent memories
     // POST /scratch/:session/promote
     // Optionally filter by keys. Creates one memory per entry (or one combined).
     // ========================================================================
@@ -1650,7 +1650,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
     }
 
     // ========================================================================
-    // SCRATCH SUMMARIZE — LLM-summarize session and store as permanent memory
+    // SCRATCH SUMMARIZE - LLM-summarize session and store as permanent memory
     // POST /scratch/:session/summarize
     // Best called at session end before DELETE. Creates a single summary memory.
     // ========================================================================
@@ -1718,12 +1718,12 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
     }
 
     // ========================================================================
-    // CONVERSATION EXTRACTION — POST /add (Mem0-compatible)
+    // CONVERSATION EXTRACTION - POST /add (Mem0-compatible)
     // ========================================================================
 
     if (url.pathname === "/add" && method === "POST") {
       if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
-      if (!isLLMAvailable()) return errorResponse("LLM not configured — /add requires fact extraction", 400);
+      if (!isLLMAvailable()) return errorResponse("LLM not configured - /add requires fact extraction", 400);
       try {
         const body = await req.json() as any;
         const messages = body.messages as Array<{ role: string; content: string }>;
@@ -1754,7 +1754,7 @@ Rules:
   - tags: 2-5 lowercase keyword tags
 - Detect temporal facts and set forget_after if appropriate (ISO datetime or null)
 
-CRITICAL — Correction detection:
+CRITICAL - Correction detection:
 - If a USER message corrects the assistant (e.g. "no, X is Y", "that's wrong", "actually...", "I told you", "you forgot"), the corrected fact should:
   - Have is_correction: true
   - Have is_static: true (corrections are permanent by default)
@@ -1898,12 +1898,12 @@ If no meaningful facts, return {"facts": []}`;
     }
 
     // ========================================================================
-    // INGEST — Extract memories from URLs or text blobs
+    // INGEST - Extract memories from URLs or text blobs
     // ========================================================================
 
     if (url.pathname === "/ingest" && method === "POST") {
       if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
-      if (!isLLMAvailable()) return errorResponse("LLM not configured — /ingest requires fact extraction", 400);
+      if (!isLLMAvailable()) return errorResponse("LLM not configured - /ingest requires fact extraction", 400);
       try {
         const body = await req.json() as any;
         const { url: ingestUrl, text: ingestText, entity_ids, project_ids, episode_id, source } = body;
@@ -1921,7 +1921,7 @@ If no meaningful facts, return {"facts": []}`;
           if (typeof ingestUrl !== "string" || !ingestUrl.match(/^https?:\/\//)) {
             return errorResponse("url must be a valid http/https URL");
           }
-          // S7 FIX: SSRF protection — block private/internal IPs (same as webhook validation)
+          // S7 FIX: SSRF protection - block private/internal IPs (same as webhook validation)
           try {
             const ingestParsed = new URL(ingestUrl);
             const hn = ingestParsed.hostname.toLowerCase();
@@ -1967,7 +1967,7 @@ If no meaningful facts, return {"facts": []}`;
                 .replace(/ {2,}/g, " ")
                 .trim();
             } else {
-              // Plain text, JSON, etc — use as-is
+              // Plain text, JSON, etc - use as-is
               rawText = raw.trim();
               title = new URL(ingestUrl).pathname.split("/").pop() || ingestUrl;
             }
@@ -2119,7 +2119,7 @@ Return JSON:
     }
 
     // ========================================================================
-    // CONTRADICTION DETECTION — find conflicting memories
+    // CONTRADICTION DETECTION - find conflicting memories
     // ========================================================================
 
     if (url.pathname === "/contradictions" && method === "GET") {
@@ -2266,7 +2266,7 @@ Only include pairs that are actual contradictions.`;
     }
 
     // ========================================================================
-    // CONTRADICTION RESOLUTION — resolve a specific contradiction
+    // CONTRADICTION RESOLUTION - resolve a specific contradiction
     // ========================================================================
 
     if (url.pathname === "/contradictions/resolve" && method === "POST") {
@@ -2346,7 +2346,7 @@ Only include pairs that are actual contradictions.`;
     }
 
     // ========================================================================
-    // TIME-TRAVEL — query memory state at a point in time
+    // TIME-TRAVEL - query memory state at a point in time
     // ========================================================================
 
     if (url.pathname === "/timetravel" && method === "POST") {
@@ -2392,13 +2392,13 @@ Only include pairs that are actual contradictions.`;
                 rootLatest.set(rootId, m);
               }
             } else if (!m.parent_memory_id) {
-              // Check if this was later superseded — if so, check if superseded after as_of
+              // Check if this was later superseded - if so, check if superseded after as_of
               const laterVersion = db.prepare(
                 `SELECT id, created_at FROM memories WHERE parent_memory_id = ? AND created_at <= ? ORDER BY created_at ASC LIMIT 1`
               ).get(m.id, asOfStr) as any;
 
               if (!laterVersion) {
-                standalone.push(m); // No later version at that time — this was current
+                standalone.push(m); // No later version at that time - this was current
               }
               // If there IS a later version, that version will be picked up by the root chain logic
             }
@@ -2471,7 +2471,7 @@ Only include pairs that are actual contradictions.`;
     }
 
     // ========================================================================
-    // SMART CONTEXT BUILDER — optimal RAG context within token budget
+    // SMART CONTEXT BUILDER - optimal RAG context within token budget
     // ========================================================================
 
     if (url.pathname === "/context" && method === "POST") {
@@ -3008,11 +3008,11 @@ Only include pairs that are actual contradictions.`;
     }
 
     // ========================================================================
-    // MEMORY REFLECTIONS — periodic meta-analysis
+    // MEMORY REFLECTIONS - periodic meta-analysis
     // ========================================================================
 
     if (url.pathname === "/reflect" && method === "POST") {
-      if (!isLLMAvailable()) return errorResponse("LLM not configured — /reflect requires inference", 400);
+      if (!isLLMAvailable()) return errorResponse("LLM not configured - /reflect requires inference", 400);
       try {
         const body = await req.json() as any;
         const period = body.period || "week"; // day | week | month
@@ -3054,7 +3054,7 @@ Only include pairs that are actual contradictions.`;
         if (periodMemories.length < 3) {
           return json({
             reflection: null,
-            message: `Only ${periodMemories.length} memories in the ${period} period — need at least 3 for reflection`,
+            message: `Only ${periodMemories.length} memories in the ${period} period - need at least 3 for reflection`,
             period: { start: periodStartStr, end: periodEndStr },
           });
         }
@@ -3174,7 +3174,7 @@ Return JSON:
     }
 
     // ========================================================================
-    // SCHEDULED DIGESTS — webhook delivery of memory summaries
+    // SCHEDULED DIGESTS - webhook delivery of memory summaries
     // ========================================================================
 
     if (url.pathname === "/digests" && method === "POST") {
@@ -3259,7 +3259,7 @@ Return JSON:
     }
 
     // ========================================================================
-    // STORE — v3 with async fact extraction
+    // STORE - v3 with async fact extraction
     // ========================================================================
 
     if ((url.pathname === "/store" || url.pathname === "/memory" || url.pathname === "/memories") && method === "POST") {
@@ -3274,7 +3274,7 @@ Return JSON:
           return errorResponse(`Content too large (${content.length} bytes). Max: ${MAX_CONTENT_SIZE}`, 413);
         }
 
-        // Check tenant quota (optional -- no quota row means unlimited)
+        // Check tenant quota (optional - no quota row means unlimited)
         const quota = getQuota.get(auth.user_id) as any;
         if (quota) {
           const currentCount = (getUserMemoryCount.get(auth.user_id) as any).count;
@@ -3419,7 +3419,7 @@ Return JSON:
           });
         }
 
-        // Return response IMMEDIATELY — vector indexing + autoLink + fact extraction happen async
+        // Return response IMMEDIATELY - vector indexing + autoLink + fact extraction happen async
         const _storeElapsed = performance.now() - requestStart;
         opsCounters.sla_store_total++;
         if (_storeElapsed < 500) opsCounters.sla_store_under_500ms++;
@@ -3466,7 +3466,7 @@ Return JSON:
     }
 
     // ========================================================================
-    // CORRECT — Explicit correction of an existing memory
+    // CORRECT - Explicit correction of an existing memory
     // Stores correction as static, high-importance, supersedes the old memory.
     // If no memory_id, searches for the best-matching memory to correct.
     // ========================================================================
@@ -3476,7 +3476,7 @@ Return JSON:
       try {
         const body = await req.json() as any;
         const correction = body.correction?.trim();
-        if (!correction) return errorResponse("correction (string) is required — the correct information");
+        if (!correction) return errorResponse("correction (string) is required - the correct information");
 
         const originalClaim = body.original_claim?.trim() || null; // what was wrong
         let memoryId = body.memory_id ? Number(body.memory_id) : null;
@@ -3536,7 +3536,7 @@ Return JSON:
           }
         }
 
-        // Build the stored content — include what was wrong for context
+        // Build the stored content - include what was wrong for context
         let storedContent = correction;
         if (originalClaim && correctedMemory) {
           storedContent = `[CORRECTION] Was: "${originalClaim.substring(0, 200)}". Correct: ${correction}`;
@@ -3622,7 +3622,7 @@ Return JSON:
     }
 
     // ========================================================================
-    // MEMORY HEALTH — surface stale, duplicate, and disconnected memories
+    // MEMORY HEALTH - surface stale, duplicate, and disconnected memories
     // ========================================================================
 
     if (url.pathname === "/memory-health" && method === "GET") {
@@ -3730,7 +3730,7 @@ Return JSON:
     }
 
     // ========================================================================
-    // RETRIEVAL FEEDBACK — relevance signal collection
+    // RETRIEVAL FEEDBACK - relevance signal collection
     // ========================================================================
 
     if (url.pathname === "/feedback" && method === "POST") {
@@ -3803,7 +3803,7 @@ Return JSON:
       }
     }
 
-    // GET /feedback/stats — retrieval quality analytics
+    // GET /feedback/stats - retrieval quality analytics
     if (url.pathname === "/feedback/stats" && method === "GET") {
       try {
         // Ensure table exists
@@ -3858,7 +3858,7 @@ Return JSON:
     }
 
     // ========================================================================
-    // SEARCH — v3
+    // SEARCH - v3
     // ========================================================================
 
     if ((url.pathname === "/search" || url.pathname === "/memories/search") && method === "POST") {
@@ -4075,13 +4075,13 @@ Return JSON:
     }
 
     // ========================================================================
-    // MEMORY — get / delete / forget
+    // MEMORY - get / delete / forget
     // ========================================================================
 
     if (url.pathname.match(/^\/memory\/\d+\/forget$/) && method === "POST") {
       const id = Number(url.pathname.split("/")[2]);
       if (isNaN(id)) return errorResponse("Invalid id");
-      // S7 FIX: Ownership check — only memory owner or admin can forget
+      // S7 FIX: Ownership check - only memory owner or admin can forget
       const mem = getMemoryWithoutEmbedding.get(id) as any;
       if (!mem) return errorResponse("Not found", 404);
       if (mem.user_id !== auth.user_id && !auth.is_admin) return errorResponse("Forbidden", 403);
@@ -4125,7 +4125,7 @@ Return JSON:
     }
 
     // ========================================================================
-    // UPDATE (versioned) — creates new version via version chain
+    // UPDATE (versioned) - creates new version via version chain
     // ========================================================================
 
     if (url.pathname.match(/^\/memory\/\d+\/update$/) && method === "POST") {
@@ -4216,7 +4216,7 @@ Return JSON:
     }
 
     // ========================================================================
-    // DUPLICATES — find near-duplicate memory clusters
+    // DUPLICATES - find near-duplicate memory clusters
     // ========================================================================
 
     if (url.pathname === "/duplicates" && method === "GET") {
@@ -4274,7 +4274,7 @@ Return JSON:
     }
 
     // ========================================================================
-    // DEDUPLICATE — merge duplicate clusters (keep anchor, archive dupes)
+    // DEDUPLICATE - merge duplicate clusters (keep anchor, archive dupes)
     // ========================================================================
 
     if (url.pathname === "/deduplicate" && method === "POST") {
@@ -4343,7 +4343,7 @@ Return JSON:
     }
 
     // ========================================================================
-    // SMART RECALL — context-aware memory retrieval for plugin
+    // SMART RECALL - context-aware memory retrieval for plugin
     // ========================================================================
 
     if (url.pathname === "/recall" && method === "POST") {
@@ -4357,7 +4357,7 @@ Return JSON:
 
         const results: Map<number, { memory: any; score: number; source: string }> = new Map();
 
-        // 1. Static facts (capped to 25% of limit to leave room for semantic results -- fixes #10)
+        // 1. Static facts (capped to 25% of limit to leave room for semantic results - fixes #10)
         let staticFacts = getStaticMemories.all(auth.user_id) as Array<any>;
         if (recallSourceFilter) staticFacts = staticFacts.filter((s: any) => s.source && s.source.includes(recallSourceFilter));
         const staticCap = Math.max(1, Math.ceil(limit * 0.25));
@@ -4512,7 +4512,7 @@ Return JSON:
       if (isNaN(id)) return errorResponse("Invalid id");
       const memory = getMemoryWithoutEmbedding.get(id) as any;
       if (!memory) return errorResponse("Not found", 404);
-      // S7 FIX: User isolation — only owner or admin can read
+      // S7 FIX: User isolation - only owner or admin can read
       if (memory.user_id !== auth.user_id && !auth.is_admin) return errorResponse("Not found", 404);
 
       // Track access
@@ -4552,7 +4552,7 @@ Return JSON:
     if (url.pathname.startsWith("/memory/") && method === "DELETE") {
       const id = Number(url.pathname.split("/")[2]);
       if (isNaN(id)) return errorResponse("Invalid id");
-      // S7 FIX: Ownership check — only memory owner or admin can delete
+      // S7 FIX: Ownership check - only memory owner or admin can delete
       const mem = getMemoryWithoutEmbedding.get(id) as any;
       if (!mem) return errorResponse("Not found", 404);
       if (mem.user_id !== auth.user_id && !auth.is_admin) return errorResponse("Forbidden", 403);
@@ -4608,7 +4608,7 @@ Return JSON:
     }
 
     // ========================================================================
-    // PROFILE SYNTHESIZE — personality narrative from accumulated signals
+    // PROFILE SYNTHESIZE - personality narrative from accumulated signals
     // ========================================================================
 
     if (url.pathname === "/profile/synthesize" && method === "POST") {
@@ -4634,7 +4634,7 @@ Return JSON:
     }
 
     // ========================================================================
-    // RAW GRAPH DATA (legacy — use GET /graph with params instead)
+    // RAW GRAPH DATA (legacy - use GET /graph with params instead)
     // ========================================================================
 
     if (url.pathname === "/graph/raw" && method === "GET") {
@@ -4855,7 +4855,7 @@ Return JSON:
     }
 
     // ========================================================================
-    // GUI CRUD — create/edit/delete memories from the web interface
+    // GUI CRUD - create/edit/delete memories from the web interface
     // ========================================================================
 
     if (url.pathname === "/gui/memories" && method === "POST") {
@@ -4945,7 +4945,7 @@ Return JSON:
     }
 
     // ========================================================================
-    // TAGS — v4.1
+    // TAGS - v4.1
     // ========================================================================
 
     if (url.pathname === "/tags" && method === "GET") {
@@ -5002,7 +5002,7 @@ Return JSON:
     }
 
     // ========================================================================
-    // EPISODES — v4.1
+    // EPISODES - v4.1
     // ========================================================================
 
     if (url.pathname === "/episodes" && method === "POST") {
@@ -5222,7 +5222,7 @@ Return JSON:
     }
 
     // ========================================================================
-    // AGENT IDENTITY — registration, trust scoring, passports
+    // AGENT IDENTITY - registration, trust scoring, passports
     // ========================================================================
 
     if (url.pathname === "/agents" && method === "POST") {
@@ -5272,7 +5272,7 @@ Return JSON:
 
       // POST /agents/:id/revoke
       if (agentMatch && method === "POST" && url.pathname.endsWith("/revoke")) {
-        // already matched by agentMatch — need separate pattern
+        // already matched by agentMatch - need separate pattern
       }
     }
 
@@ -5302,7 +5302,7 @@ Return JSON:
       }
     }
 
-    // POST /agents/:id/link-key — link an API key to this agent
+    // POST /agents/:id/link-key - link an API key to this agent
     {
       const linkMatch = url.pathname.match(/^\/agents\/(\d+)\/link-key$/);
       if (linkMatch && method === "POST") {
@@ -5318,7 +5318,7 @@ Return JSON:
       }
     }
 
-    // GET /agents/:id/executions — signed execution history
+    // GET /agents/:id/executions - signed execution history
     {
       const execMatch = url.pathname.match(/^\/agents\/(\d+)\/executions$/);
       if (execMatch && method === "GET") {
@@ -5331,7 +5331,7 @@ Return JSON:
       }
     }
 
-    // POST /verify — verify a signed execution or passport
+    // POST /verify - verify a signed execution or passport
     if (url.pathname === "/verify" && method === "POST") {
       try {
         const body = await req.json() as any;
@@ -5358,7 +5358,7 @@ Return JSON:
     }
 
     // ========================================================================
-    // GUARDRAILS — pre-action conflict check against stored rules + trust
+    // GUARDRAILS - pre-action conflict check against stored rules + trust
     // ========================================================================
 
     function heuristicGuard(action: string, rules: Array<{ content: string; score: number; importance: number }>): "allow" | "warn" | "block" {
@@ -5377,7 +5377,7 @@ Return JSON:
       try {
         const body = await req.json() as any;
         const action = body.action;
-        if (!action || typeof action !== "string") return errorResponse("action (string) required — describe what you are about to do");
+        if (!action || typeof action !== "string") return errorResponse("action (string) required - describe what you are about to do");
 
         // Search static high-importance memories for conflicts
         const results = await hybridSearch(action, 20, false, false, true, auth.user_id);
@@ -5404,10 +5404,10 @@ Return JSON:
 
         if (isLLMAvailable()) {
           try {
-            const trustContext = trustScore !== null ? `\nAGENT TRUST SCORE: ${trustScore}/100 (${trustScore < 30 ? "LOW — be strict" : trustScore < 70 ? "MODERATE" : "HIGH — earned trust"})` : "";
+            const trustContext = trustScore !== null ? `\nAGENT TRUST SCORE: ${trustScore}/100 (${trustScore < 30 ? "LOW - be strict" : trustScore < 70 ? "MODERATE" : "HIGH - earned trust"})` : "";
             const rulesText = rules.slice(0, 5).map((r, i) => `RULE ${i + 1} (importance ${r.importance}): ${r.content}`).join("\n\n");
             const llmResult = await callLLM(
-              `You are a guardrail system. Given an agent's PROPOSED ACTION and a set of RULES from memory, determine if the action conflicts with any rule. Respond with ONLY one of: BLOCK (action directly violates a rule), WARN (action is related to a rule and should proceed with caution), or ALLOW (no conflict). After the signal word, write a brief explanation on the same line.${trustContext ? " Factor the agent's trust score into borderline decisions — low-trust agents should get WARN or BLOCK more readily." : ""}`,
+              `You are a guardrail system. Given an agent's PROPOSED ACTION and a set of RULES from memory, determine if the action conflicts with any rule. Respond with ONLY one of: BLOCK (action directly violates a rule), WARN (action is related to a rule and should proceed with caution), or ALLOW (no conflict). After the signal word, write a brief explanation on the same line.${trustContext ? " Factor the agent's trust score into borderline decisions - low-trust agents should get WARN or BLOCK more readily." : ""}`,
               `PROPOSED ACTION: ${action}\n\nRULES:\n${rulesText}${trustContext}`
             );
             const first = llmResult.trim().split("\n")[0].toUpperCase();
@@ -5450,7 +5450,7 @@ Return JSON:
     }
 
     // ========================================================================
-    // CONSOLIDATION — v4.1
+    // CONSOLIDATION - v4.1
     // ========================================================================
 
     if (url.pathname === "/consolidate" && method === "POST") {
@@ -5487,7 +5487,7 @@ Return JSON:
     }
 
     // ========================================================================
-    // DECAY — v4.1
+    // DECAY - v4.1
     // ========================================================================
 
     if (url.pathname === "/decay/refresh" && method === "POST") {
@@ -5564,7 +5564,7 @@ Return JSON:
     }
 
     // ========================================================================
-    // CONTEXT WINDOW OPTIMIZER — POST /pack
+    // CONTEXT WINDOW OPTIMIZER - POST /pack
     // ========================================================================
 
     if (url.pathname === "/pack" && method === "POST") {
@@ -5652,7 +5652,7 @@ Return JSON:
     }
 
     // ========================================================================
-    // PROMPT TEMPLATE ENGINE — GET /prompt
+    // PROMPT TEMPLATE ENGINE - GET /prompt
     // ========================================================================
 
     if (url.pathname === "/prompt" && method === "GET") {
@@ -5735,7 +5735,7 @@ ${memoryBlock}
     }
 
     // ========================================================================
-    // HEADER — Universal prompt header for multi-model attribution
+    // HEADER - Universal prompt header for multi-model attribution
     // ========================================================================
 
     if (url.pathname === "/header" && method === "POST") {
@@ -5815,7 +5815,7 @@ ${memoryBlock}
     }
 
     // ========================================================================
-    // WEBHOOKS — v4.2
+    // WEBHOOKS - v4.2
     // ========================================================================
 
     if (url.pathname === "/webhooks" && method === "POST") {
@@ -5850,7 +5850,7 @@ ${memoryBlock}
     }
 
     // ========================================================================
-    // SYNC — v4.2 (Multi-instance replication)
+    // SYNC - v4.2 (Multi-instance replication)
     // ========================================================================
 
     if (url.pathname === "/sync/changes" && method === "GET") {
@@ -5938,12 +5938,12 @@ ${memoryBlock}
     }
 
     // ========================================================================
-    // DERIVE — Infer new facts from memory clusters
+    // DERIVE - Infer new facts from memory clusters
     // ========================================================================
 
     if (url.pathname === "/derive" && method === "POST") {
       if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
-      if (!isLLMAvailable()) return errorResponse("LLM not configured — /derive requires inference", 400);
+      if (!isLLMAvailable()) return errorResponse("LLM not configured - /derive requires inference", 400);
       try {
         const body = await req.json() as any;
         const context = body.context || "";
@@ -5974,7 +5974,7 @@ ${memoryBlock}
         const derivePrompt = `You are an inference engine for a memory system. Given a collection of memories, identify patterns, connections, and inferences that are NOT explicitly stated but can be logically derived.
 
 Rules:
-- Only derive facts that are NOT already stored — don't repeat existing memories
+- Only derive facts that are NOT already stored - don't repeat existing memories
 - Each derived fact must cite which memory IDs it was inferred from (source_ids)
 - Confidence should reflect how certain the inference is (0.3-0.9, never 1.0)
 - Prefer actionable insights over trivial observations
@@ -6064,7 +6064,7 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // MEM0 IMPORT — v4.2
+    // MEM0 IMPORT - v4.2
     // ========================================================================
 
     if (url.pathname === "/import/mem0" && method === "POST") {
@@ -6112,7 +6112,7 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // SUPERMEMORY IMPORT — v4.2
+    // SUPERMEMORY IMPORT - v4.2
     // ========================================================================
 
     if (url.pathname === "/import/supermemory" && method === "POST") {
@@ -6185,7 +6185,7 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // BULK INGEST — POST /import/bulk
+    // BULK INGEST - POST /import/bulk
     // Async document ingestion pipeline: parse, chunk, embed, store.
     // ========================================================================
 
@@ -6273,7 +6273,7 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // MEMORY GRAPH — v4.3
+    // MEMORY GRAPH - v4.3
     // ========================================================================
 
     if (url.pathname === "/graph" && method === "GET") {
@@ -6425,7 +6425,7 @@ If no meaningful inferences, return {"derived": []}`;
           }
         }
 
-        // Phase 5: Projects (already efficient — few projects)
+        // Phase 5: Projects (already efficient - few projects)
         const projectNodes = db.prepare(
           `SELECT DISTINCT p.id, p.name, p.status FROM projects p
            JOIN memory_projects mp ON mp.project_id = p.id
@@ -6478,7 +6478,7 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // ENTITIES — v4.3
+    // ENTITIES - v4.3
     // ========================================================================
 
     // Create entity
@@ -6621,7 +6621,7 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // PROJECTS — v4.3
+    // PROJECTS - v4.3
     // ========================================================================
 
     // Create project
@@ -6720,7 +6720,7 @@ If no meaningful inferences, return {"derived": []}`;
       return json({ unlinked: true, project_id: projectId, memory_id: memoryId });
     }
 
-    // Scoped search — search memories within a project
+    // Scoped search - search memories within a project
     if (url.pathname.match(/^\/projects\/\d+\/search$/) && method === "POST") {
       try {
         const projectId = Number(url.pathname.split("/")[2]);
@@ -6777,10 +6777,10 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // ARTIFACTS -- retrieval endpoints (v5.12)
+    // ARTIFACTS - retrieval endpoints (v5.12)
     // ========================================================================
 
-    // GET /artifacts/stats -- storage usage stats
+    // GET /artifacts/stats - storage usage stats
     if (url.pathname === "/artifacts/stats" && method === "GET") {
       const stats = getArtifactStats.get() as {
         total_count: number; total_bytes: number;
@@ -6795,7 +6795,7 @@ If no meaningful inferences, return {"derived": []}`;
       });
     }
 
-    // GET /artifacts/:memoryId -- list artifacts for a memory
+    // GET /artifacts/:memoryId - list artifacts for a memory
     if (url.pathname.match(/^\/artifacts\/(\d+)$/) && method === "GET") {
       const memoryId = Number(url.pathname.split("/")[2]);
       const rows = getArtifactsByMemory.all(memoryId) as Array<{
@@ -6805,7 +6805,7 @@ If no meaningful inferences, return {"derived": []}`;
       return json({ artifacts: rows, memory_id: memoryId });
     }
 
-    // GET /artifact/:id -- download a single artifact
+    // GET /artifact/:id - download a single artifact
     if (url.pathname.match(/^\/artifact\/(\d+)$/) && method === "GET") {
       const artifactId = Number(url.pathname.split("/")[2]);
       const row = getArtifactById.get(artifactId) as {
@@ -6840,11 +6840,11 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // STATS — v4
+    // STATS - v4
     // ========================================================================
 
     // ========================================================================
-    // STRUCTURED FACTS — query extracted quantifiable facts
+    // STRUCTURED FACTS - query extracted quantifiable facts
     // ========================================================================
     if (url.pathname === "/facts" && method === "GET") {
       try {
@@ -6875,7 +6875,7 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // ENTITY COOCCURRENCES — query entity co-mention graph
+    // ENTITY COOCCURRENCES - query entity co-mention graph
     // ========================================================================
     if (url.pathname.match(/^\/entities\/(\d+)\/cooccurrences$/) && method === "GET") {
       try {
@@ -6941,7 +6941,7 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // RE-EMBED ALL MEMORIES -- migrate between embedding providers/models
+    // RE-EMBED ALL MEMORIES - migrate between embedding providers/models
     // ========================================================================
     if (url.pathname === "/admin/reembed" && method === "POST") {
       if (!hasScope(auth, "admin")) return errorResponse("Admin scope required", 403);
@@ -6959,7 +6959,7 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // EMBEDDING PROVIDER INFO -- show current embedding configuration
+    // EMBEDDING PROVIDER INFO - show current embedding configuration
     // ========================================================================
     if (url.pathname === "/admin/embedding-info" && method === "GET") {
       if (!hasScope(auth, "admin")) return errorResponse("Admin scope required", 403);
@@ -6972,7 +6972,7 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // FACT VALIDITY BACKFILL — populate valid_at for existing facts
+    // FACT VALIDITY BACKFILL - populate valid_at for existing facts
     // ========================================================================
     if (url.pathname === "/admin/backfill-facts" && method === "POST") {
       if (!hasScope(auth, "admin")) return errorResponse("Admin scope required", 403);
@@ -6986,7 +6986,7 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // COOCCURRENCE REBUILD — rebuild entity cooccurrence graph from scratch
+    // COOCCURRENCE REBUILD - rebuild entity cooccurrence graph from scratch
     // ========================================================================
     if (url.pathname === "/admin/rebuild-cooccurrences" && method === "POST") {
       if (!hasScope(auth, "admin")) return errorResponse("Admin scope required", 403);
@@ -7000,7 +7000,7 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // COMMUNITY DETECTION — label propagation clustering on memory graph
+    // COMMUNITY DETECTION - label propagation clustering on memory graph
     // ========================================================================
     if (url.pathname === "/admin/detect-communities" && method === "POST") {
       if (!hasScope(auth, "admin")) return errorResponse("Admin scope required", 403);
@@ -7014,7 +7014,7 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // COMMUNITY STATS + MEMBERS — query detected communities
+    // COMMUNITY STATS + MEMBERS - query detected communities
     // ========================================================================
     if (url.pathname === "/communities" && method === "GET") {
       try {
@@ -7039,7 +7039,7 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // CURRENT STATE — query tracked key-value state
+    // CURRENT STATE - query tracked key-value state
     // ========================================================================
     if (url.pathname === "/state" && method === "GET") {
       try {
@@ -7060,7 +7060,7 @@ If no meaningful inferences, return {"derived": []}`;
       }
     }
 
-    // DELETE /state — delete state entries by key pattern or purge all
+    // DELETE /state - delete state entries by key pattern or purge all
     if (url.pathname === "/state" && method === "DELETE") {
       try {
         const body = await req.json() as any;
@@ -7081,7 +7081,7 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // USER PREFERENCES — query extracted preferences
+    // USER PREFERENCES - query extracted preferences
     // ========================================================================
     if (url.pathname === "/preferences" && method === "GET") {
       try {
@@ -7102,7 +7102,7 @@ If no meaningful inferences, return {"derived": []}`;
       }
     }
 
-    // DELETE /preferences — delete preferences by domain or purge all
+    // DELETE /preferences - delete preferences by domain or purge all
     if (url.pathname === "/preferences" && method === "DELETE") {
       try {
         const body = await req.json() as any;
@@ -7195,7 +7195,7 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // INBOX / REVIEW QUEUE — v5.1
+    // INBOX / REVIEW QUEUE - v5.1
     // ========================================================================
 
     // List pending memories
@@ -7334,7 +7334,7 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // BACKUP ENDPOINT — download SQLite DB (consistent snapshot)
+    // BACKUP ENDPOINT - download SQLite DB (consistent snapshot)
     // ========================================================================
     if (url.pathname === "/backup" && method === "GET") {
       if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
@@ -7941,7 +7941,7 @@ If no meaningful inferences, return {"derived": []}`;
       try {
         const testMem = db.prepare(
           `INSERT INTO memories (content, category, source, user_id) VALUES (?, ?, ?, ?) RETURNING id`
-        ).get("Engram onboarding test memory -- safe to delete", "system", "onboarding", auth.user_id) as any;
+        ).get("Engram onboarding test memory - safe to delete", "system", "onboarding", auth.user_id) as any;
         checks.store = { passed: true, detail: `Created test memory id=${testMem.id}` };
         try {
           const results = await hybridSearch("onboarding test", 1, false, false, true, auth.user_id);
@@ -8005,7 +8005,7 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // FETCH — Retrieve web content as plain text
+    // FETCH - Retrieve web content as plain text
     // ========================================================================
     if (url.pathname === "/fetch" && method === "POST") {
       if (!hasScope(auth, "read")) return errorResponse("Read scope required", 403);
@@ -8074,7 +8074,7 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // DOCS — Resolve library documentation from npm / GitHub / PyPI
+    // DOCS - Resolve library documentation from npm / GitHub / PyPI
     // ========================================================================
     if (url.pathname === "/docs/resolve" && method === "POST") {
       if (!hasScope(auth, "read")) return errorResponse("Read scope required", 403);
@@ -8203,7 +8203,7 @@ If no meaningful inferences, return {"derived": []}`;
     }
 
     // ========================================================================
-    // ERRORS — Structured error tracking across agents
+    // ERRORS - Structured error tracking across agents
     // ========================================================================
     if (url.pathname === "/errors" && method === "POST") {
       if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -8426,7 +8426,7 @@ If no meaningful inferences, return {"derived": []}`;
 export { fetchHandler };
 
 // ============================================================================
-// BACKGROUND JOBS — Periodic maintenance
+// BACKGROUND JOBS - Periodic maintenance
 // ============================================================================
 
 // --- Decay score refresh (every 6 hours) ---

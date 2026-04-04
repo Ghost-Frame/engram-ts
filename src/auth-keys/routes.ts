@@ -1,8 +1,8 @@
 // ============================================================================
-// AUTH-KEYS DOMAIN -- Route handlers for auth, users, keys, and spaces
+// AUTH-KEYS DOMAIN - Route handlers for auth, users, keys, and spaces
 // ============================================================================
 // NOTE: GUI auth and bootstrap run before API key auth. Handlers for those
-// routes do NOT call getContext() -- they access request data directly.
+// routes do NOT call getContext() - they access request data directly.
 // All other handlers require auth (registered on an auth-wrapped router).
 
 import { timingSafeEqual } from "crypto";
@@ -46,10 +46,10 @@ const GUI_CONTENT_SECURITY_POLICY = [
 export function registerAuthKeysRoutes(router: Router): void {
 
   // ========================================================================
-  // GUI AUTH -- These run before API key auth; no getContext() usage
+  // GUI AUTH - These run before API key auth; no getContext() usage
   // ========================================================================
 
-  // POST /gui/auth -- GUI login (no API key required)
+  // POST /gui/auth - GUI login (no API key required)
   router.post("/gui/auth", async (req) => {
     if (!GUI_AUTH_CONFIGURED || !GUI_PASSWORD) {
       return json({ error: "GUI password is not configured" }, 503);
@@ -84,7 +84,7 @@ export function registerAuthKeysRoutes(router: Router): void {
     }
   });
 
-  // GET /gui/logout -- clear cookie (no API key required)
+  // GET /gui/logout - clear cookie (no API key required)
   router.get("/gui/logout", async (req) => {
     return new Response(await getLoginHtml(), {
       headers: securityHeaders({
@@ -99,7 +99,7 @@ export function registerAuthKeysRoutes(router: Router): void {
   });
 
   // ========================================================================
-  // BOOTSTRAP -- create first admin key when no keys exist (no API key required)
+  // BOOTSTRAP - create first admin key when no keys exist (no API key required)
   // ========================================================================
 
   // POST /bootstrap
@@ -132,14 +132,14 @@ export function registerAuthKeysRoutes(router: Router): void {
       insertBootstrapAdminKey(prefix, hash, name);
       auditLog(1, "bootstrap", "", null, "first_admin_key_created", clientIp);
       try { unlinkSync(tokenFile); } catch {}
-      return json({ key, name, scopes: "read,write,admin", user_id: 1, message: "First admin API key created. Save this key -- it cannot be retrieved again." }, 201);
+      return json({ key, name, scopes: "read,write,admin", user_id: 1, message: "First admin API key created. Save this key - it cannot be retrieved again." }, 201);
     } catch (e: any) {
       return safeError("Bootstrap", e, 500);
     }
   });
 
   // ========================================================================
-  // USER MANAGEMENT (admin only -- requires auth via getContext)
+  // USER MANAGEMENT (admin only - requires auth via getContext)
   // ========================================================================
 
   // POST /users
@@ -187,7 +187,7 @@ export function registerAuthKeysRoutes(router: Router): void {
       const rateLimit = Math.min(Math.max(Number(b.rate_limit) || DEFAULT_RATE_LIMIT, 10), 10000);
       const expiresAt = b.expires_at ? String(b.expires_at) : null;
       const keyResult = insertApiKey(targetUserId, prefix, hash, name, scopes, rateLimit, expiresAt);
-      return json({ key, id: keyResult.id, name, scopes, rate_limit: rateLimit, user_id: targetUserId, expires_at: expiresAt, message: "Save this key -- it cannot be retrieved again." });
+      return json({ key, id: keyResult.id, name, scopes, rate_limit: rateLimit, user_id: targetUserId, expires_at: expiresAt, message: "Save this key - it cannot be retrieved again." });
     } catch (e: any) {
       return safeError("Operation", e);
     }

@@ -1,5 +1,5 @@
 // ============================================================================
-// TRACING -- OpenTelemetry distributed tracing for Engram
+// TRACING - OpenTelemetry distributed tracing for Engram
 // Must be imported BEFORE all other modules in server-split.ts
 // ============================================================================
 

@@ -11,7 +11,7 @@ import { upsertSkill, updateSkillEmbeddingStmt, insertSkillTagStmt, insertSkillP
 import { log } from "../config/logger.ts";
 
 /** Discover skills from dirs, upsert to DB, compute embeddings.
- *  Fire-and-forget safe -- catches all errors. Returns summary. */
+ *  Fire-and-forget safe - catches all errors. Returns summary. */
 export async function syncSkills(dirs: string[]): Promise<{ synced: number; errors: string[] }> {
   const skills = discoverSkills(dirs);
   const errors: string[] = [];

@@ -1,5 +1,5 @@
 // ============================================================================
-// PACK DOMAIN -- Greedy knapsack packing algorithm
+// PACK DOMAIN - Greedy knapsack packing algorithm
 // Selects memories from static + semantic + important sources, packs them
 // into a token budget using a greedy highest-score-first strategy.
 // ============================================================================

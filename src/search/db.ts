@@ -1,5 +1,5 @@
 // ============================================================================
-// SEARCH DOMAIN -- Database prepared statements
+// SEARCH DOMAIN - Database prepared statements
 // ============================================================================
 
 import { db } from "../db/connection.ts";
@@ -15,7 +15,7 @@ export const getStaticMemories = db.prepare(
    ORDER BY source_count DESC, updated_at DESC`
 );
 
-// -- Recent important (for recall layer 3: high-importance weighted by decay) -
+// - Recent important (for recall layer 3: high-importance weighted by decay) -
 
 export const getRecentImportant = db.prepare(
   `SELECT id, content, category, source, importance, created_at, source_count, is_static,

@@ -1,12 +1,12 @@
 // ============================================================================
-// Soma DB -- Schema + prepared statements for agent registry
+// Soma DB - Schema + prepared statements for agent registry
 // Migrations run at module scope so tables exist before statements compile.
 // ============================================================================
 
 import { db } from "../../db/index.ts";
 import { log } from "../../config/logger.ts";
 
-// -- Schema (module-scope migration) --
+// - Schema (module-scope migration) --
 
 function migrate(sql: string) {
   try { db.exec(sql); } catch (e: any) {
@@ -64,7 +64,7 @@ migrate(`CREATE INDEX IF NOT EXISTS idx_soma_agents_type ON soma_agents(type)`);
 migrate(`CREATE INDEX IF NOT EXISTS idx_soma_agents_status ON soma_agents(status)`);
 migrate(`CREATE INDEX IF NOT EXISTS idx_soma_agent_logs_agent_created ON soma_agent_logs(agent_id, created_at)`);
 
-// -- Prepared statements --
+// - Prepared statements --
 
 export const insertAgent = db.prepare(
   "INSERT INTO soma_agents (name, type, description, capabilities, config) VALUES (?, ?, ?, ?, ?)"

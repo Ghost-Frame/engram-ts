@@ -1,5 +1,5 @@
 // ============================================================================
-// Soma routes -- agent registry, heartbeat, groups, logs
+// Soma routes - agent registry, heartbeat, groups, logs
 // Prefix: /soma/*
 // ============================================================================
 
@@ -30,7 +30,7 @@ export async function handleSomaRoutes(
 
   const sub = path.slice("/soma".length); // e.g. "/agents" or "/agents/5"
 
-  // -- Agents (fixed routes FIRST, before parameterized) --
+  // - Agents (fixed routes FIRST, before parameterized) --
 
   if (sub === "/agents" && method === "POST") {
     const { body: rawBody } = getContext(req);
@@ -55,13 +55,13 @@ export async function handleSomaRoutes(
     }));
   }
 
-  // GET /soma/agents/stale -- MUST come before /soma/agents/:id
+  // GET /soma/agents/stale - MUST come before /soma/agents/:id
   if (sub === "/agents/stale" && method === "GET") {
     const minutes = bounded(url.searchParams.get("minutes"), 1, 1440, 5);
     return json(getStaleAgents(minutes));
   }
 
-  // GET /soma/agents/capability/:name -- MUST come before /soma/agents/:id
+  // GET /soma/agents/capability/:name - MUST come before /soma/agents/:id
   const capMatch = sub.match(/^\/agents\/capability\/(.+)$/);
   if (capMatch && method === "GET") {
     return json(findByCapability(decodeURIComponent(capMatch[1])));
@@ -127,7 +127,7 @@ export async function handleSomaRoutes(
     return json(logs);
   }
 
-  // -- Groups --
+  // - Groups --
 
   if (sub === "/groups" && method === "GET") {
     return json(listGroups());
@@ -183,7 +183,7 @@ export async function handleSomaRoutes(
     return json({ ok: true });
   }
 
-  // -- Stats --
+  // - Stats --
 
   if (sub === "/stats" && method === "GET") {
     return json(getStats());

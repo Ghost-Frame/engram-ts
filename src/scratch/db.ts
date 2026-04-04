@@ -1,5 +1,5 @@
 // ============================================================================
-// SCRATCH PAD DOMAIN -- Database prepared statements
+// SCRATCH PAD DOMAIN - Database prepared statements
 // ============================================================================
 
 import { db } from "../db/connection.ts";

@@ -1,5 +1,5 @@
 // ============================================================================
-// Chiasm engine -- task CRUD, activity feed, pruning
+// Chiasm engine - task CRUD, activity feed, pruning
 // Ported from standalone Chiasm service (chiasm/src/db/queries.ts)
 // ============================================================================
 
@@ -7,7 +7,7 @@ import { db } from "../../db/index.ts";
 import { publish } from "../axon/bus.ts";
 import { getTaskById, deleteTaskStmt } from "./db.ts";
 
-// -- Types --
+// - Types --
 
 export interface Task {
   id: number;
@@ -39,7 +39,7 @@ export interface TaskFilters {
 
 export const VALID_STATUSES = new Set(["active", "paused", "blocked", "completed"]);
 
-// -- Tasks --
+// - Tasks --
 
 export function listTasks(filters: TaskFilters = {}): Task[] {
   let query = "SELECT * FROM chiasm_tasks WHERE 1=1";
@@ -59,7 +59,7 @@ export function getTask(id: number): Task | undefined {
   return getTaskById.get(id) as Task | undefined;
 }
 
-// Transaction-safe inserts (no RETURNING -- avoids libsql "statements in progress" bug)
+// Transaction-safe inserts (no RETURNING - avoids libsql "statements in progress" bug)
 const insertTaskTx = db.prepare(
   "INSERT INTO chiasm_tasks (agent, project, title, summary) VALUES (?, ?, ?, ?)"
 );
@@ -116,7 +116,7 @@ export function deleteTask(id: number): boolean {
   return info.changes > 0;
 }
 
-// -- Feed --
+// - Feed --
 
 export function getFeed(limit: number = 50, offset: number = 0): (TaskUpdate & { project: string; title: string })[] {
   return db.prepare(`
@@ -128,7 +128,7 @@ export function getFeed(limit: number = 50, offset: number = 0): (TaskUpdate & {
   `).all(limit, offset) as (TaskUpdate & { project: string; title: string })[];
 }
 
-// -- Pruning --
+// - Pruning --
 
 export function pruneTaskUpdates(maxRows: number, maxAgeDays: number) {
   if (maxAgeDays > 0) {
@@ -149,7 +149,7 @@ export function pruneTaskUpdates(maxRows: number, maxAgeDays: number) {
   }
 }
 
-// -- Stats --
+// - Stats --
 
 export function getChiasmStats() {
   const total = (db.prepare("SELECT COUNT(*) as count FROM chiasm_tasks").get() as any).count;

@@ -1,5 +1,5 @@
 // ============================================================================
-// MEMORY DOMAIN -- Route handlers
+// MEMORY DOMAIN - Route handlers
 // ============================================================================
 
 import { randomUUID } from "node:crypto";
@@ -46,7 +46,7 @@ import { isLLMAvailable } from "../llm/index.ts";
 
 export function registerMemoryRoutes(router: Router): void {
 
-  // POST /store, /memory, /memories -- store a new memory
+  // POST /store, /memory, /memories - store a new memory
   const storeHandler = async (req: Request) => {
     const requestStart = performance.now();
     const { auth, body, clientIp, requestId } = getContext(req);
@@ -590,7 +590,7 @@ export function registerMemoryRoutes(router: Router): void {
     }
   });
 
-  // POST /memory/:id/update -- create a new version of an existing memory
+  // POST /memory/:id/update - create a new version of an existing memory
   router.post("/memory/:id/update", async (req, params) => {
     const { auth, body, clientIp } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -635,7 +635,7 @@ export function registerMemoryRoutes(router: Router): void {
     } catch (e: any) { return safeError("Update", e); }
   });
 
-  // GET /links/:id -- get links for a memory
+  // GET /links/:id - get links for a memory
   router.get("/links/:id", async (req, params) => {
     const { auth } = getContext(req);
     const id = Number(params.id);
@@ -646,7 +646,7 @@ export function registerMemoryRoutes(router: Router): void {
     return json({ memory_id: id, links });
   });
 
-  // GET /versions/:id -- get version chain for a memory
+  // GET /versions/:id - get version chain for a memory
   router.get("/versions/:id", async (req, params) => {
     const { auth } = getContext(req);
     const id = Number(params.id);
@@ -662,7 +662,7 @@ export function registerMemoryRoutes(router: Router): void {
     return json({ root_id: rootId, chain });
   });
 
-  // GET /stats -- user-scoped memory statistics
+  // GET /stats - user-scoped memory statistics
   router.get("/stats", async (req) => {
     const { auth } = getContext(req);
     const uid = auth.user_id;
@@ -683,7 +683,7 @@ export function registerMemoryRoutes(router: Router): void {
     });
   });
 
-  // GET /duplicates -- find near-duplicate memory clusters
+  // GET /duplicates - find near-duplicate memory clusters
   router.get("/duplicates", async (req) => {
     const { auth, url } = getContext(req);
     try {

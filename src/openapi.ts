@@ -1,5 +1,5 @@
 // ============================================================================
-// OPENAPI -- OpenAPI 3.1 spec for the Engram Memory API
+// OPENAPI - OpenAPI 3.1 spec for the Engram Memory API
 // ============================================================================
 
 import { PKG_VERSION } from "./config/index.ts";

@@ -1,7 +1,7 @@
 // ============================================================================
-// MEMORY RECONSOLIDATION — Periodic re-evaluation of stored memories
+// MEMORY RECONSOLIDATION - Periodic re-evaluation of stored memories
 // Inspired by neuroscience: the brain doesn't just store memories and forget
-// them — it periodically pulls old memories back into active state,
+// them - it periodically pulls old memories back into active state,
 // re-evaluates them against current context, and either strengthens or
 // rewrites them. This is called "reconsolidation."
 //
@@ -25,7 +25,7 @@ interface ReconsolidationResult {
 }
 
 /**
- * reconsolidateMemory — Re-evaluate a single memory against current knowledge.
+ * reconsolidateMemory - Re-evaluate a single memory against current knowledge.
  *
  * Checks:
  * 1. Is this memory contradicted by newer, higher-confidence memories?
@@ -41,7 +41,7 @@ export async function reconsolidateMemory(memoryId: number, userId: number = 1):
   let newConfidence = mem.confidence ?? 1.0;
   let reason = "";
 
-  // Check 1: Contradictions — newer memories that contradict this one
+  // Check 1: Contradictions - newer memories that contradict this one
   if (mem.embedding) {
     const memEmb = bufferToEmbedding(mem.embedding);
     const newer = db.prepare(
@@ -55,7 +55,7 @@ export async function reconsolidateMemory(memoryId: number, userId: number = 1):
     for (const n of newer) {
       const sim = cosineSimilarity(memEmb, bufferToEmbedding(n.embedding));
       if (sim > 0.6) {
-        // High similarity to a newer memory — check if it's a correction
+        // High similarity to a newer memory - check if it's a correction
         const isCorrection = db.prepare(
           "SELECT id FROM memory_links WHERE source_id = ? AND target_id = ? AND type IN ('corrects', 'updates', 'contradicts')"
         ).get(n.id, memoryId);
@@ -70,7 +70,7 @@ export async function reconsolidateMemory(memoryId: number, userId: number = 1):
     }
   }
 
-  // Check 2: Access patterns — adaptive importance
+  // Check 2: Access patterns - adaptive importance
   const hits = mem.recall_hits || 0;
   const misses = mem.recall_misses || 0;
   const totalRecalls = hits + misses;
@@ -89,13 +89,13 @@ export async function reconsolidateMemory(memoryId: number, userId: number = 1):
     }
   }
 
-  // Check 3: FSRS stability — if very low, memory is being forgotten
+  // Check 3: FSRS stability - if very low, memory is being forgotten
   if (mem.fsrs_stability != null && mem.fsrs_stability < 0.5) {
     newConfidence = Math.max(0.1, newConfidence * 0.8);
     reason += "Low FSRS stability (" + mem.fsrs_stability.toFixed(2) + "). ";
   }
 
-  // Check 4: Age + static classification — very old dynamic memories decay
+  // Check 4: Age + static classification - very old dynamic memories decay
   const ageDays = (Date.now() - new Date(mem.created_at + "Z").getTime()) / 86400000;
   if (!mem.is_static && ageDays > 30 && mem.access_count < 3) {
     newImportance = Math.max(1, newImportance - 1);
@@ -139,7 +139,7 @@ export async function reconsolidateMemory(memoryId: number, userId: number = 1):
 }
 
 /**
- * runReconsolidationSweep — Periodically re-evaluate memories that need attention.
+ * runReconsolidationSweep - Periodically re-evaluate memories that need attention.
  * Called on a timer (e.g., every hour).
  */
 export async function runReconsolidationSweep(userId: number = 1, batchSize: number = 20): Promise<ReconsolidationResult[]> {
@@ -165,7 +165,7 @@ export async function runReconsolidationSweep(userId: number = 1, batchSize: num
 }
 
 /**
- * recordRecallOutcome — Track whether a recalled memory was useful.
+ * recordRecallOutcome - Track whether a recalled memory was useful.
  * Called by search/recall endpoints when results are used or discarded.
  */
 export function recordRecallOutcome(memoryId: number, useful: boolean): void {

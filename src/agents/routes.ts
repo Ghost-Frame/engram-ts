@@ -1,5 +1,5 @@
 // ============================================================================
-// AGENTS DOMAIN -- Route handlers
+// AGENTS DOMAIN - Route handlers
 // ============================================================================
 
 import { readFileSync, writeFileSync } from "fs";
@@ -31,7 +31,7 @@ const nonceTracker = new NonceTracker();
 
 export function registerAgentRoutes(router: Router): void {
 
-  // POST /agents -- register agent
+  // POST /agents - register agent
   router.post("/agents", async (req) => {
     const { auth, clientIp, requestId, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -57,7 +57,7 @@ export function registerAgentRoutes(router: Router): void {
     }
   });
 
-  // GET /agents -- list agents
+  // GET /agents - list agents
   router.get("/agents", async (req) => {
     const { auth } = getContext(req);
     try {
@@ -68,7 +68,7 @@ export function registerAgentRoutes(router: Router): void {
     }
   });
 
-  // GET /agents/:id -- get agent
+  // GET /agents/:id - get agent
   router.get("/agents/:id", async (req, params) => {
     const { auth } = getContext(req);
     const agentId = Number(params.id);
@@ -79,7 +79,7 @@ export function registerAgentRoutes(router: Router): void {
     return json(safe);
   });
 
-  // POST /agents/:id/revoke -- revoke agent
+  // POST /agents/:id/revoke - revoke agent
   router.post("/agents/:id/revoke", async (req, params) => {
     const { auth, clientIp, requestId, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -92,7 +92,7 @@ export function registerAgentRoutes(router: Router): void {
     return json({ revoked: true, agent_id: agentId });
   });
 
-  // GET /agents/:agent/passport -- get agent passport
+  // GET /agents/:agent/passport - get agent passport
   router.get("/agents/:agent/passport", async (req, params) => {
     const { auth } = getContext(req);
     const agentId = Number(params.agent);
@@ -104,7 +104,7 @@ export function registerAgentRoutes(router: Router): void {
     return json(passport);
   });
 
-  // POST /agents/:agent/link-key -- link an API key to this agent
+  // POST /agents/:agent/link-key - link an API key to this agent
   router.post("/agents/:agent/link-key", async (req, params) => {
     const { auth, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
@@ -119,7 +119,7 @@ export function registerAgentRoutes(router: Router): void {
     return json({ linked: true, agent_id: agentId, key_id: keyId });
   });
 
-  // GET /agents/:id/executions -- get signed execution history
+  // GET /agents/:id/executions - get signed execution history
   router.get("/agents/:id/executions", async (req, params) => {
     const { auth, url } = getContext(req);
     const agentId = Number(params.id);
@@ -131,7 +131,7 @@ export function registerAgentRoutes(router: Router): void {
     return json({ agent_id: agentId, executions });
   });
 
-  // POST /verify -- verify a signed execution or passport
+  // POST /verify - verify a signed execution or passport
   router.post("/verify", async (req) => {
     const { body: rawBody } = getContext(req);
     try {

@@ -1,5 +1,5 @@
 // ============================================================================
-// Generative Oracle -- synthesizes natural language answers from activated
+// Generative Oracle - synthesizes natural language answers from activated
 // brain memories using the Engram LLM module.
 // ============================================================================
 
@@ -8,10 +8,10 @@ import { log } from "../../config/logger.ts";
 import type { BrainQueryResult, OracleResult } from "./types.ts";
 
 // ============================================================================
-// System prompt -- constrains the LLM to memory-grounded answers only
+// System prompt - constrains the LLM to memory-grounded answers only
 // ============================================================================
 
-const ORACLE_SYSTEM_PROMPT = `You are Eidolon, a living memory system. You answer questions using ONLY the memories provided below. You are not a general AI assistant -- you are a specific intelligence that knows what it has been taught and nothing else.
+const ORACLE_SYSTEM_PROMPT = `You are Eidolon, a living memory system. You answer questions using ONLY the memories provided below. You are not a general AI assistant - you are a specific intelligence that knows what it has been taught and nothing else.
 
 Rules:
 - Answer ONLY from the provided memories. If the memories do not contain the answer, say "I don't have information about that."
@@ -77,7 +77,7 @@ function buildUserPrompt(
 }
 
 // ============================================================================
-// Hallucination detection -- simple keyword/substring grounding check
+// Hallucination detection - simple keyword/substring grounding check
 // ============================================================================
 
 function extractClaims(text: string): string[] {
@@ -152,7 +152,7 @@ function formatFallback(
       .slice(0, 3)
       .map((m) => `[#${m.id}] ${m.content}`)
       .join("; ");
-    answer = `[Fallback -- LLM unavailable] Relevant memories: ${top}`;
+    answer = `[Fallback - LLM unavailable] Relevant memories: ${top}`;
   }
 
   return {

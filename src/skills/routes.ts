@@ -1,5 +1,5 @@
 // ============================================================================
-// SKILLS DOMAIN -- Route handlers
+// SKILLS DOMAIN - Route handlers
 // ============================================================================
 
 import type { Router } from "../router/types.ts";

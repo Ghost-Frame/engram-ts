@@ -1,5 +1,5 @@
 // ============================================================================
-// SCRATCH PAD DOMAIN -- Type definitions
+// SCRATCH PAD DOMAIN - Type definitions
 // ============================================================================
 
 /** A single row from the scratchpad table */
