@@ -37,14 +37,24 @@ setWebhookEmitter((userId, event, payload) => emitWebhookEvent(userId, event, pa
 await initEmbedder();
 await initReranker();
 
-// Artifact encryption (try cred first, fall back to env var)
+// Artifact encryption (try credd API first, fall back to env var)
 {
   const { initEncryption } = await import("./src/artifacts/encryption.ts");
   let encKey = "";
-  try {
-    const { execSync } = await import("node:child_process");
-    encKey = execSync("cred get engram artifact-encryption-key --raw", { timeout: 3000 }).toString().trim();
-  } catch {}
+  const creddKey = process.env.ENGRAM_CREDD_AGENT_KEY || "";
+  const creddUrl = process.env.ENGRAM_CREDD_URL || "";
+  if (creddKey) {
+    try {
+      const resp = await fetch(`${creddUrl}/secret/engram/artifact-encryption-key`, {
+        headers: { Authorization: `Bearer ${creddKey}` },
+        signal: AbortSignal.timeout(3000),
+      });
+      if (resp.ok) {
+        const data = await resp.json() as { value?: { key?: string } };
+        encKey = data?.value?.key || "";
+      }
+    } catch {}
+  }
   if (!encKey) encKey = ARTIFACT_ENCRYPTION_KEY;
   try {
     initEncryption(encKey);
