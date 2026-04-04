@@ -30,6 +30,10 @@ Memory, personality, reasoning, and trust in a single self-hosted system that le
 
 FSRS-6 spaced repetition with power-law forgetting. Hybrid search fuses vector similarity, full-text matching, personality signals, and graph traversal into a single ranked result. Memories strengthen when accessed and fade when ignored.
 
+### Atomic Fact Decomposition
+
+Long memories are automatically broken into self-contained atomic facts. Each fact is independently searchable and linked back to its source. Search and recall can filter to facts only (`facts_only`) or exclude them (`exclude_facts`). Context assembly groups child facts under their parent for coherent presentation. Decomposition runs on store and can sweep existing memories retroactively via the admin API.
+
 ### Personality
 
 Extracts preferences, values, motivations, decisions, emotions, and identity markers from conversations. Synthesized personality profiles are automatically injected into `/recall` and `/context` responses, so every agent interaction is personality-aware without configuration.
@@ -58,9 +62,11 @@ The `/ingest` endpoint accepts large document uploads and processes them through
 
 ### Recent Changes
 
-**Modular server refactor** - The monolithic `routes/index.ts` has been decomposed into domain modules (`memory/`, `search/`, `ingestion/`, `admin/`, `auth/`, etc.) with a shared router. Each module owns its routes, types, and logic. The single-file entrypoint still works for backwards compatibility.
+**Atomic fact decomposition** -- Long memories are broken into self-contained atomic facts, each independently searchable and linked to its source via `has_fact` edges. Search supports `facts_only` and `exclude_facts` filters. Context assembly groups facts under parents. Admin endpoints provide retroactive sweep and status monitoring.
 
-**Embedding and reranker model swap** - Embeddings moved from gte-Qwen2-1.5B-instruct to [BAAI/bge-m3](https://huggingface.co/BAAI/bge-m3) (1024-dim, SentencePiece Unigram tokenizer). Reranker moved from bge-reranker-base to [IBM granite-embedding-reranker-english-r2](https://huggingface.co/ibm-granite/granite-embedding-reranker-english-r2) (ByteLevel BPE tokenizer, INT8 quantized). Both run as ONNX models in dedicated Worker threads and are drop-in replaceable via `ENGRAM_MODEL_DIR` and `ENGRAM_RERANKER_MODEL_DIR`.
+**Job queue hardening** -- The durable job queue now uses two-step transactional claiming (SELECT then UPDATE inside `db.transaction()`) instead of the subquery-UPDATE pattern that caused recurring SQLite B-tree corruption. WAL mode runs with `synchronous=FULL` for fsync protection. Cleanup is batched in small deletes with post-delete WAL checkpoints.
+
+**Non-destructive consolidation** -- Consolidation no longer archives source memories. Originals stay searchable. The consolidation summary links back to its sources but does not replace them.
 
 ---
 
@@ -105,6 +111,7 @@ curl -X POST http://localhost:4200/search \
 
 - **[4-channel hybrid search](#architecture):** Reciprocal Rank Fusion across vector, full-text, personality, and graph signals
 - **[Knowledge graph](#architecture):** Auto-linking, community detection, PageRank, 2-hop traversal
+- **[Atomic fact decomposition](#architecture):** Long memories split into independently searchable atomic facts
 - **[Spaced repetition](#architecture):** FSRS-6 with power-law forgetting and dual-strength memory model
 - **[Personality engine](#architecture):** Preferences, values, motivations, decisions, emotions, identity
 - **[Guardrails](#api-reference):** Pre-action safety checks against stored rules (allow, warn, block)
@@ -123,12 +130,12 @@ curl -X POST http://localhost:4200/search \
 
 ### Runtime Stack
 
-- Server: Node.js 22+ with `--experimental-strip-types` (or Bun)
+- Server: Node.js 22+ with `--experimental-strip-types`
 - Database: libsql (SQLite fork with native FLOAT32 vector columns and FTS5)
 - Embeddings: BAAI/bge-m3, 1024-dim, local ONNX inference in a Worker thread (swappable via `ENGRAM_MODEL_DIR`)
 - Reranker: IBM granite-embedding-reranker-english-r2 INT8 quantized cross-encoder (optional, swappable via `ENGRAM_RERANKER_MODEL_DIR`)
 - Decay: FSRS-6 with 21 trained parameters and power-law forgetting
-- LLM: optional, any OpenAI-compatible endpoint (fact extraction, personality, consolidation)
+- LLM: optional, any OpenAI-compatible endpoint (fact extraction, personality, consolidation, decomposition)
 
 ### Search Pipeline
 
@@ -147,12 +154,13 @@ Question-type detection (fact recall, preference, reasoning, generalization, tim
 2. **Auto-link:** New memory is compared against existing ones via in-memory cosine similarity. Links form at >= 0.55 similarity with typed relationships: similarity, updates, extends, contradicts, caused_by, prerequisite_for.
 3. **FSRS-6 init:** Each memory gets initial stability, difficulty, storage strength, and retrieval strength. Power-law forgetting begins.
 4. **Fact extraction:** If an LLM is configured, structured facts with temporal validity windows (valid_at, invalid_at) are extracted. Contradicting facts automatically invalidate predecessors.
-5. **Entity cooccurrence:** Entities in the same memory update the weighted cooccurrence graph.
-6. **Personality extraction:** Six signal types scanned: preference, value, motivation, decision, emotion, identity.
-7. **Recall:** RRF fuses four channels. Every recalled memory receives an implicit FSRS review graded "Good", building stability.
-8. **Spaced repetition:** Archived or forgotten memories receive "Again". Stable memories can reach months or years between reviews.
-9. **Dual-strength decay:** Storage strength accumulates (never decays). Retrieval strength decays via power law. Retention score: `0.7 * retrieval + 0.3 * (storage/10)`.
-10. **Community detection and PageRank:** Run automatically every 25th store. Label propagation groups related memories. Iterative weighted PageRank ranks memories by structural importance.
+5. **Atomic decomposition:** Memories longer than `DECOMPOSITION_MIN_LENGTH` words are split into self-contained atomic facts by the LLM. Each fact becomes its own memory linked to the parent via `has_fact`. Up to `DECOMPOSITION_MAX_FACTS` facts per memory. The parent stays intact and searchable.
+6. **Entity cooccurrence:** Entities in the same memory update the weighted cooccurrence graph.
+7. **Personality extraction:** Six signal types scanned: preference, value, motivation, decision, emotion, identity.
+8. **Recall:** RRF fuses four channels. Every recalled memory receives an implicit FSRS review graded "Good", building stability.
+9. **Spaced repetition:** Archived or forgotten memories receive "Again". Stable memories can reach months or years between reviews.
+10. **Dual-strength decay:** Storage strength accumulates (never decays). Retrieval strength decays via power law. Retention score: `0.7 * retrieval + 0.3 * (storage/10)`.
+11. **Community detection and PageRank:** Run automatically every 25th store. Label propagation groups related memories. Iterative weighted PageRank ranks memories by structural importance.
 
 ### Supported LLM Providers
 
@@ -193,6 +201,11 @@ Any OpenAI-compatible provider via `LLM_URL`, `LLM_API_KEY`, and `LLM_MODEL`. Up
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
 │  │ SimHash  │  │Personality│  │ Temporal │           │
 │  │  Dedup   │  │  Engine   │  │  Facts   │           │
+│  └──────────┘  └──────────┘  └──────────┘           │
+│                                                       │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
+│  │  Atomic  │  │  Durable  │  │Consolida-│           │
+│  │  Decomp  │  │ Job Queue │  │  tion    │           │
 │  └──────────┘  └──────────┘  └──────────┘           │
 └──────────────────────────────────────────────────────┘
 ```
@@ -383,6 +396,8 @@ Use `X-Space: space-name` (or `X-Engram-Space`) to scope operations to a named m
 | `POST` | `/admin/backfill-facts` | Extract facts from memories missing structured data |
 | `POST` | `/admin/refresh-cache` | Force reload embedding cache from DB |
 | `POST` | `/admin/compact` | VACUUM and ANALYZE database to reclaim space |
+| `POST` | `/admin/decompose-sweep` | Retroactively decompose existing memories into atomic facts (background) |
+| `GET` | `/admin/decompose-status` | Check decomposition sweep progress |
 
 ### Thymus (Quality Evaluation)
 
@@ -669,6 +684,18 @@ The default models are [BAAI/bge-m3](https://huggingface.co/BAAI/bge-m3) (embedd
 | `LLM_API_KEY` | unset | API key for LLM |
 | `LLM_MODEL` | unset | Model name (e.g., `gpt-4o`, `claude-sonnet-4-20250514`) |
 | `LLM_STRATEGY` | `fallback` | `fallback` or `round-robin` for multi-provider rotation |
+
+### Decomposition
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENGRAM_DECOMPOSITION` | `1` (on) | Set `0` to disable atomic fact decomposition |
+| `ENGRAM_DECOMPOSITION_MIN_LENGTH` | `20` | Minimum word count before a memory is decomposed |
+| `ENGRAM_DECOMPOSITION_MAX_FACTS` | `8` | Maximum atomic facts extracted per memory |
+| `ENGRAM_DECOMPOSITION_RATE_LIMIT` | `2` | Max concurrent decomposition requests |
+| `GEMINI_CLI_ENABLED` | `0` (off) | Set `1` to enable Gemini CLI as LLM fallback for decomposition |
+| `GEMINI_CLI_PATH` | `gemini` | Path to the Gemini CLI binary |
+| `GEMINI_CLI_TIMEOUT` | `30000` | Gemini CLI timeout in milliseconds |
 
 ### Search Tuning
 
