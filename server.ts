@@ -49,12 +49,14 @@ await initReranker();
         headers: { Authorization: `Bearer ${creddKey}` },
         signal: AbortSignal.timeout(3000),
       });
+      const body = await resp.text();
+      log.info({ msg: "credd_fetch_debug", status: resp.status, url: `${creddUrl}/secret/engram/artifact-encryption-key`, body_length: body.length, body_preview: body.substring(0, 100) });
       if (resp.ok) {
-        const data = await resp.json() as { value?: { key?: string } };
+        const data = JSON.parse(body) as { value?: { key?: string } };
         encKey = data?.value?.key || "";
         log.info({ msg: "credd_fetch", status: "ok", key_length: encKey.length });
       } else {
-        log.warn({ msg: "credd_fetch", status: resp.status });
+        log.warn({ msg: "credd_fetch", status: resp.status, body: body.substring(0, 200) });
       }
     } catch (e: any) {
       log.warn({ msg: "credd_fetch_failed", error: e.message });
