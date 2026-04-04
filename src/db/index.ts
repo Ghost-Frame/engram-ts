@@ -1295,3 +1295,28 @@ export const getArtifactStats = db.prepare(
      SUM(CASE WHEN storage_mode = 'disk' THEN 1 ELSE 0 END) as disk_count
    FROM artifacts`
 );
+
+// Artifact FTS (v6.1)
+export const insertArtifactFTS = db.prepare(
+  `INSERT INTO artifacts_fts(rowid, content) VALUES (?, ?)`
+);
+
+export const deleteArtifactFTS = db.prepare(
+  `INSERT INTO artifacts_fts(artifacts_fts, rowid, content) VALUES ('delete', ?, ?)`
+);
+
+export const searchArtifactsFTS = db.prepare(
+  `SELECT rowid, rank FROM artifacts_fts WHERE content MATCH ? ORDER BY rank LIMIT ?`
+);
+
+export const markArtifactIndexed = db.prepare(
+  `UPDATE artifacts SET is_indexed = 1 WHERE id = ?`
+);
+
+export const markArtifactEncrypted = db.prepare(
+  `UPDATE artifacts SET is_encrypted = 1 WHERE id = ?`
+);
+
+export const getArtifactMemoryId = db.prepare(
+  `SELECT memory_id FROM artifacts WHERE id = ?`
+);
