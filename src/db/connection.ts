@@ -1072,6 +1072,14 @@ migrate(`CREATE VIRTUAL TABLE IF NOT EXISTS artifacts_fts USING fts5(
 
 setSchemaVersion(513, "artifact FTS5 index and encryption columns");
 
+// v6.2: Atomic fact decomposition columns
+migrate("ALTER TABLE memories ADD COLUMN is_fact INTEGER DEFAULT 0");
+migrate("ALTER TABLE memories ADD COLUMN is_decomposed INTEGER DEFAULT 0");
+migrate("CREATE INDEX IF NOT EXISTS idx_memories_is_fact ON memories(is_fact) WHERE is_fact = 1");
+migrate("CREATE INDEX IF NOT EXISTS idx_memories_parent_fact ON memories(parent_memory_id) WHERE is_fact = 1");
+migrate("CREATE INDEX IF NOT EXISTS idx_memories_not_decomposed ON memories(is_decomposed) WHERE is_decomposed = 0 AND is_fact = 0");
+setSchemaVersion(514, "atomic fact decomposition columns");
+
 log.info({ msg: "schema_version", version: _getSchemaVersion() });
 
 // ============================================================================
