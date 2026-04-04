@@ -691,6 +691,7 @@ export async function hybridSearch(
         if (!results.has(memId)) {
           const mem = getMemoryWithoutEmbedding.get(memId) as any;
           if (mem && !mem.is_forgotten) {
+            if (mem.user_id !== userId) continue;
             if (latestOnly && !mem.is_latest) continue;
             if (sourceFilter && (!mem.source || !mem.source.includes(sourceFilter))) continue;
             results.set(memId, {

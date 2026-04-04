@@ -6,7 +6,7 @@ import type { Router } from "../router/types.ts";
 import { getContext, hasScope } from "../middleware/auth.ts";
 import { json } from "../helpers/index.ts";
 import { getArtifactsByMemory, getArtifactById, getArtifactStats } from "../db/index.ts";
-import { readArtifactFromDisk } from "./storage.ts";
+import { readArtifactFromDisk, deleteArtifactFromDisk } from "./storage.ts";
 
 export function enrichWithArtifacts<T extends { id: number }>(results: T[]): (T & { artifacts: Array<{ id: number; filename: string; mime_type: string; size_bytes: number }> })[] {
   return results.map(r => {
@@ -146,6 +146,8 @@ export function registerArtifactRoutes(router: Router): void {
           mkdirSync(newDir, { recursive: true });
           writeFileSync(newPath, encrypted);
           db.prepare("UPDATE artifacts SET disk_path = ?, is_encrypted = 1 WHERE id = ?").run(newPath, art.id);
+          // Remove old unencrypted file
+          deleteArtifactFromDisk(art.disk_path);
         }
 
         migrated++;
