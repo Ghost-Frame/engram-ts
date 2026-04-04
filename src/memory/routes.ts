@@ -31,7 +31,8 @@ import { embed, embeddingToBuffer, addToEmbeddingCache, invalidateEmbeddingCache
 import { db, insertMemory, linkMemoryEntity, linkMemoryProject, recordUsage, markSuperseded, insertLink, getLinksForUser, writeVec } from "../db/index.ts";
 import { DB_PATH, MAX_ARTIFACT_SIZE, MAX_ARTIFACTS_PER_MEMORY } from "../config/index.ts";
 import { statSync } from "node:fs";
-import { processArtifact, ArtifactInput } from "../artifacts/storage.ts";
+import { processArtifact } from "../artifacts/storage.ts";
+import type { ArtifactInput } from "../artifacts/storage.ts";
 import { insertArtifact } from "../db/index.ts";
 import { autoLink } from "./search.ts";
 import { insertEpisode, getEpisodeBySession, updateEpisodeForUser } from "../episodes/db.ts";
