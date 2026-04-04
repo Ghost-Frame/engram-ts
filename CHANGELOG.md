@@ -5,6 +5,26 @@ All notable changes to Engram will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.0] - 2026-04-03
+
+### Added
+- **Artifact storage** -- attach files and binary data to memories. Hybrid storage: inline BLOB under 1MB, disk with SHA-256 dedup for larger files. Artifact metadata surfaced in /search, /recall, and /context responses. Disk cleanup on memory forget/delete. Endpoints: `GET /artifacts/:memoryId`, `GET /artifact/:id`, `GET /artifacts/stats`.
+- **Skills engine** -- filesystem skill registry with SKILL.md discovery, hybrid FTS5+vector search with RRF fusion, LLM-driven skill fixer, OpenSpace cloud search and upload. HTTP routes for sync, search, execute, fix, upload, and CRUD. MCP tools: `skill_search`, `skill_fix`, `skill_upload`, `skill_execute`. Auto-syncs `ENGRAM_SKILL_DIRS` at startup.
+- **Modular server architecture** -- monolith decomposed into 23 domain modules with a lightweight router, auth middleware with request context, audit logging, and request validation. New entry point at `server.ts` replaces the old monolith.
+- **Bulk ingestion pipeline** -- ZIP parser, file type detection, chunking, and processing pipeline. CLI `ingest` command and `POST /import/bulk` endpoint for batch memory import.
+- **Embedding model upgrade** -- swapped to BGE-M3 embeddings and IBM Granite reranker. Configurable model directories via `ENGRAM_RERANKER_MODEL_DIR`. OpenAI-compatible embedding provider for custom model support.
+- **Personality auto-injection** -- personality profile automatically included in /recall and /context responses.
+- **GUI overhaul** -- living organism nodes with flow trail connections, reactive graph controls (labels, weight, clusters), bloom effects, spread layout. README redesign with animated GIFs.
+
+### Fixed
+- Docker entrypoint switched from server-split.ts to server.ts
+- Syntheos services (Soma, Chiasm, Axon, Broca, Loom, Thymus) wired into modular router
+- Silent truncation of long memories via chunked embedding
+- Auth skipped for health probe endpoints (/live, /ready, /health, /metrics)
+- Oracle memory cap at 8, content truncated to 300 chars for performance
+- Artifact validation moved before memory insert for atomicity
+- Consolidation interval units clarified, embedding output dims validated
+
 ## [5.11.0] - 2026-03-26
 
 ### Added
