@@ -18,15 +18,27 @@ Thumbs.db
 # Old/backup code
 archive/
 backup-debug-*/
+backup-auditfix-*/
 server.ts.pre-multitenant-backup
 src.old/
 server.ts.monolith
 server.ts.pre-intelligence-bak
 server.new.ts
 split.ts
+split-routes.ts
+server-split.ts
 query.js
 query.mjs
 query.ts
+
+# One-time migration/patch scripts
+patch-*.py
+sync.py
+promote.sh
+seed-demo.sh
+deploy.sh
+start-staging.sh
+stop-staging.sh
 
 # Local scripts
 *.bat
@@ -35,8 +47,6 @@ query.ts
 *.cmd
 sync-to-fallback.sh
 import-opencode.py
-backup-debug-*/
-backup-auditfix-*/
 
 # Debug utilities
 check-*.ts
@@ -54,6 +64,17 @@ SPRINT-SESSION-*.md
 COMMIT_INSTRUCTIONS.txt
 UsersZan*
 *.bak*
+AGENTS.md
+bun.lock
+watchdog.log
+
+# Dead HTML (gui.html and login.html are still served)
+engram-gui-new.html
+engram-gui-prev.html
+landing.html
+
+# Grafana dashboards (exported JSON, not app code)
+grafana/
 
 # Worktrees
 .worktrees/
