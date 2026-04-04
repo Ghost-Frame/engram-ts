@@ -95,8 +95,8 @@ engram-gui/
 
 - Single Docker container running Next.js
 - `graph.html` served as a static file from `public/`
-- Registered in Pangolin dashboard as a site
-- Traefik handles TLS and routing through Pangolin
+- Registered in reverse proxy dashboard as a site
+- Traefik handles TLS and routing through the reverse proxy
 
 ---
 
@@ -413,7 +413,7 @@ CMD ["node", "server.js"]
 
 ### Registration
 
-Registered in Pangolin dashboard as a site pointing to the container's port on <deployment-host>. Domain TBD (likely `gui.engram.lol` or `app.engram.lol/gui`).
+Registered in reverse proxy dashboard as a site pointing to the container's port on <deployment-host>. Domain TBD (likely `gui.engram.lol` or `app.engram.lol/gui`).
 
 ---
 
@@ -436,5 +436,5 @@ These can be added later when managed hosting requires them.
 2. Background is dark, nodes glow with bloom, edges are clearly visible curved lines
 3. The visual aesthetic matches the bioluminescent neural network from commit `e5d0b8b`
 4. All 7 GUI pages are functional and equivalent to the current SvelteKit GUI
-5. Single container deployment through Pangolin dashboard
+5. Single container deployment through reverse proxy dashboard
 6. No agent can accidentally break the graph by editing GUI code (they're separate files)

@@ -115,7 +115,7 @@ License, links to landing page (engram.lol), GitHub issues, contributing guide.
 
 **Now:**
 - Full README restructure with all sections
-- Terminal demo SVG (can be generated from CLI on Hetzner)
+- Terminal demo SVG (can be generated from CLI on the production instance)
 - Four pillars copy
 - Quick start
 - Collapsible deep dives (migrated from current README)
@@ -127,7 +127,7 @@ License, links to landing page (engram.lol), GitHub issues, contributing guide.
 
 ## Terminal Demo Generation
 
-Use `svg-term-cli` or `terminalizer` to record a real CLI session against the Hetzner Engram instance. The recording shows actual data, not fake examples. Keep it under 10 seconds of playback.
+Use `svg-term-cli` or `terminalizer` to record a real CLI session against the production Engram instance. The recording shows actual data, not fake examples. Keep it under 10 seconds of playback.
 
 ## Writing Standards
 
@@ -140,5 +140,5 @@ Use `svg-term-cli` or `terminalizer` to record a real CLI session against the He
 ## Out of Scope
 
 - GUI improvements (separate task, frontend skills being installed)
-- Authentik SSO for Pangolin (separate task)
+- SSO integration for reverse proxy (separate task)
 - Landing page update (future, shares assets with README)

@@ -1,4 +1,4 @@
-// Engram API Test Suite — multi-tenant isolation + core functionality
+// Engram API Test Suite -- multi-tenant isolation + core functionality
 // Run: ENGRAM_URL=http://127.0.0.1:4201 node --test tests/api.test.mjs
 
 import { describe, it, before, after } from "node:test";

@@ -423,7 +423,7 @@ Expected: `active`
 - [ ] **Step 4: Verify gate/complete is live on the production host**
 
 ```bash
-EIDOLON_KEY=$(~/.local/bin/cred get eidolon hetzner-key --field key --raw 2>/dev/null || echo "")
+EIDOLON_KEY=$(~/.local/bin/cred get eidolon production --field key --raw 2>/dev/null || echo "")
 curl -s -X POST http://<server-ip>:7700/gate/complete \
   -H "Authorization: Bearer $EIDOLON_KEY" \
   -H "Content-Type: application/json" \

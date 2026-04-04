@@ -9,7 +9,7 @@
 **Tech Stack:**
 - Graph: Three.js r169 + 3d-force-graph 1.77.x from CDN (pinned). Vanilla JS. No build step.
 - GUI: Next.js 15, React 19, TypeScript, Tailwind CSS 4. No external UI component library.
-- Deployment: Single Docker container (node:22-alpine), registered in Pangolin.
+- Deployment: Single Docker container (node:22-alpine), registered in the reverse proxy.
 
 ---
 
