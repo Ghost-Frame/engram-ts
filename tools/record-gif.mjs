@@ -58,7 +58,11 @@ function startServer() {
   };
 
   const apiUrl = process.env.ENGRAM_URL || 'http://100.64.0.13:4200';
-  const apiKey = process.env.ENGRAM_API_KEY || '';
+  let apiKey = process.env.ENGRAM_API_KEY || '';
+  if (!apiKey) {
+    try { apiKey = execSync('cred get engram api-key-claude --raw', { stdio: ['pipe', 'pipe', 'pipe'] }).toString().trim(); }
+    catch { console.warn('No API key found (set ENGRAM_API_KEY or install cred)'); }
+  }
 
   return new Promise((res) => {
     const server = http.createServer(async (req, resp) => {

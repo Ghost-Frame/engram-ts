@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { execSync } from 'child_process';
 /**
  * graph-preview.mjs - Visual feedback tool for Engram GUI development
  *
@@ -51,7 +52,7 @@ const config = {
   wait: parseInt(getArg('wait', '4000')),
   useMock: hasFlag('mock'),
   apiUrl: getArg('api', process.env.ENGRAM_URL || 'http://100.64.0.13:4200'),
-  apiKey: getArg('api-key', process.env.ENGRAM_API_KEY || ''),
+  apiKey: getArg('api-key', process.env.ENGRAM_API_KEY || (() => { try { return execSync('cred get engram api-key-claude --raw', { stdio: ['pipe', 'pipe', 'pipe'] }).toString().trim(); } catch { return ''; } })()),
   zoom: getArg('zoom', 'fit'),
   region: getArg('region', null),
   noUi: hasFlag('no-ui'),
