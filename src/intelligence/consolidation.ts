@@ -13,19 +13,20 @@ import { autoLink } from "../memory/search.ts";
 // MEMORY CONSOLIDATION - Auto-summarize large clusters
 // ============================================================================
 
-const CONSOLIDATION_PROMPT = `You are a memory consolidation engine. Given a cluster of related memories, create a single concise summary that captures all key information.
+const CONSOLIDATION_PROMPT = `You are a memory consolidation engine. Given a cluster of related memories and their extracted facts, merge and deduplicate into a clean fact set.
 
 Rules:
-- Preserve ALL important facts, decisions, and specific values (versions, IPs, dates, names)
-- The summary should be self-contained - someone reading only the summary should understand the full picture
-- Keep it under 500 words
-- Format as clear, dense paragraphs - not bullet points
-- Include the most important specifics, not just generalizations
+- Identify duplicate or near-duplicate facts and keep only the most recent/complete version
+- Group related facts by topic or entity
+- Preserve ALL specific values: IPs, ports, paths, versions, dates, names
+- Do NOT add interpretation -- only merge what exists
+- Keep the original wording where possible
 
 Respond with ONLY a JSON object:
 {
-  "summary": "the consolidated summary text",
   "title": "short 3-5 word cluster label",
+  "merged_facts": ["fact 1", "fact 2"],
+  "removed_duplicates": ["duplicate fact that was removed"],
   "importance": 1-10
 }`;
 
@@ -44,44 +45,56 @@ export async function consolidateCluster(
   ).get(userId, `%${centerMemoryId}%`) as any;
   if (existing) return null;
 
-  const memberContents = members.map(m =>
-    `[#${m.id}, ${m.category}, imp=${m.importance}]: ${m.content}`
-  ).join("\n\n");
+  const memberContents = members.map(m => {
+    const facts = db.prepare(
+      "SELECT content FROM memories WHERE parent_memory_id = ? AND is_fact = 1"
+    ).all(m.id) as Array<{ content: string }>;
+    const factLines = facts.length > 0
+      ? "\n  Facts: " + facts.map(f => f.content).join("; ")
+      : "";
+    return `[#${m.id}, ${m.category}, imp=${m.importance}]: ${m.content}${factLines}`;
+  }).join("\n\n");
 
   try {
     const response = await callLLM(CONSOLIDATION_PROMPT, memberContents);
-    const result = repairAndParseJSON(response) as { summary: string; title: string; importance: number } | null;
-    if (!result || typeof result.summary !== "string") {
+    const result = repairAndParseJSON(response) as { summary?: string; title: string; importance: number; merged_facts?: string[]; removed_duplicates?: string[] } | null;
+    if (!result || (!result.summary && !result.merged_facts)) {
       log.error({ msg: "consolidation_parse_failed", center_id: centerMemoryId });
       return null;
     }
 
-    // Fix: ensure title is a non-empty string, fallback to first words of summary
+    // Fix: ensure title is a non-empty string, fallback to first words of summary or facts
     if (typeof result.title !== "string" || !result.title.trim()) {
-      result.title = result.summary.split(/\s+/).slice(0, 5).join(" ");
+      const fallbackSource = result.summary || (result.merged_facts && result.merged_facts[0]) || "consolidated memory";
+      result.title = fallbackSource.split(/\s+/).slice(0, 5).join(" ");
       log.warn({ msg: "consolidation_title_fallback", center_id: centerMemoryId, derived_title: result.title });
     }
 
-    // Create summary memory
-    const embArray = await embed(result.summary);
+    // Create consolidated summary memory
+    const mergedFacts = (result as any).merged_facts;
+    const mergedContent = mergedFacts && Array.isArray(mergedFacts)
+      ? `[Consolidated: ${result.title}]\n- ${mergedFacts.join("\n- ")}`
+      : `[Consolidated: ${result.title}] ${result.summary || ""}`;
+    const embArray = await embed(mergedContent);
     const embBuffer = embeddingToBuffer(embArray);
     const imp = Math.max(1, Math.min(10, result.importance || 8));
 
     const summaryMem = insertMemory.get(
-      `[Consolidated: ${result.title}] ${result.summary}`,
+      mergedContent,
       "discovery", "consolidation", null, imp, embBuffer,
       1, 1, null, null, members.length, 1, 0, null, null, 0, null, userId, null
     ) as { id: number; created_at: string };
+
+    const titleSlug = result.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
     db.prepare("UPDATE memories SET tags = ? WHERE id = ?").run(
-      JSON.stringify(["consolidated", result.title.toLowerCase().replace(/\s+/g, "-")]), summaryMem.id
+      JSON.stringify(["consolidated", titleSlug]), summaryMem.id
     );
 
-    // Archive source memories and link to summary
-    let archived = 0;
+    // Link source memories -- NOT archived, they remain searchable
+    let linked = 0;
     for (const m of members) {
-      markArchived.run(m.id);
       insertLink.run(summaryMem.id, m.id, 1.0, "consolidates");
-      archived++;
+      linked++;
     }
 
     // Track consolidation
@@ -92,8 +105,8 @@ export async function consolidateCluster(
 
     writeVec(summaryMem.id, embArray);
     await autoLink(summaryMem.id, embArray, userId);
-    log.info({ msg: "consolidated", archived, summary_id: summaryMem.id, title: result.title });
-    return { summaryId: summaryMem.id, archivedCount: archived };
+    log.info({ msg: "consolidated", linked, summary_id: summaryMem.id, title: result.title });
+    return { summaryId: summaryMem.id, archivedCount: 0 };
   } catch (e: any) {
     log.error({ msg: "consolidation_failed", center_id: centerMemoryId, error: e.message });
     return null;
