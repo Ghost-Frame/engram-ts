@@ -3,16 +3,14 @@
 ## Supported Versions
 
 | Version | Supported |
-  |---------|-----------|
-  | 6.0.0   | Yes       |
-  | < 5.7   | No        |
+|---------|-----------|
+| 6.0.0   | Yes       |
+| < 5.7   | No        |
 
-  ## Reporting a Vulnerability
+## Reporting a Vulnerability
 
-  Please use GitHub's private vulnerability reporting to disclose security issues.
+Email security reports to **security@syntheos.dev**.
 
-  Go to the Security tab of this repository and click "Report a vulnerability."
+Do not open a public issue for security vulnerabilities.
 
-  Do not open a public issue for security vulnerabilities.
-
-  You can expect an initial response within 72 hours.
+You can expect an initial response within 72 hours.
