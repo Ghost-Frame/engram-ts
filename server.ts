@@ -198,6 +198,7 @@ import { writeVec, db as jobDb } from "./src/db/index.ts";
 import { autoLink } from "./src/memory/search.ts";
 import { updateCooccurrences } from "./src/graph/cooccurrence.ts";
 import { FSRSRating, fsrsProcessReview, calculateDecayScore } from "./src/fsrs/index.ts";
+import { decomposeAndStore } from "./src/intelligence/decomposition.ts";
 
 registerJobHandler("post_store", async (payload) => {
   const { memoryId, content, category, userId, importance, embeddingBase64, lightweight } = payload;
@@ -241,6 +242,29 @@ registerJobHandler("post_store", async (payload) => {
         );
       }
     } catch {}
+  }
+
+  // Atomic fact decomposition
+  if (content && userId) {
+    try {
+      const mem = jobDb.prepare(
+        "SELECT episode_id, tags, session_id, is_fact, is_decomposed FROM memories WHERE id = ?"
+      ).get(memoryId) as any;
+      if (mem && !mem.is_fact && !mem.is_decomposed) {
+        await decomposeAndStore(memoryId, content, {
+          category: category || "general",
+          source: "decomposition",
+          userId,
+          spaceId: null,
+          importance: importance || 5,
+          episodeId: mem.episode_id || null,
+          tags: mem.tags || null,
+          sessionId: mem.session_id || null,
+        });
+      }
+    } catch (e: any) {
+      log.warn({ msg: "post_store_decomposition_failed", memory_id: memoryId, error: (e as any).message });
+    }
   }
 });
 
