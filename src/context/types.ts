@@ -136,7 +136,7 @@ export const DEFAULT_TOKEN_BUDGET = 8000;
 export const MAX_TOKEN_BUDGET = 64000;
 
 /** Default max tokens per individual memory block */
-export const DEFAULT_MAX_MEMORY_TOKENS = 1500;
+export const DEFAULT_MAX_MEMORY_TOKENS = 2500;
 
 /** Default cosine similarity deduplication threshold */
 export const DEFAULT_DEDUP_THRESHOLD = 0.88;

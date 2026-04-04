@@ -150,7 +150,33 @@ export function assembleContextString(
     parts.push("## Permanent Facts\n" + staticBlocks.map(b => `- ${b.content}${buildAttribution(b)}`).join("\n"));
   }
   if (semanticBlocks.length > 0) {
-    parts.push("## Relevant Memories\n" + semanticBlocks.map(b => `- [${b.category}] ${b.content}${buildAttribution(b)}`).join("\n"));
+    const factBlocks = semanticBlocks.filter(b => b.category === "fact");
+    const nonFactBlocks = semanticBlocks.filter(b => b.category !== "fact");
+
+    const lines: string[] = [];
+    for (const b of nonFactBlocks) {
+      lines.push(`- [${b.category}] ${b.content}${buildAttribution(b)}`);
+    }
+
+    // Group facts by parent ID for cleaner output
+    if (factBlocks.length > 0) {
+      const byParent = new Map<number, typeof factBlocks>();
+      for (const b of factBlocks) {
+        const parentId = (b as any).parent_id || 0;
+        if (!byParent.has(parentId)) byParent.set(parentId, []);
+        byParent.get(parentId)!.push(b);
+      }
+      for (const [parentId, facts] of byParent) {
+        if (parentId > 0) {
+          lines.push(`- [facts from memory #${parentId}]`);
+          for (const f of facts) lines.push(`  - ${f.content}`);
+        } else {
+          for (const f of facts) lines.push(`- [fact] ${f.content}`);
+        }
+      }
+    }
+
+    parts.push("## Relevant Memories\n" + lines.join("\n"));
   }
   if (evolutionBlocks.length > 0) {
     parts.push("## Preference/Fact Evolution\n" + evolutionBlocks.map(b => b.content).join("\n\n"));
@@ -446,6 +472,11 @@ export async function assembleContext(
       score, source: "semantic", tokens,
       model: r.model || null, origin: r.source || null,
     });
+    // Attach parent_id for fact grouping in assembly
+    const memForFact = deps.getMemoryWithoutEmbedding(r.id);
+    if (memForFact?.is_fact && memForFact.parent_memory_id) {
+      (blocks[blocks.length - 1] as any).parent_id = memForFact.parent_memory_id;
+    }
     seenIds.add(r.id);
     usedTokens += tokens;
     const cachedEmb = embMap.get(r.id);
