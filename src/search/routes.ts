@@ -18,7 +18,7 @@ import {
   listScratchEntriesForContext, getDecayScoreRows,
   trackAccessWithFSRS, updateDecayScores, db,
 } from "./db.ts";
-import { recordUsage } from "../db/index.ts";
+import { recordUsage, getArtifactsByMemory } from "../db/index.ts";
 import {
   applySearchMode, applyTemporalSort, buildExplainObject,
   buildRecallLayers,
@@ -123,6 +123,12 @@ export function registerSearchRoutes(router: Router): void {
       if (_searchElapsed < 200) opsCounters.sla_search_under_200ms++;
       try { recordUsage.run(auth.user_id, "memory.search", 1, null); } catch {}
 
+      // Enrich search results with artifact metadata
+      for (const r of explainResults) {
+        const arts = getArtifactsByMemory.all(r.id) as Array<{ id: number; filename: string; mime_type: string; size_bytes: number }>;
+        (r as any).artifacts = arts.map(({ id, filename, mime_type, size_bytes }) => ({ id, filename, mime_type, size_bytes }));
+      }
+
       return json({
         results: explainResults,
         abstained,
@@ -205,13 +211,20 @@ export function registerSearchRoutes(router: Router): void {
         }
       } catch {}
 
-      return json({
-        memories: sorted.map(s => ({
+      // Enrich recall results with artifact metadata
+      const recallMemories = sorted.map(s => {
+        const arts = getArtifactsByMemory.all(s.memory.id) as Array<{ id: number; filename: string; mime_type: string; size_bytes: number }>;
+        return {
           ...s.memory,
           recall_source: s.source,
           recall_score: Math.round(s.score * 100) / 100,
           tags: s.memory.tags ? (() => { try { return JSON.parse(s.memory.tags); } catch { return []; } })() : [],
-        })),
+          artifacts: arts.map(({ id, filename, mime_type, size_bytes }) => ({ id, filename, mime_type, size_bytes })),
+        };
+      });
+
+      return json({
+        memories: recallMemories,
         breakdown,
         ...(episodeContext.length > 0 ? { episodes: episodeContext } : {}),
         profile: sorted.filter(s => s.source === "static").map(s => s.memory.content),

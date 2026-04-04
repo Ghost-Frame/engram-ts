@@ -7,6 +7,7 @@ import { getContext, hasScope } from "../middleware/auth.ts";
 import { json, errorResponse, safeError } from "../helpers/index.ts";
 import { assembleContext, type ContextDeps } from "./index.ts";
 import type { ContextOptions } from "./types.ts";
+import { getArtifactsByMemory } from "../db/index.ts";
 
 /**
  * Register POST /context route.
@@ -53,6 +54,16 @@ export function registerContextRoutes(router: Router, deps: ContextDeps): void {
       };
 
       const result = await assembleContext(opts, auth.user_id, deps);
+
+      // Enrich context blocks with artifact metadata
+      if (result.blocks) {
+        for (const b of result.blocks) {
+          if (b.id <= 0) { (b as any).artifacts = []; continue; }
+          const arts = getArtifactsByMemory.all(b.id) as Array<{ id: number; filename: string; mime_type: string; size_bytes: number }>;
+          (b as any).artifacts = arts.map(({ id, filename, mime_type, size_bytes }) => ({ id, filename, mime_type, size_bytes }));
+        }
+      }
+
       return json(result);
     } catch (e: any) {
       return safeError("Context build", e);
