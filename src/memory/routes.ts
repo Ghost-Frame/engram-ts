@@ -34,7 +34,7 @@ import { statSync } from "node:fs";
 import { processArtifact } from "../artifacts/storage.ts";
 import type { ArtifactInput } from "../artifacts/storage.ts";
 import { indexArtifact } from "../artifacts/fts.ts";
-import { insertArtifact } from "../db/index.ts";
+import { insertArtifact, markArtifactEncrypted } from "../db/index.ts";
 import { autoLink } from "./search.ts";
 import { insertEpisode, getEpisodeBySession, updateEpisodeForUser } from "../episodes/db.ts";
 import { fastExtractFacts } from "../intelligence/extraction.ts";
@@ -155,7 +155,7 @@ export function registerMemoryRoutes(router: Router): void {
       const artifactResults: Array<{ id: number; filename: string; size_bytes: number; storage_mode: string }> = [];
       if (Array.isArray(b?.artifacts) && b.artifacts.length > 0) {
         for (const rawArtifact of b.artifacts) {
-          const stored = processArtifact(rawArtifact as ArtifactInput);
+          const stored = processArtifact(rawArtifact as ArtifactInput, auth.user_id);
           const artResult = insertArtifact.get(
             result.id,
             stored.filename,
@@ -174,9 +174,13 @@ export function registerMemoryRoutes(router: Router): void {
             storage_mode: stored.storage_mode,
           });
 
-          // FTS index text-based artifacts on plaintext
-          if (stored.data) {
-            indexArtifact(artResult.id, stored.mime_type, stored.data);
+          if (stored.encrypted) {
+            markArtifactEncrypted.run(artResult.id);
+          }
+
+          // FTS index text-based artifacts on plaintext (before encryption)
+          if (stored.plaintextData) {
+            indexArtifact(artResult.id, stored.mime_type, stored.plaintextData);
           }
         }
       }

@@ -1277,7 +1277,7 @@ export const getArtifactsByMemory = db.prepare(
 );
 
 export const getArtifactById = db.prepare(
-  `SELECT id, memory_id, filename, mime_type, size_bytes, sha256, storage_mode, data, disk_path, created_at
+  `SELECT id, memory_id, filename, mime_type, size_bytes, sha256, storage_mode, data, disk_path, is_encrypted, created_at
    FROM artifacts WHERE id = ?`
 );
 

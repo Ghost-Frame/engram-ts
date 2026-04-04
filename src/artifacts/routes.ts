@@ -48,7 +48,7 @@ export function registerArtifactRoutes(router: Router): void {
   });
 
   // GET /artifact/:id - download a single artifact
-  router.get("/artifact/:id", async (_req, params) => {
+  router.get("/artifact/:id", async (req, params) => {
     const artifactId = Number(params.id);
     if (isNaN(artifactId)) return json({ error: "Invalid artifact ID" }, 400);
     const row = getArtifactById.get(artifactId) as {
@@ -70,6 +70,21 @@ export function registerArtifactRoutes(router: Router): void {
       }
     } else {
       return json({ error: "Artifact has no data" }, 500);
+    }
+
+    // Decrypt if needed
+    if ((row as any).is_encrypted) {
+      const { getMasterKey, decryptArtifact } = await import("./encryption.ts");
+      const masterKey = getMasterKey();
+      if (!masterKey) {
+        return json({ error: "artifact_decryption_failed", detail: "No encryption key configured" }, 500);
+      }
+      const { auth } = getContext(req);
+      try {
+        content = decryptArtifact(content, masterKey, auth.user_id);
+      } catch {
+        return json({ error: "artifact_decryption_failed" }, 500);
+      }
     }
 
     return new Response(content, {
