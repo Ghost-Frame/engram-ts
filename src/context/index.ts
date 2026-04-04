@@ -162,7 +162,7 @@ export function assembleContextString(
     if (factBlocks.length > 0) {
       const byParent = new Map<number, typeof factBlocks>();
       for (const b of factBlocks) {
-        const parentId = (b as any).parent_id || 0;
+        const parentId = b.parent_id || 0;
         if (!byParent.has(parentId)) byParent.set(parentId, []);
         byParent.get(parentId)!.push(b);
       }
@@ -475,7 +475,7 @@ export async function assembleContext(
     // Attach parent_id for fact grouping in assembly
     const memForFact = deps.getMemoryWithoutEmbedding(r.id);
     if (memForFact?.is_fact && memForFact.parent_memory_id) {
-      (blocks[blocks.length - 1] as any).parent_id = memForFact.parent_memory_id;
+      blocks[blocks.length - 1].parent_id = memForFact.parent_memory_id;
     }
     seenIds.add(r.id);
     usedTokens += tokens;

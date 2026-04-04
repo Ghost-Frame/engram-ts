@@ -33,6 +33,7 @@ export interface ContextBlock {
   created_at?: string;
   model?: string | null;
   origin?: string | null;
+  parent_id?: number;
 }
 
 /** Per-source layer counts in the breakdown */

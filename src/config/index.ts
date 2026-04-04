@@ -78,7 +78,7 @@ export const DECOMPOSITION_RATE_LIMIT = Number(process.env.ENGRAM_DECOMPOSITION_
 
 // Gemini CLI fallback
 export const GEMINI_CLI_PATH = process.env.GEMINI_CLI_PATH || "gemini";
-export const GEMINI_CLI_ENABLED = process.env.GEMINI_CLI_ENABLED !== "0";
+export const GEMINI_CLI_ENABLED = process.env.GEMINI_CLI_ENABLED === "1";
 export const GEMINI_CLI_TIMEOUT = Number(process.env.GEMINI_CLI_TIMEOUT || 30000);
 
 export const ENGRAM_SKILL_DIRS: string[] = (process.env.ENGRAM_SKILL_DIRS || "")
