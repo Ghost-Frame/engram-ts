@@ -16,7 +16,9 @@ import {
   ANN_PREFILTER_THRESHOLD, ANN_CANDIDATE_MULTIPLIER,
   LLM_PROVIDERS, LLM_STRATEGY,
   maintenanceMode, maintenanceReason, setMaintenanceMode,
+  DECOMPOSITION_MIN_LENGTH, DECOMPOSITION_RATE_LIMIT,
 } from "../config/index.ts";
+import { decomposeAndStore } from "../intelligence/decomposition.ts";
 import { generateApiKey } from "../auth/index.ts";
 import { isProviderAvailable } from "../llm/index.ts";
 import { EMBEDDING_PROVIDER, EMBEDDING_MODEL, EMBEDDING_DIM, RERANKER_ENABLED, RERANKER_TOP_K } from "../config/index.ts";
@@ -858,6 +860,84 @@ export function registerAdminRoutes(router: Router): void {
     } catch (e: any) {
       return safeError("State delete", e);
     }
+  });
+
+  // ==========================================================================
+  // DECOMPOSE SWEEP - retroactively decompose existing memories
+  // ==========================================================================
+
+  // POST /admin/decompose-sweep -- retroactively decompose existing memories
+  router.post("/admin/decompose-sweep", async (req) => {
+    const { auth, body } = getContext(req);
+    if (!auth.is_admin) return errorResponse("Admin required", 403);
+
+    const b = body as any;
+    const batch = Math.min(Number(b?.batch) || 50, 200);
+    const rateLimit = DECOMPOSITION_RATE_LIMIT;
+
+    const candidates = db.prepare(
+      `SELECT id, content, category, source, user_id, space_id, importance, episode_id, tags, session_id
+       FROM memories
+       WHERE is_decomposed = 0 AND is_fact = 0 AND is_archived = 0 AND is_forgotten = 0
+         AND length(content) >= ?
+         AND content NOT LIKE '[Consolidated:%'
+         AND content NOT LIKE 'Session compaction summary%'
+         AND content NOT LIKE '[auto-captured]%'
+       ORDER BY importance DESC, created_at DESC
+       LIMIT ?`
+    ).all(DECOMPOSITION_MIN_LENGTH, batch) as any[];
+
+    let processed = 0;
+    let factsCreated = 0;
+
+    for (const mem of candidates) {
+      try {
+        const count = await decomposeAndStore(mem.id, mem.content, {
+          category: mem.category,
+          source: mem.source,
+          userId: mem.user_id,
+          spaceId: mem.space_id,
+          importance: mem.importance,
+          episodeId: mem.episode_id,
+          tags: mem.tags,
+          sessionId: mem.session_id,
+        });
+        processed++;
+        factsCreated += count;
+
+        // Rate limit between decompositions
+        if (rateLimit > 0) {
+          await new Promise(r => setTimeout(r, 1000 / rateLimit));
+        }
+      } catch (e: any) {
+        log.warn({ msg: "decompose_sweep_item_failed", memory_id: mem.id, error: e.message });
+      }
+    }
+
+    const remaining = (db.prepare(
+      "SELECT COUNT(*) as count FROM memories WHERE is_decomposed = 0 AND is_fact = 0 AND is_archived = 0 AND is_forgotten = 0"
+    ).get() as { count: number }).count;
+
+    return json({ processed, facts_created: factsCreated, remaining });
+  });
+
+  // GET /admin/decompose-status -- check decomposition progress
+  router.get("/admin/decompose-status", async (req) => {
+    const { auth } = getContext(req);
+    if (!auth.is_admin) return errorResponse("Admin required", 403);
+
+    const total = (db.prepare("SELECT COUNT(*) as c FROM memories WHERE is_fact = 0 AND is_forgotten = 0").get() as any).c;
+    const decomposed = (db.prepare("SELECT COUNT(*) as c FROM memories WHERE is_decomposed = 1 AND is_fact = 0").get() as any).c;
+    const pending = (db.prepare("SELECT COUNT(*) as c FROM memories WHERE is_decomposed = 0 AND is_fact = 0 AND is_archived = 0 AND is_forgotten = 0").get() as any).c;
+    const totalFacts = (db.prepare("SELECT COUNT(*) as c FROM memories WHERE is_fact = 1").get() as any).c;
+
+    return json({
+      total_memories: total,
+      decomposed,
+      pending,
+      total_facts: totalFacts,
+      progress_pct: total > 0 ? Math.round(decomposed / total * 100) : 100,
+    });
   });
 
   // ==========================================================================
