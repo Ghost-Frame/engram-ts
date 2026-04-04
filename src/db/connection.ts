@@ -991,6 +991,17 @@ migrate("CREATE INDEX IF NOT EXISTS idx_artifacts_memory ON artifacts(memory_id)
 migrate("CREATE INDEX IF NOT EXISTS idx_artifacts_hash ON artifacts(sha256)");
 setSchemaVersion(512, "artifact storage table");
 
+// v6.1: Artifact content search (FTS5) + encryption at rest
+migrate("ALTER TABLE artifacts ADD COLUMN is_indexed INTEGER NOT NULL DEFAULT 0");
+migrate("ALTER TABLE artifacts ADD COLUMN is_encrypted INTEGER NOT NULL DEFAULT 0");
+
+migrate(`CREATE VIRTUAL TABLE IF NOT EXISTS artifacts_fts USING fts5(
+  content,
+  tokenize='porter unicode61'
+)`);
+
+setSchemaVersion(513, "artifact FTS5 index and encryption columns");
+
 log.info({ msg: "schema_version", version: _getSchemaVersion() });
 
 // ============================================================================
