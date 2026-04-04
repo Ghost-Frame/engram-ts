@@ -3,7 +3,7 @@
 // ============================================================================
 
 import type { Router } from "../router/types.ts";
-import { getContext } from "../middleware/auth.ts";
+import { getContext, hasScope } from "../middleware/auth.ts";
 import { json } from "../helpers/index.ts";
 import { getArtifactsByMemory, getArtifactById, getArtifactStats } from "../db/index.ts";
 import { readArtifactFromDisk } from "./storage.ts";
@@ -95,6 +95,67 @@ export function registerArtifactRoutes(router: Router): void {
         "Content-Disposition": `attachment; filename="${row.filename}"`,
       },
     });
+  });
+
+  // POST /artifacts/migrate-encryption - encrypt existing unencrypted artifacts (admin only)
+  router.post("/artifacts/migrate-encryption", async (req) => {
+    const { auth } = getContext(req);
+    if (!hasScope(auth, "admin")) return json({ error: "Admin scope required" }, 403);
+
+    const { getMasterKey, encryptArtifact } = await import("./encryption.ts");
+    const masterKey = getMasterKey();
+    if (!masterKey) return json({ error: "No encryption key configured" }, 400);
+
+    const { db } = await import("../db/connection.ts");
+    const { ARTIFACT_DIR } = await import("../config/index.ts");
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    const { resolve, join } = await import("node:path");
+
+    const BATCH_SIZE = 50;
+    const unencrypted = db.prepare(
+      `SELECT a.id, a.memory_id, a.data, a.disk_path, a.storage_mode, a.sha256, m.user_id
+       FROM artifacts a JOIN memories m ON a.memory_id = m.id
+       WHERE a.is_encrypted = 0 LIMIT ?`
+    ).all(BATCH_SIZE) as Array<{
+      id: number; memory_id: number; data: Buffer | null; disk_path: string | null;
+      storage_mode: string; sha256: string; user_id: number;
+    }>;
+
+    let migrated = 0;
+    let errors = 0;
+
+    for (const art of unencrypted) {
+      try {
+        let plaintext: Buffer;
+        if (art.storage_mode === "inline" && art.data) {
+          plaintext = Buffer.from(art.data);
+        } else if (art.storage_mode === "disk" && art.disk_path) {
+          plaintext = readArtifactFromDisk(art.disk_path);
+        } else {
+          continue;
+        }
+
+        const encrypted = encryptArtifact(plaintext, masterKey, art.user_id);
+
+        if (art.storage_mode === "inline") {
+          db.prepare("UPDATE artifacts SET data = ?, is_encrypted = 1 WHERE id = ?").run(encrypted, art.id);
+        } else if (art.disk_path) {
+          const prefix = art.sha256.slice(0, 2);
+          const newDir = resolve(ARTIFACT_DIR, String(art.user_id), prefix);
+          const newPath = join(newDir, art.sha256);
+          mkdirSync(newDir, { recursive: true });
+          writeFileSync(newPath, encrypted);
+          db.prepare("UPDATE artifacts SET disk_path = ?, is_encrypted = 1 WHERE id = ?").run(newPath, art.id);
+        }
+
+        migrated++;
+      } catch {
+        errors++;
+      }
+    }
+
+    const remaining = (db.prepare("SELECT COUNT(*) as c FROM artifacts WHERE is_encrypted = 0").get() as { c: number }).c;
+    return json({ migrated, remaining, errors });
   });
 
 } // end registerArtifactRoutes
