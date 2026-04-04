@@ -25,19 +25,35 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_jobs_type ON jobs(type, status);
 `);
 
+// Harden WAL mode for the jobs table -- prevent corruption from crashes
+// synchronous=FULL ensures WAL frames are fsynced before returning
+db.pragma("synchronous = FULL");
+
 // Prepared statements
 const enqueueStmt = db.prepare(
   `INSERT INTO jobs (type, payload, max_attempts) VALUES (?, ?, ?) RETURNING id`
 );
 
-const claimStmt = db.prepare(
-  `UPDATE jobs SET status = 'running', claimed_at = datetime('now'), attempts = attempts + 1
-   WHERE id = (
-     SELECT id FROM jobs
-     WHERE status = 'pending' AND (next_retry_at IS NULL OR next_retry_at <= datetime('now'))
-     ORDER BY created_at ASC LIMIT 1
-   ) RETURNING id, type, payload, attempts, max_attempts`
+// Two-step claim: SELECT then UPDATE in a transaction to avoid
+// the subquery-UPDATE pattern that causes B-tree corruption under crashes
+const selectNextStmt = db.prepare(
+  `SELECT id, type, payload, attempts, max_attempts FROM jobs
+   WHERE status = 'pending' AND (next_retry_at IS NULL OR next_retry_at <= datetime('now'))
+   ORDER BY created_at ASC LIMIT 1`
 );
+
+const claimByIdStmt = db.prepare(
+  `UPDATE jobs SET status = 'running', claimed_at = datetime('now'), attempts = attempts + 1
+   WHERE id = ? AND status = 'pending'`
+);
+
+const claimJob = db.transaction(() => {
+  const job = selectNextStmt.get() as { id: number; type: string; payload: string; attempts: number; max_attempts: number } | undefined;
+  if (!job) return undefined;
+  claimByIdStmt.run(job.id);
+  job.attempts += 1; // reflect the increment
+  return job;
+});
 
 const completeStmt = db.prepare(
   `UPDATE jobs SET status = 'completed', completed_at = datetime('now'), error = NULL WHERE id = ?`
@@ -55,11 +71,15 @@ const statsStmt = db.prepare(
   `SELECT status, COUNT(*) as count FROM jobs GROUP BY status`
 );
 
+// Delete in small batches to reduce B-tree churn (max 100 at a time)
 const cleanupStmt = db.prepare(
-  `DELETE FROM jobs WHERE status = 'completed' AND completed_at < datetime('now', '-1 day')`
+  `DELETE FROM jobs WHERE id IN (
+     SELECT id FROM jobs WHERE status = 'completed' AND completed_at < datetime('now', '-1 hour')
+     LIMIT 100
+   )`
 );
 
-// Recover stuck jobs (claimed but never completed - process crashed)
+// Recover stuck jobs (claimed but never completed -- process crashed)
 const recoverStmt = db.prepare(
   `UPDATE jobs SET status = 'pending', claimed_at = NULL
    WHERE status = 'running' AND claimed_at < datetime('now', '-5 minutes')`
@@ -81,7 +101,7 @@ export function registerJobHandler(type: string, handler: JobHandler): void {
 }
 
 export async function processNextJob(): Promise<boolean> {
-  const job = claimStmt.get() as { id: number; type: string; payload: string; attempts: number; max_attempts: number } | undefined;
+  const job = claimJob();
   if (!job) return false;
 
   const handler = handlers.get(job.type);
@@ -130,7 +150,12 @@ export function getJobStats(): Record<string, number> {
 }
 
 export function cleanupCompletedJobs(): number {
-  return (cleanupStmt.run() as any).changes || 0;
+  const changes = (cleanupStmt.run() as any).changes || 0;
+  // Checkpoint WAL after deletes to reduce crash-window corruption surface
+  if (changes > 0) {
+    try { db.pragma("wal_checkpoint(PASSIVE)"); } catch {}
+  }
+  return changes;
 }
 
 export function recoverStuckJobs(): number {
