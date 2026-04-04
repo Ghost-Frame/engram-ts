@@ -482,7 +482,7 @@ Engram ships a full CLI that wraps the HTTP API. Zero external dependencies. Use
 ### Install
 
 ```bash
-npm install -g @ghostframe/engram
+npm install -g @ghost_frame/engram
 ```
 
 ### Configuration
@@ -526,7 +526,7 @@ All commands support `--json` for raw API output and `--quiet` for minimal outpu
 <summary><strong>TypeScript SDK</strong></summary>
 
 ```typescript
-import { Engram } from "@ghostframe/engram/sdk";
+import { Engram } from "@ghost_frame/engram/sdk";
 
 const engram = new Engram({ url: "http://localhost:4200", apiKey: "eg_..." });
 

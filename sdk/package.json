@@ -1,5 +1,5 @@
 {
-  "name": "@zanfiel/engram",
+  "name": "@ghost_frame/engram",
   "version": "6.0.0",
   "description": "TypeScript SDK for the Engram persistent memory API",
   "type": "module",
@@ -15,7 +15,7 @@
   "license": "Elastic-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/zanfiel/engram",
+    "url": "https://codeberg.org/GhostFrame/engram",
     "directory": "sdk"
   },
   "homepage": "https://engram.lol",
