@@ -69,6 +69,7 @@ The `/ingest` endpoint accepts large document uploads and processes them through
 ```bash
 # Docker (recommended)
 git clone https://codeberg.org/GhostFrame/engram.git && cd engram
+git config core.hooksPath .githooks  # enable pre-commit safety checks
 cp .env.example .env  # set ENGRAM_GUI_PASSWORD
 docker compose up -d
 
