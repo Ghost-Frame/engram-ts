@@ -9,10 +9,9 @@ import { statSync } from "fs";
 import { getAuthOrDefault, isAuthError, type AuthError } from "../auth/index.ts";
 import { getClientIp } from "../middleware/auth.ts";
 import { log, opsCounters } from "../config/logger.ts";
-import { PKG_VERSION, DB_PATH, EMBEDDING_MODEL, EMBEDDING_PROVIDER, EMBEDDING_DIM, LLM_MODEL, LLM_PROVIDERS, RERANKER_ENABLED, maintenanceMode, maintenanceReason } from "../config/index.ts";
+import { PKG_VERSION, DB_PATH, EMBEDDING_MODEL, EMBEDDING_PROVIDER, EMBEDDING_DIM, RERANKER_ENABLED, maintenanceMode, maintenanceReason } from "../config/index.ts";
 import { isEmbedderReady, getEmbeddingCacheStats } from "../embeddings/index.ts";
 import { isLocalModelAvailable, localModelStats } from "../llm/local.ts";
-import { isProviderAvailable } from "../llm/index.ts";
 import { getJobStats } from "../jobs/index.ts";
 import { countNoEmbedding, countNoEmbeddingForUser } from "../db/index.ts";
 import { getOpenAPISpec } from "../openapi.ts";
@@ -106,8 +105,7 @@ export function registerHealthRoutes(router: Router): void {
       embedding_model: EMBEDDING_MODEL,
       embedding_provider: EMBEDDING_PROVIDER,
       embedding_dim: EMBEDDING_DIM,
-      llm_model: LLM_MODEL,
-      llm_providers: LLM_PROVIDERS.filter(isProviderAvailable).map(p => p.name),
+      llm: isLocalModelAvailable() ? "local" : "down",
       llm_configured: isLocalModelAvailable(),
       features: {
         decay: "fsrs6",

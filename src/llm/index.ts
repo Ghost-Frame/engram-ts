@@ -4,7 +4,6 @@
 // This file retains only utilities and the extractFacts pipeline.
 // ============================================================================
 
-import { LLM_PROVIDERS, type LLMProvider } from "../config/index.ts";
 import { log, opsCounters } from "../config/logger.ts";
 import { postProcessNewFacts } from "../intelligence/temporal.ts";
 import { callLocalModel } from "./local.ts";
@@ -23,15 +22,6 @@ interface FactExtractionResult {
     existing_memory_id?: number | null;
     reason?: string;
   };
-}
-
-// --- Provider availability check (used by health/admin status reporting) ---
-
-export function isProviderAvailable(p: LLMProvider): boolean {
-  if (p.key) return true;
-  if (p.url.includes("127.0.0.1") || p.url.includes("localhost")) return true;
-  try { if (new URL(p.url).hostname.endsWith("-aiplatform.googleapis.com")) return true; } catch {}
-  return false;
 }
 
 // ============================================================================

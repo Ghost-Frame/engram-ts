@@ -14,13 +14,12 @@ import {
   DATA_DIR, DB_PATH, OPEN_ACCESS, DEFAULT_RATE_LIMIT,
   COLD_STORAGE_DAYS, COLD_STORAGE_MIN_MEMORIES,
   ANN_PREFILTER_THRESHOLD, ANN_CANDIDATE_MULTIPLIER,
-  LLM_PROVIDERS, LLM_STRATEGY,
   maintenanceMode, maintenanceReason, setMaintenanceMode,
   DECOMPOSITION_MIN_LENGTH, DECOMPOSITION_RATE_LIMIT,
 } from "../config/index.ts";
 import { decomposeAndStore } from "../intelligence/decomposition.ts";
 import { generateApiKey } from "../auth/index.ts";
-import { isProviderAvailable } from "../llm/index.ts";
+import { isLocalModelAvailable, localModelStats } from "../llm/local.ts";
 import { EMBEDDING_PROVIDER, EMBEDDING_MODEL, EMBEDDING_DIM, RERANKER_ENABLED, RERANKER_TOP_K } from "../config/index.ts";
 import { isRerankerReady } from "../reranker/index.ts";
 import { refreshEmbeddingCache, getEmbeddingCacheStats, invalidateEmbeddingCache } from "../embeddings/index.ts";
@@ -420,18 +419,15 @@ export function registerAdminRoutes(router: Router): void {
   router.get("/admin/providers", async (req) => {
     const { auth, requestId } = getContext(req);
     if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
-    const providers = LLM_PROVIDERS.map((p, i) => ({
-      index: i,
-      name: p.name,
-      model: p.model,
-      url: p.url.replace(/\/\/.*@/, "//***@"),
-      has_key: !!p.key,
-      available: isProviderAvailable(p),
-    }));
+    const stats = localModelStats();
+    const llm = {
+      provider: "ollama",
+      available: isLocalModelAvailable(),
+      ...stats,
+    };
     return json({
       embedding: { provider: EMBEDDING_PROVIDER, model: EMBEDDING_MODEL, dimension: EMBEDDING_DIM },
-      llm_providers: providers,
-      llm_strategy: LLM_STRATEGY,
+      llm,
       reranker: { enabled: RERANKER_ENABLED, cross_encoder: isRerankerReady(), top_k: RERANKER_TOP_K },
     });
   });

@@ -12,7 +12,7 @@ import { htmlToText } from "html-to-text";
 // Config
 import {
   PORT, HOST, OPEN_ACCESS, CORS_ORIGIN, MAX_BODY_SIZE, MAX_CONTENT_SIZE, PKG_VERSION,
-  ALLOWED_IPS, LLM_URL, LLM_API_KEY, LLM_MODEL, LLM_PROVIDERS, AUTO_LINK_THRESHOLD, AUTO_LINK_MAX,
+  ALLOWED_IPS, AUTO_LINK_THRESHOLD, AUTO_LINK_MAX,
   DEFAULT_IMPORTANCE, RERANKER_ENABLED, RERANKER_TOP_K, DATA_DIR, DB_PATH, EMBEDDING_MODEL, EMBEDDING_DIM, EMBEDDING_PROVIDER,
   CONSOLIDATION_THRESHOLD, RATE_WINDOW_MS, OPEN_ACCESS_RATE_LIMIT, DEFAULT_RATE_LIMIT,
   GUI_AUTH_MAX_ATTEMPTS, GUI_AUTH_WINDOW_MS, GUI_AUTH_LOCKOUT_MS,
@@ -20,7 +20,6 @@ import {
   ENABLE_RECONSOLIDATION, SEARCH_MIN_SCORE, WEBHOOK_ALLOWED_HOSTS,
   COLD_STORAGE_DAYS, COLD_STORAGE_MIN_MEMORIES,
   ANN_PREFILTER_THRESHOLD, ANN_CANDIDATE_MULTIPLIER,
-  LLM_STRATEGY,
   maintenanceMode, maintenanceReason, setMaintenanceMode,
   AUTO_ARCHIVE_ENABLED, AUTO_ARCHIVE_RETRIEVABILITY, AUTO_ARCHIVE_MIN_AGE_DAYS, AUTO_ARCHIVE_MAX_ACCESS,
   ENGRAM_SKILL_DIRS, OPENSPACE_API_KEY,
@@ -95,8 +94,8 @@ import { updateCooccurrences } from "../graph/cooccurrence.ts";
 import { fsrsProcessReview, fsrsRetrievability, fsrsNextInterval, FSRSRating, calculateDecayScore as fsrsCalculateDecayScore } from "../fsrs/index.ts";
 
 // LLM + extraction
-import { extractFacts, processExtractionResult, isProviderAvailable } from "../llm/index.ts";
-import { callLocalModel, isLocalModelAvailable } from "../llm/local.ts";
+import { extractFacts, processExtractionResult } from "../llm/index.ts";
+import { callLocalModel, isLocalModelAvailable, localModelStats } from "../llm/local.ts";
 
 // Cross-encoder reranker
 import { crossEncoderRerank, isRerankerReady } from "../reranker/index.ts";
@@ -1340,8 +1339,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
         embedding_model: EMBEDDING_MODEL,
         embedding_provider: EMBEDDING_PROVIDER,
         embedding_dim: EMBEDDING_DIM,
-        llm_model: LLM_MODEL,
-        llm_providers: LLM_PROVIDERS.filter(isProviderAvailable).map(p => p.name),
+        llm: isLocalModelAvailable() ? "local" : "down",
         llm_configured: isLocalModelAvailable(),
         features: {
           decay: "fsrs6",
@@ -1849,7 +1847,7 @@ If no meaningful facts, return {"facts": []}`;
           if (embArray) { writeVec(result.id, embArray); await autoLink(result.id, embArray, auth.user_id); }
 
           // Queue async fact extraction (for relationship detection)
-          if (LLM_API_KEY) {
+          if (isLocalModelAvailable()) {
             (async () => {
               try {
                 // S4 FIX: extractFacts takes (content, category, similarMemories), not (id, content, embedding)
@@ -2076,7 +2074,7 @@ Return JSON:
 
             if (embArray) { writeVec(result.id, embArray); await autoLink(result.id, embArray, auth.user_id); }
 
-            if (LLM_API_KEY) {
+            if (isLocalModelAvailable()) {
               (async () => {
                 try {
                   // S4 FIX: extractFacts takes (content, category, similarMemories)
@@ -2310,7 +2308,7 @@ Only include pairs that are actual contradictions.`;
           return json({ resolved: true, action: "kept_both", linked: true });
         }
 
-        if (resolution === "merge" && LLM_API_KEY) {
+        if (resolution === "merge" && isLocalModelAvailable()) {
           const mergeResp = await callLocalModel(
             `Merge these two contradicting memories into a single accurate memory. Preserve the most recent/correct information. Return JSON: {"content": "merged text", "category": "category"}`,
             `Memory A (#${memA.id}, created ${memA.created_at}): ${memA.content}\n\nMemory B (#${memB.id}, created ${memB.created_at}): ${memB.content}`,
@@ -7191,8 +7189,7 @@ If no meaningful inferences, return {"derived": []}`;
         messages: msgCount.count,
         agents,
         embedding_model: EMBEDDING_MODEL,
-        llm_model: LLM_MODEL,
-        llm_providers: LLM_PROVIDERS.filter(isProviderAvailable).map(p => p.name),
+        llm: isLocalModelAvailable() ? "local" : "down",
         llm_configured: isLocalModelAvailable(),
         db_size_mb: Math.round(dbSize / 1048576 * 100) / 100,
       });
@@ -7510,18 +7507,15 @@ If no meaningful inferences, return {"derived": []}`;
 
     if (url.pathname === "/admin/providers" && method === "GET") {
       if (!auth.is_admin) return errorResponse("Admin required", 403, requestId);
-      const providers = LLM_PROVIDERS.map((p, i) => ({
-        index: i,
-        name: p.name,
-        model: p.model,
-        url: p.url.replace(/\/\/.*@/, "//***@"),
-        has_key: !!p.key,
-        available: isProviderAvailable(p),
-      }));
+      const stats = localModelStats();
+      const llm = {
+        provider: "ollama",
+        available: isLocalModelAvailable(),
+        ...stats,
+      };
       return json({
         embedding: { provider: EMBEDDING_PROVIDER, model: EMBEDDING_MODEL, dimension: EMBEDDING_DIM },
-        llm_providers: providers,
-        llm_strategy: LLM_STRATEGY,
+        llm,
         reranker: { enabled: RERANKER_ENABLED, cross_encoder: isRerankerReady(), top_k: RERANKER_TOP_K },
       });
     }

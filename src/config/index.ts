@@ -64,12 +64,6 @@ export const AUTO_ARCHIVE_MAX_ACCESS = parseInt(process.env.ENGRAM_AUTO_ARCHIVE_
 export const AUTO_LINK_MAX = Number(process.env.AUTO_LINK_MAX ?? 6);
 export const DEFAULT_IMPORTANCE = 5;
 
-// LLM config (for fact extraction) - provider chain with fallbacks or round-robin
-export const LLM_URL = process.env.LLM_URL || "http://127.0.0.1:4100/v1/chat/completions";
-export const LLM_API_KEY = process.env.LLM_API_KEY || "";
-export const LLM_MODEL = process.env.LLM_MODEL || "gemini-2.5-flash";
-export const LLM_STRATEGY = (process.env.LLM_STRATEGY || "fallback") as "fallback" | "round-robin";
-
 // Decomposition config
 export const DECOMPOSITION_ENABLED = process.env.ENGRAM_DECOMPOSITION === "1";
 export const DECOMPOSITION_MIN_LENGTH = Number(process.env.ENGRAM_DECOMPOSITION_MIN_LENGTH || 20);
@@ -83,44 +77,6 @@ export const ENGRAM_SKILL_DIRS: string[] = (process.env.ENGRAM_SKILL_DIRS || "")
   .filter(Boolean);
 export const OPENSPACE_API_KEY = process.env.OPENSPACE_API_KEY || "";
 export const OPENSPACE_API_URL = process.env.OPENSPACE_API_URL || "https://api.openspace.dev";
-
-export interface LLMProvider { url: string; key: string; model: string; name: string }
-
-// Build provider list: primary + up to 9 additional providers (LLM_PROVIDER_2..10 or legacy LLM_FALLBACK1..2)
-function buildProviders(): LLMProvider[] {
-  const list: LLMProvider[] = [{ url: LLM_URL, key: LLM_API_KEY, model: LLM_MODEL, name: process.env.LLM_PROVIDER_1_NAME || "primary" }];
-
-  // New format: LLM_PROVIDER_2_URL, LLM_PROVIDER_3_URL, etc.
-  for (let i = 2; i <= 10; i++) {
-    const url = process.env[`LLM_PROVIDER_${i}_URL`];
-    if (!url) continue;
-    list.push({
-      url,
-      key: process.env[`LLM_PROVIDER_${i}_KEY`] || "",
-      model: process.env[`LLM_PROVIDER_${i}_MODEL`] || "gpt-4o-mini",
-      name: process.env[`LLM_PROVIDER_${i}_NAME`] || `provider${i}`,
-    });
-  }
-
-  // Legacy format: LLM_FALLBACK1_URL, LLM_FALLBACK2_URL (only if no new-format providers found)
-  if (list.length === 1) {
-    if (process.env.LLM_FALLBACK1_URL) list.push({
-      url: process.env.LLM_FALLBACK1_URL,
-      key: process.env.LLM_FALLBACK1_KEY || "",
-      model: process.env.LLM_FALLBACK1_MODEL || "llama-3.1-70b-versatile",
-      name: "fallback1",
-    });
-    if (process.env.LLM_FALLBACK2_URL) list.push({
-      url: process.env.LLM_FALLBACK2_URL,
-      key: process.env.LLM_FALLBACK2_KEY || "",
-      model: process.env.LLM_FALLBACK2_MODEL || "deepseek-chat",
-      name: "fallback2",
-    });
-  }
-
-  return list;
-}
-export const LLM_PROVIDERS: LLMProvider[] = buildProviders();
 
 // Auto-forget sweep interval (every 5 minutes)
 export const FORGET_SWEEP_INTERVAL = 5 * 60 * 1000;
