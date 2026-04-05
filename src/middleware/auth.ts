@@ -1,6 +1,6 @@
 // src/middleware/auth.ts
 import { randomUUID } from "crypto";
-import { MAX_BODY_SIZE, ALLOWED_IPS, maintenanceMode, maintenanceReason } from "../config/index.ts";
+import { MAX_BODY_SIZE, ALLOWED_IPS, TRUSTED_PROXIES, maintenanceMode, maintenanceReason } from "../config/index.ts";
 import { getAuthOrDefault, isAuthError, type AuthContext, type AuthError } from "../auth/index.ts";
 import { json, errorResponse, securityHeaders } from "../helpers/index.ts";
 import { opsCounters } from "../config/logger.ts";
@@ -26,9 +26,13 @@ export function getContext(req: Request): RequestContext {
 }
 
 export function getClientIp(req: Request): string {
-  const forwarded = req.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0].trim();
-  return "127.0.0.1";
+  const socketIp = req.headers.get("x-socket-ip") || "";
+  // Only trust proxy headers if the direct connection is from a trusted proxy
+  if (TRUSTED_PROXIES.length > 0 && TRUSTED_PROXIES.includes(socketIp)) {
+    const forwarded = req.headers.get("x-forwarded-for");
+    if (forwarded) return forwarded.split(",")[0].trim();
+  }
+  return socketIp || "unknown";
 }
 
 export async function parseBody(req: Request): Promise<unknown> {
@@ -56,7 +60,7 @@ export function createAuthMiddleware(
   guiAuthed: (req: Request) => boolean,
 ): Middleware {
   // Pre-auth paths: these bypass authentication entirely
-  const PRE_AUTH_PATHS = new Set(["/live", "/ready", "/health", "/metrics"]);
+  const PRE_AUTH_PATHS = new Set(["/live", "/ready", "/health", "/metrics", "/gui/auth", "/gui/logout", "/bootstrap"]);
 
   return async (req: Request, _params: Params, next: () => Promise<Response>): Promise<Response> => {
     const requestStart = Date.now();

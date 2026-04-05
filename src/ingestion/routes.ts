@@ -19,6 +19,7 @@ import { getOwnedEntityIds, getOwnedProjectIds } from "../routes/types.ts";
 import { enqueueJob } from "../jobs/index.ts";
 import { emitWebhookEvent } from "../platform/webhooks.ts";
 import { ingestAsync } from "./index.ts";
+import { safeFetch } from "../helpers/safe-fetch.ts";
 import { chunkDocument } from "./chunker.ts";
 import { bulkInsertConvo } from "../conversations/db.ts";
 
@@ -229,24 +230,9 @@ If no meaningful facts, return {"facts": []}`;
         if (typeof ingestUrl !== "string" || !ingestUrl.match(/^https?:\/\//)) {
           return errorResponse("url must be a valid http/https URL");
         }
-        // SSRF protection
         try {
-          const ingestParsed = new URL(ingestUrl);
-          const hn = ingestParsed.hostname.toLowerCase();
-          if (hn === "localhost" || hn === "127.0.0.1" || hn === "::1" || hn === "0.0.0.0" ||
-              hn.startsWith("10.") || hn.startsWith("192.168.") || hn.startsWith("172.16.") ||
-              hn.startsWith("172.17.") || hn.startsWith("172.18.") || hn.startsWith("172.19.") ||
-              hn.startsWith("172.2") || hn.startsWith("172.30.") || hn.startsWith("172.31.") ||
-              hn.endsWith(".local") || hn.endsWith(".internal") || hn.startsWith("100.64.") ||
-              hn.startsWith("169.254.") || hn.startsWith("fc") || hn.startsWith("fd") || hn === "[::1]") {
-            return errorResponse("Ingest URL cannot point to private/internal addresses", 400);
-          }
-        } catch { return errorResponse("Invalid ingest URL", 400); }
-        try {
-          const resp = await fetch(ingestUrl, {
+          const resp = await safeFetch(ingestUrl, {
             headers: { "User-Agent": "Engram/4.4 (memory ingest)" },
-            redirect: "follow",
-            signal: AbortSignal.timeout(15000),
           });
           if (!resp.ok) return errorResponse(`Fetch failed: ${resp.status} ${resp.statusText}`, 502);
 
@@ -705,22 +691,8 @@ If no meaningful inferences, return {"derived": []}`;
           return errorResponse("url must be a valid http/https URL");
         }
         try {
-          const parsedUrl = new URL(ingestUrl);
-          const hn = parsedUrl.hostname.toLowerCase();
-          if (hn === "localhost" || hn === "127.0.0.1" || hn === "::1" || hn === "0.0.0.0" ||
-              hn.startsWith("10.") || hn.startsWith("192.168.") || hn.startsWith("172.16.") ||
-              hn.startsWith("172.17.") || hn.startsWith("172.18.") || hn.startsWith("172.19.") ||
-              hn.startsWith("172.2") || hn.startsWith("172.30.") || hn.startsWith("172.31.") ||
-              hn.endsWith(".local") || hn.endsWith(".internal") || hn.startsWith("100.64.") ||
-              hn.startsWith("169.254.") || hn.startsWith("fc") || hn.startsWith("fd") || hn === "[::1]") {
-            return errorResponse("Ingest URL cannot point to private/internal addresses", 400);
-          }
-        } catch { return errorResponse("Invalid ingest URL", 400); }
-        try {
-          const resp = await fetch(ingestUrl, {
+          const resp = await safeFetch(ingestUrl, {
             headers: { "User-Agent": "Engram/4.4 (memory ingest)" },
-            redirect: "follow",
-            signal: AbortSignal.timeout(15000),
           });
           if (!resp.ok) return errorResponse(`Fetch failed: ${resp.status} ${resp.statusText}`, 502);
           const contentType = resp.headers.get("content-type") || "";

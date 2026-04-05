@@ -463,7 +463,7 @@ export function registerMemoryRoutes(router: Router): void {
         const rootId = correctedMemory.root_memory_id || correctedMemory.id;
         const newVersion = (correctedMemory.version || 1) + 1;
         db.prepare("UPDATE memories SET version = ?, root_memory_id = ?, parent_memory_id = ? WHERE id = ?").run(newVersion, rootId, memoryId, result.id);
-        db.prepare("INSERT OR IGNORE INTO memory_links (source_id, target_id, strength, link_type) VALUES (?, ?, ?, ?)").run(result.id, memoryId, 1.0, "corrects");
+        insertLink.run(result.id, memoryId, 1.0, "corrects");
         corrected_memory_id = memoryId;
         corrected_content = correctedMemory.content?.substring(0, 200);
       }

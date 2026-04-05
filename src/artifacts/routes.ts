@@ -3,9 +3,9 @@
 // ============================================================================
 
 import type { Router } from "../router/types.ts";
-import { getContext, hasScope } from "../middleware/auth.ts";
+import { getContext, hasScope, canAccessOwnedRow } from "../middleware/auth.ts";
 import { json } from "../helpers/index.ts";
-import { getArtifactsByMemory, getArtifactById, getArtifactStats } from "../db/index.ts";
+import { db, getArtifactsByMemory, getArtifactById, getArtifactStats } from "../db/index.ts";
 import { readArtifactFromDisk, deleteArtifactFromDisk } from "./storage.ts";
 
 export function enrichWithArtifacts<T extends { id: number }>(results: T[]): (T & { artifacts: Array<{ id: number; filename: string; mime_type: string; size_bytes: number }> })[] {
@@ -37,9 +37,12 @@ export function registerArtifactRoutes(router: Router): void {
   });
 
   // GET /artifacts/:memoryId - list artifacts for a memory
-  router.get("/artifacts/:memoryId", async (_req, params) => {
+  router.get("/artifacts/:memoryId", async (req, params) => {
     const memoryId = Number(params.memoryId);
     if (isNaN(memoryId)) return json({ error: "Invalid memory ID" }, 400);
+    const { auth } = getContext(req);
+    const mem = db.prepare("SELECT user_id FROM memories WHERE id = ?").get(memoryId) as { user_id: number } | undefined;
+    if (!mem || !canAccessOwnedRow(mem, auth)) return json({ error: "Not found" }, 404);
     const rows = getArtifactsByMemory.all(memoryId) as Array<{
       id: number; filename: string; mime_type: string; size_bytes: number;
       sha256: string; storage_mode: string; created_at: string;
@@ -58,6 +61,10 @@ export function registerArtifactRoutes(router: Router): void {
     } | undefined;
 
     if (!row) return json({ error: "Artifact not found" }, 404);
+
+    const { auth } = getContext(req);
+    const mem = db.prepare("SELECT user_id FROM memories WHERE id = ?").get(row.memory_id) as { user_id: number } | undefined;
+    if (!mem || !canAccessOwnedRow(mem, auth)) return json({ error: "Not found" }, 404);
 
     let content: Buffer;
     if (row.storage_mode === "inline" && row.data) {

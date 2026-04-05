@@ -45,7 +45,7 @@ export function authenticate(req: Request): AuthContext | AuthError | null {
   const hash = createHash("sha256").update(key).digest("hex");
 
   const row = db.prepare(
-    `SELECT ak.id, ak.user_id, ak.scopes, ak.rate_limit, ak.agent_id, u.is_admin, u.role
+    `SELECT ak.id, ak.user_id, ak.scopes, ak.rate_limit, ak.agent_id, ak.expires_at, u.is_admin, u.role
      FROM api_keys ak JOIN users u ON ak.user_id = u.id
      WHERE ak.key_prefix = ? AND ak.key_hash = ? AND ak.is_active = 1`
   ).get(prefix, hash) as any;

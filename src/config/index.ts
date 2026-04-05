@@ -154,6 +154,7 @@ export const CORS_ORIGIN = process.env.ENGRAM_CORS_ORIGIN?.trim() || "";
 export const MAX_BODY_SIZE = Number(process.env.ENGRAM_MAX_BODY_SIZE || 1_048_576);
 export const MAX_CONTENT_SIZE = Number(process.env.ENGRAM_MAX_CONTENT_SIZE || 102_400);
 export const ALLOWED_IPS = (process.env.ENGRAM_ALLOWED_IPS || "").split(",").map(s => s.trim()).filter(Boolean);
+export const TRUSTED_PROXIES: string[] = (process.env.ENGRAM_TRUSTED_PROXIES || "").split(",").map(s => s.trim()).filter(Boolean);
 // Webhook SSRF allowlist: IPs/hostnames that bypass private IP checks for webhooks
 // Used for self-hosted services on the same network (e.g., n8n on Tailscale)
 export const WEBHOOK_ALLOWED_HOSTS = (process.env.ENGRAM_WEBHOOK_ALLOWED_HOSTS || "")

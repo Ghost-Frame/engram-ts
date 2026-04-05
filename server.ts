@@ -204,25 +204,31 @@ registerJobHandler("post_store", async (payload) => {
   const { memoryId, content, category, userId, importance, embeddingBase64, lightweight } = payload;
   if (!memoryId) return;
 
-  // Write vec table entry for ANN search
+  // Parse embedding once for reuse
+  let embArray: Float32Array | null = null;
   if (embeddingBase64) {
     try {
-      const embArray = new Float32Array(Buffer.from(embeddingBase64, "base64").buffer);
-      const vecJson = JSON.stringify(Array.from(embArray));
-      writeVec.run(vecJson, memoryId);
+      embArray = new Float32Array(Buffer.from(embeddingBase64, "base64").buffer);
+    } catch {}
+  }
+
+  // Write vec table entry for ANN search
+  if (embArray) {
+    try {
+      writeVec(memoryId, embArray);
     } catch {}
   }
 
   if (lightweight) return;
 
-  // Auto-link with entities and projects
-  if (content && userId) {
-    try { await autoLink(memoryId, content, userId); } catch {}
+  // Auto-link using embedding vector
+  if (embArray && userId) {
+    try { await autoLink(memoryId, embArray, userId); } catch {}
   }
 
   // Update co-occurrences
-  if (content && userId) {
-    try { updateCooccurrences(memoryId, content, userId); } catch {}
+  if (userId) {
+    try { updateCooccurrences(memoryId, userId); } catch {}
   }
 
   // FSRS init if not already set
@@ -283,13 +289,17 @@ const server = createServer(async (req, res) => {
     const protocol = req.headers["x-forwarded-proto"] === "https" ? "https" : "http";
     const host = req.headers.host || `${HOST}:${PORT}`;
     const url = `${protocol}://${host}${req.url || "/"}`;
+    const socketIp = req.socket.remoteAddress || "";
     const request = new Request(url, {
       method: req.method,
-      headers: Object.fromEntries(
-        Object.entries(req.headers)
-          .filter(([, v]) => v !== undefined)
-          .map(([k, v]) => [k, Array.isArray(v) ? v.join(", ") : v!])
-      ),
+      headers: {
+        ...Object.fromEntries(
+          Object.entries(req.headers)
+            .filter(([, v]) => v !== undefined)
+            .map(([k, v]) => [k, Array.isArray(v) ? v.join(", ") : v!])
+        ),
+        "x-socket-ip": socketIp,
+      },
       body: req.method !== "GET" && req.method !== "HEAD"
         ? await new Promise<Buffer>((resolve) => {
             const chunks: Buffer[] = [];
