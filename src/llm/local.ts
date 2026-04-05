@@ -4,6 +4,13 @@
 // ============================================================================
 
 import { log } from "../config/logger.ts";
+import { appendFileSync } from "fs";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __localDir = dirname(fileURLToPath(import.meta.url));
+const EVAL_COLLECT = process.env.ENGRAM_EVAL_COLLECT === "1";
+const EVAL_PATH = resolve(__localDir, "../../data/eval-golden.jsonl");
 
 // --- Config (env vars) ---
 
@@ -177,6 +184,20 @@ export async function callLocalModel(
 
     cbRecordSuccess();
     _probeResult = true;
+
+    // Eval collection: tee inputs/outputs to golden dataset
+    if (EVAL_COLLECT) {
+      try {
+        const callSite = new Error().stack?.split("\n").slice(2).find(l =>
+          !l.includes("local.ts") && !l.includes("index.ts")
+        )?.trim().replace(/^at\s+/, "").replace(/.*[/\\](src[/\\])/, "$1").slice(0, 80) || "unknown";
+        appendFileSync(EVAL_PATH, JSON.stringify({
+          call_site: callSite, system_prompt: systemPrompt, user_prompt: userPrompt,
+          response: text, timestamp: new Date().toISOString(), model,
+        }) + "\n");
+      } catch { /* never crash for eval logging */ }
+    }
+
     return text;
   } catch (e: any) {
     cbRecordFailure();
