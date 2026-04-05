@@ -5,7 +5,7 @@
 // ============================================================================
 
 import { log } from "../../config/logger.ts";
-import { callLLM, isLLMAvailable } from "../../llm/index.ts";
+import { callLocalModel, isLocalModelAvailable } from "../../llm/local.ts";
 
 // - Direct service imports (no HTTP, just function calls) --
 
@@ -102,7 +102,7 @@ function dispatch(plan: QueryPlan): unknown {
 // - Main ask() function --
 
 export async function ask(question: string): Promise<{ answer: string; plan: QueryPlan | null; raw: unknown }> {
-  if (!isLLMAvailable()) {
+  if (!isLocalModelAvailable()) {
     return { answer: "No LLM provider is available to process natural language queries.", plan: null, raw: null };
   }
 
@@ -123,9 +123,10 @@ If the question cannot be answered by any available function, respond with:
   let raw: unknown = null;
 
   try {
-    const planResult = await callLLM(
+    const planResult = await callLocalModel(
       "You are a query router. Given a natural language question, select the best service function and parameters. Return only JSON.",
       planPrompt,
+      { priority: "background" },
     );
 
     // Parse the plan
@@ -152,9 +153,10 @@ If the question cannot be answered by any available function, respond with:
 
   // Step 3: Summarize results in natural language
   try {
-    const summaryResult = await callLLM(
+    const summaryResult = await callLocalModel(
       "You are a concise system narrator. Summarize the following data in plain English to answer the user's question. Be brief and factual. No markdown.",
       `Question: "${question}"\n\nData from ${plan.service}.${plan.function}:\n${JSON.stringify(raw, null, 2).slice(0, 4000)}`,
+      { priority: "background" },
     );
 
     return { answer: summaryResult.trim(), plan, raw };

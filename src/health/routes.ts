@@ -11,7 +11,8 @@ import { getClientIp } from "../middleware/auth.ts";
 import { log, opsCounters } from "../config/logger.ts";
 import { PKG_VERSION, DB_PATH, EMBEDDING_MODEL, EMBEDDING_PROVIDER, EMBEDDING_DIM, LLM_MODEL, LLM_PROVIDERS, RERANKER_ENABLED, maintenanceMode, maintenanceReason } from "../config/index.ts";
 import { isEmbedderReady, getEmbeddingCacheStats } from "../embeddings/index.ts";
-import { isLLMAvailable, isProviderAvailable } from "../llm/index.ts";
+import { isLocalModelAvailable, localModelStats } from "../llm/local.ts";
+import { isProviderAvailable } from "../llm/index.ts";
 import { getJobStats } from "../jobs/index.ts";
 import { countNoEmbedding, countNoEmbeddingForUser } from "../db/index.ts";
 import { getOpenAPISpec } from "../openapi.ts";
@@ -31,7 +32,7 @@ export function registerHealthRoutes(router: Router): void {
     const checks: Record<string, boolean> = {};
     try { db.prepare("SELECT 1").get(); checks.db = true; } catch { checks.db = false; }
     try { checks.embeddings = isEmbedderReady(); } catch { checks.embeddings = false; }
-    checks.llm = isLLMAvailable();
+    checks.llm = isLocalModelAvailable();
     const ready = checks.db && checks.embeddings;
     return json({ status: ready ? "ready" : "degraded", checks }, ready ? 200 : 503);
   });
@@ -107,14 +108,14 @@ export function registerHealthRoutes(router: Router): void {
       embedding_dim: EMBEDDING_DIM,
       llm_model: LLM_MODEL,
       llm_providers: LLM_PROVIDERS.filter(isProviderAvailable).map(p => p.name),
-      llm_configured: isLLMAvailable(),
+      llm_configured: isLocalModelAvailable(),
       features: {
         decay: "fsrs6",
         fsrs6: true,
         dual_strength: true,
         tags: true,
         episodes: true,
-        consolidation: isLLMAvailable(),
+        consolidation: isLocalModelAvailable(),
         typed_relationships: true,
         access_tracking: true,
         confidence: true,
@@ -122,23 +123,23 @@ export function registerHealthRoutes(router: Router): void {
         sync: true,
         pack: true,
         prompt_templates: true,
-        auto_tagging: isLLMAvailable(),
+        auto_tagging: isLocalModelAvailable(),
         mem0_import: true,
         supermemory_import: true,
         entities: true,
         projects: true,
         scoped_search: true,
-        reranker: RERANKER_ENABLED && isLLMAvailable(),
+        reranker: RERANKER_ENABLED && isLocalModelAvailable(),
         cross_encoder: isRerankerReady(),
-        conversation_extraction: isLLMAvailable(),
-        derived_memories: isLLMAvailable(),
+        conversation_extraction: isLocalModelAvailable(),
+        derived_memories: isLocalModelAvailable(),
         graph: true,
         url_ingest: true,
         contradiction_detection: true,
-        contradiction_resolution: isLLMAvailable(),
+        contradiction_resolution: isLocalModelAvailable(),
         time_travel: true,
         smart_context: true,
-        reflections: isLLMAvailable(),
+        reflections: isLocalModelAvailable(),
         scheduled_digests: true,
         agent_identity: true,
         trust_scoring: true,

@@ -2,7 +2,7 @@
 // Integration tests require a running Engram instance (LLM + embedding provider + DB initialized).
 
 import type { Chunk, Processor, ProcessOptions, ProcessResult } from "../types.ts";
-import { callLLM } from "../../llm/index.ts";
+import { callLocalModel } from "../../llm/local.ts";
 import { embedWithChunking, embeddingToBuffer, addToEmbeddingCache } from "../../embeddings/index.ts";
 import { db } from "../../db/index.ts";
 import { checkSimHashDuplicate, storeSimHash } from "../../memory/simhash.ts";
@@ -46,7 +46,7 @@ Return JSON:
   ]
 }`;
 
-        const llmResp = await callLLM(extractionPrompt, chunk.text);
+        const llmResp = await callLocalModel(extractionPrompt, chunk.text, { priority: "background" });
         if (!llmResp) { errors.push(`Chunk ${chunk.index}: LLM returned empty`); continue; }
 
         // Parse LLM response

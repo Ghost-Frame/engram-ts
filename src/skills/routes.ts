@@ -6,7 +6,7 @@ import type { Router } from "../router/types.ts";
 import { getContext, hasScope } from "../middleware/auth.ts";
 import { json, errorResponse, safeError } from "../helpers/index.ts";
 import { ENGRAM_SKILL_DIRS, OPENSPACE_API_KEY } from "../config/index.ts";
-import { callLLM, isLLMAvailable } from "../llm/index.ts";
+import { callLocalModel, isLocalModelAvailable } from "../llm/local.ts";
 import {
   listSkillsStmt, getSkillById, softDeleteSkillStmt, getSkillTagsStmt,
   incrementSkillSelectionsStmt, getSkillByPath,
@@ -95,7 +95,7 @@ export function registerSkillRoutes(router: Router): void {
   // POST /skills/execute - Full 6-stage pipeline
   router.post("/skills/execute", async (req) => {
     const { requestId, body: rawBody } = getContext(req);
-    if (!isLLMAvailable()) return errorResponse("No LLM configured", 503, requestId);
+    if (!isLocalModelAvailable()) return errorResponse("No LLM configured", 503, requestId);
     try {
       const body = (rawBody || {}) as any;
       const task = String(body?.task || "").trim();
@@ -139,11 +139,11 @@ export function registerSkillRoutes(router: Router): void {
       let usedFallback = false;
 
       try {
-        response = await callLLM(sysPrompt, task);
+        response = await callLocalModel(sysPrompt, task, { priority: "background" });
       } catch (skillError: any) {
         // Stage 4: Tool Fallback -- retry without skill context
         usedFallback = true;
-        response = await callLLM("You are a helpful assistant.", task);
+        response = await callLocalModel("You are a helpful assistant.", task, { priority: "background" });
       }
 
       const result: Record<string, any> = {
@@ -212,7 +212,7 @@ export function registerSkillRoutes(router: Router): void {
   // POST /skills/analyze - Standalone analysis endpoint
   router.post("/skills/analyze", async (req) => {
     const { requestId, body: rawBody } = getContext(req);
-    if (!isLLMAvailable()) return errorResponse("No LLM configured", 503, requestId);
+    if (!isLocalModelAvailable()) return errorResponse("No LLM configured", 503, requestId);
     try {
       const body = (rawBody || {}) as any;
       if (!body?.task_id) return errorResponse("task_id is required", 400, requestId);
@@ -237,7 +237,7 @@ export function registerSkillRoutes(router: Router): void {
   // POST /skills/derive - Derive new skill from parents
   router.post("/skills/derive", async (req) => {
     const { requestId, body: rawBody } = getContext(req);
-    if (!isLLMAvailable()) return errorResponse("No LLM configured", 503, requestId);
+    if (!isLocalModelAvailable()) return errorResponse("No LLM configured", 503, requestId);
     try {
       const body = (rawBody || {}) as any;
       const parentIds = body?.parent_skill_ids;
@@ -257,7 +257,7 @@ export function registerSkillRoutes(router: Router): void {
   // POST /skills/capture - Capture novel pattern as new skill
   router.post("/skills/capture", async (req) => {
     const { requestId, body: rawBody } = getContext(req);
-    if (!isLLMAvailable()) return errorResponse("No LLM configured", 503, requestId);
+    if (!isLocalModelAvailable()) return errorResponse("No LLM configured", 503, requestId);
     try {
       const body = (rawBody || {}) as any;
       const direction = String(body?.direction || "").trim();
@@ -316,7 +316,7 @@ export function registerSkillRoutes(router: Router): void {
   // POST /skills/:name/fix
   router.post("/skills/:name/fix", async (req, params) => {
     const { requestId, body: rawBody } = getContext(req);
-    if (!isLLMAvailable()) return errorResponse("No LLM configured", 503, requestId);
+    if (!isLocalModelAvailable()) return errorResponse("No LLM configured", 503, requestId);
     try {
       const skillId = params.name;
       const body = (rawBody || {}) as any;

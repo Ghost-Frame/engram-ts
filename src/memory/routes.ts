@@ -43,7 +43,7 @@ import { enqueueJob } from "../jobs/index.ts";
 import { FSRSRating, fsrsProcessReview, calculateDecayScore } from "../fsrs/index.ts";
 import { getOwnedEntityIds, getOwnedProjectIds } from "../routes/types.ts";
 import { updateCooccurrences } from "../graph/cooccurrence.ts";
-import { isLLMAvailable } from "../llm/index.ts";
+import { isLocalModelAvailable } from "../llm/local.ts";
 
 export function registerMemoryRoutes(router: Router): void {
 
@@ -222,7 +222,7 @@ export function registerMemoryRoutes(router: Router): void {
         tags: tagsJson ? JSON.parse(tagsJson) : [],
         episode_id: episodeId,
         decay_score: decayScore,
-        fact_extraction: isLLMAvailable() ? "queued" : "disabled",
+        fact_extraction: isLocalModelAvailable() ? "queued" : "disabled",
         status: memStatus,
         model: (model && typeof model === "string") ? model.trim() : null,
         ...(artifactResults.length > 0 ? { artifacts: artifactResults } : {}),

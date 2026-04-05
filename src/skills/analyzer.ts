@@ -3,7 +3,8 @@
 // Ported from OpenSpace skill_engine/analyzer.py
 // ============================================================================
 
-import { callLLM, isLLMAvailable, repairAndParseJSON } from "../llm/index.ts";
+import { repairAndParseJSON } from "../llm/index.ts";
+import { callLocalModel, isLocalModelAvailable } from "../llm/local.ts";
 import { log } from "../config/logger.ts";
 import {
   insertExecutionAnalysis, getExecutionAnalysis,
@@ -118,7 +119,7 @@ export interface AnalyzeInput {
 }
 
 export async function analyzeExecution(input: AnalyzeInput): Promise<ExecutionAnalysis | null> {
-  if (!isLLMAvailable()) {
+  if (!isLocalModelAvailable()) {
     log.warn({ msg: "analyzer_skipped", reason: "no_llm" });
     return null;
   }
@@ -153,7 +154,7 @@ ${conversationText}
 ${toolText}`;
 
   try {
-    const response = await callLLM(ANALYSIS_SYSTEM_PROMPT, userPrompt, input.model);
+    const response = await callLocalModel(ANALYSIS_SYSTEM_PROMPT, userPrompt, { priority: "background", model: input.model });
     const parsed = repairAndParseJSON(response);
     if (!parsed || typeof parsed !== "object") {
       log.error({ msg: "analysis_parse_failed", task_id: input.task_id });

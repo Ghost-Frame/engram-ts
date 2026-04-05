@@ -6,7 +6,8 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join, dirname, basename } from "path";
 import { randomUUID } from "crypto";
-import { callLLM, isLLMAvailable, repairAndParseJSON } from "../llm/index.ts";
+import { repairAndParseJSON } from "../llm/index.ts";
+import { callLocalModel, isLocalModelAvailable } from "../llm/local.ts";
 import { embed, embeddingToBuffer } from "../embeddings/index.ts";
 import {
   upsertSkill, updateSkillContentStmt, updateSkillEmbeddingStmt, writeSkillVec,
@@ -130,7 +131,7 @@ export async function fixSkill(
   direction: string,
   sourceTaskId?: string | null,
 ): Promise<string> {
-  if (!isLLMAvailable()) throw new Error("No LLM configured. Set LLM_URL/LLM_API_KEY.");
+  if (!isLocalModelAvailable()) throw new Error("Local model not available. Check Ollama is running.");
 
   const skillFile = join(skillPath, "SKILL.md");
   if (!existsSync(skillFile)) throw new Error(`SKILL.md not found at ${skillFile}`);
@@ -145,7 +146,7 @@ export async function fixSkill(
 
   // Call LLM
   const userPrompt = `<skill_md>\n${original}\n</skill_md>\n\n<direction>\n${direction}\n</direction>`;
-  let patched = await callLLM(FIX_SYSTEM_PROMPT, userPrompt);
+  let patched = await callLocalModel(FIX_SYSTEM_PROMPT, userPrompt, { priority: "background" });
   patched = stripCodeFences(patched);
 
   if (!patched.startsWith("---") && !patched.startsWith("#")) {
@@ -197,7 +198,7 @@ export async function deriveSkillEvolution(
   direction: string,
   sourceTaskId?: string | null,
 ): Promise<{ skill_id: string; content: string; path: string }> {
-  if (!isLLMAvailable()) throw new Error("No LLM configured.");
+  if (!isLocalModelAvailable()) throw new Error("Local model not available.");
   if (parentSkillIds.length === 0) throw new Error("At least one parent skill required for derivation.");
 
   // Load parent skills
@@ -222,7 +223,7 @@ export async function deriveSkillEvolution(
   ).join("\n\n");
 
   const userPrompt = `${parentSection}\n\n<direction>\n${direction}\n</direction>`;
-  let newContent = await callLLM(DERIVE_SYSTEM_PROMPT, userPrompt);
+  let newContent = await callLocalModel(DERIVE_SYSTEM_PROMPT, userPrompt, { priority: "background" });
   newContent = stripCodeFences(newContent);
 
   if (!newContent.startsWith("---") && !newContent.startsWith("#")) {
@@ -269,10 +270,10 @@ export async function captureSkill(
   baseDir: string,
   sourceTaskId?: string | null,
 ): Promise<{ skill_id: string; content: string; path: string }> {
-  if (!isLLMAvailable()) throw new Error("No LLM configured.");
+  if (!isLocalModelAvailable()) throw new Error("Local model not available.");
 
   const userPrompt = `<pattern_description>\n${direction}\n</pattern_description>`;
-  let newContent = await callLLM(CAPTURE_SYSTEM_PROMPT, userPrompt);
+  let newContent = await callLocalModel(CAPTURE_SYSTEM_PROMPT, userPrompt, { priority: "background" });
   newContent = stripCodeFences(newContent);
 
   if (!newContent.startsWith("---") && !newContent.startsWith("#")) {

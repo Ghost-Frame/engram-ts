@@ -95,7 +95,8 @@ import { updateCooccurrences } from "../graph/cooccurrence.ts";
 import { fsrsProcessReview, fsrsRetrievability, fsrsNextInterval, FSRSRating, calculateDecayScore as fsrsCalculateDecayScore } from "../fsrs/index.ts";
 
 // LLM + extraction
-import { callLLM, extractFacts, processExtractionResult, isLLMAvailable, isProviderAvailable } from "../llm/index.ts";
+import { extractFacts, processExtractionResult, isProviderAvailable } from "../llm/index.ts";
+import { callLocalModel, isLocalModelAvailable } from "../llm/local.ts";
 
 // Cross-encoder reranker
 import { crossEncoderRerank, isRerankerReady } from "../reranker/index.ts";
@@ -1098,7 +1099,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
       const checks: Record<string, boolean> = {};
       try { db.prepare("SELECT 1").get(); checks.db = true; } catch { checks.db = false; }
       try { checks.embeddings = isEmbedderReady(); } catch { checks.embeddings = false; }
-      checks.llm = isLLMAvailable();
+      checks.llm = isLocalModelAvailable();
       const ready = checks.db && checks.embeddings;
       return json({ status: ready ? "ready" : "degraded", checks }, ready ? 200 : 503);
     }
@@ -1341,14 +1342,14 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
         embedding_dim: EMBEDDING_DIM,
         llm_model: LLM_MODEL,
         llm_providers: LLM_PROVIDERS.filter(isProviderAvailable).map(p => p.name),
-        llm_configured: isLLMAvailable(),
+        llm_configured: isLocalModelAvailable(),
         features: {
           decay: "fsrs6",
           fsrs6: true,
           dual_strength: true,
           tags: true,
           episodes: true,
-          consolidation: isLLMAvailable(),
+          consolidation: isLocalModelAvailable(),
           typed_relationships: true,
           access_tracking: true,
           confidence: true,
@@ -1356,23 +1357,23 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
           sync: true,
           pack: true,
           prompt_templates: true,
-          auto_tagging: isLLMAvailable(),
+          auto_tagging: isLocalModelAvailable(),
           mem0_import: true,
           supermemory_import: true,
           entities: true,
           projects: true,
           scoped_search: true,
-          reranker: RERANKER_ENABLED && isLLMAvailable(),
+          reranker: RERANKER_ENABLED && isLocalModelAvailable(),
           cross_encoder: isRerankerReady(),
-          conversation_extraction: isLLMAvailable(),
-          derived_memories: isLLMAvailable(),
+          conversation_extraction: isLocalModelAvailable(),
+          derived_memories: isLocalModelAvailable(),
           graph: true,
           url_ingest: true,
           contradiction_detection: true,
-          contradiction_resolution: isLLMAvailable(),
+          contradiction_resolution: isLocalModelAvailable(),
           time_travel: true,
           smart_context: true,
-          reflections: isLLMAvailable(),
+          reflections: isLocalModelAvailable(),
           scheduled_digests: true,
           agent_identity: true,
           trust_scoring: true,
@@ -1508,7 +1509,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
         // Auto-summarize on session end if LLM is available and entries exist
         let summarized = false;
         let summaryId: number | null = null;
-        if (isLLMAvailable()) {
+        if (isLocalModelAvailable()) {
           const rows = getScratchSessionAll.all(auth.user_id, session) as ScratchEntryRow[];
           if (rows.length >= 2) { // only summarize if there's meaningful content
             try {
@@ -1518,9 +1519,10 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
                 `[${r.entry_key}] ${r.value || "(empty)"}`
               ).join("\n");
 
-              const summary = await callLLM(
+              const summary = await callLocalModel(
                 `You extract lasting knowledge from agent work sessions. Given an agent's scratchpad entries, identify facts worth remembering long-term (infrastructure details, endpoints, architectural decisions, bugs found, solutions). Ignore transient state. If nothing is worth keeping, say "nothing". Be concise.`,
-                `Agent: ${agent}\nModel: ${model}\n\nEntries:\n${entriesText}`
+                `Agent: ${agent}\nModel: ${model}\n\nEntries:\n${entriesText}`,
+                { priority: "background" }
               );
 
               if (summary && summary.toLowerCase().trim() !== "nothing") {
@@ -1548,7 +1550,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
           clientIp, requestId, auth.agent_id ?? null);
         const result: Record<string, any> = { deleted: true, session };
         if (summarized) { result.summarized = true; result.memory_id = summaryId; }
-        else if (!isLLMAvailable()) { result.summarized = false; result.reason = "llm_not_available"; }
+        else if (!isLocalModelAvailable()) { result.summarized = false; result.reason = "llm_not_available"; }
         return json(result);
       } catch (e: any) {
         return safeError("Scratch delete", e);
@@ -1675,10 +1677,11 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
 
         let summary: string;
 
-        if (isLLMAvailable()) {
-          summary = await callLLM(
+        if (isLocalModelAvailable()) {
+          summary = await callLocalModel(
             `You extract lasting knowledge from agent work sessions. Given an agent's scratchpad entries from a session, identify facts, decisions, or discoveries worth remembering long-term. Ignore transient state (files being edited, tasks in progress). Focus on: infrastructure details, credentials/endpoints, architectural decisions, bugs found, solutions applied. If nothing is worth keeping, say "nothing". Be concise - one line per fact.`,
-            `Agent: ${agent}\nModel: ${model}\nSession: ${session}\n\nEntries:\n${entriesText}`
+            `Agent: ${agent}\nModel: ${model}\nSession: ${session}\n\nEntries:\n${entriesText}`,
+            { priority: "background" }
           );
         } else {
           // No LLM: just combine entries as-is
@@ -1723,7 +1726,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
 
     if (url.pathname === "/add" && method === "POST") {
       if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
-      if (!isLLMAvailable()) return errorResponse("LLM not configured - /add requires fact extraction", 400);
+      if (!isLocalModelAvailable()) return errorResponse("LLM not configured - /add requires fact extraction", 400);
       try {
         const body = await req.json() as any;
         const messages = body.messages as Array<{ role: string; content: string }>;
@@ -1780,7 +1783,7 @@ Return JSON:
 
 If no meaningful facts, return {"facts": []}`;
 
-        const llmResp = await callLLM(extractionPrompt, convoText);
+        const llmResp = await callLocalModel(extractionPrompt, convoText, { priority: "background" });
         if (!llmResp) return json({ added: 0, facts: [] });
 
         // Parse extracted facts
@@ -1903,7 +1906,7 @@ If no meaningful facts, return {"facts": []}`;
 
     if (url.pathname === "/ingest" && method === "POST") {
       if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
-      if (!isLLMAvailable()) return errorResponse("LLM not configured - /ingest requires fact extraction", 400);
+      if (!isLocalModelAvailable()) return errorResponse("LLM not configured - /ingest requires fact extraction", 400);
       try {
         const body = await req.json() as any;
         const { url: ingestUrl, text: ingestText, entity_ids, project_ids, episode_id, source } = body;
@@ -2028,7 +2031,7 @@ Return JSON:
   ]
 }`;
 
-          const llmResp = await callLLM(extractionPrompt, chunk);
+          const llmResp = await callLocalModel(extractionPrompt, chunk, { priority: "background" });
           if (!llmResp) continue;
 
           let extracted: { facts: Array<any> };
@@ -2126,7 +2129,7 @@ Return JSON:
       try {
         const threshold = Number(url.searchParams.get("threshold") || 0.6);
         const limitParam = Math.min(Number(url.searchParams.get("limit") || 30), 100);
-        const useLLM = url.searchParams.get("verify") === "true" && isLLMAvailable();
+        const useLLM = url.searchParams.get("verify") === "true" && isLocalModelAvailable();
 
         // Get all contradicts-type links first (already detected by fact extraction)
         const knownContradictions = db.prepare(
@@ -2213,7 +2216,7 @@ Return JSON array:
 Only include pairs that are actual contradictions.`;
 
             try {
-              const resp = await callLLM(verifyPrompt, pairs);
+              const resp = await callLocalModel(verifyPrompt, pairs, { priority: "background" });
               const cleaned = resp.replace(/```json\n?|\n?```/g, "").trim();
               const results = JSON.parse(cleaned) as Array<{ pair: number; contradicts: boolean; explanation: string }>;
 
@@ -2308,9 +2311,10 @@ Only include pairs that are actual contradictions.`;
         }
 
         if (resolution === "merge" && LLM_API_KEY) {
-          const mergeResp = await callLLM(
+          const mergeResp = await callLocalModel(
             `Merge these two contradicting memories into a single accurate memory. Preserve the most recent/correct information. Return JSON: {"content": "merged text", "category": "category"}`,
-            `Memory A (#${memA.id}, created ${memA.created_at}): ${memA.content}\n\nMemory B (#${memB.id}, created ${memB.created_at}): ${memB.content}`
+            `Memory A (#${memA.id}, created ${memA.created_at}): ${memA.content}\n\nMemory B (#${memB.id}, created ${memB.created_at}): ${memB.content}`,
+            { priority: "background" }
           );
           const cleaned = mergeResp.replace(/```json\n?|\n?```/g, "").trim();
           const merged = JSON.parse(cleaned) as { content: string; category: string };
@@ -2807,12 +2811,13 @@ Only include pairs that are actual contradictions.`;
         // Phase 5: Implicit connection inference (LLM post-processing)
         const tInference = Date.now();
         const semanticBlocks = blocks.filter(b => b.source === "semantic");
-        if (doIncludeInference && isLLMAvailable() && semanticBlocks.length >= 2 && usedTokens < tokenBudget * 0.95) {
+        if (doIncludeInference && isLocalModelAvailable() && semanticBlocks.length >= 2 && usedTokens < tokenBudget * 0.95) {
           try {
             const topFacts = semanticBlocks.slice(0, 6).map(b => `[${b.id}] ${b.content}`).join("\n");
-            const inferenceResult = await callLLM(
+            const inferenceResult = await callLocalModel(
               `You find implicit connections between memories that aren't directly stated. Given these memories, identify 0-3 implicit connections. For each, write a single sentence stating the connection. If none exist, return "none". Be concise. Only state connections that are genuinely useful and non-obvious.`,
-              `Query: ${query}\n\nMemories:\n${topFacts}`
+              `Query: ${query}\n\nMemories:\n${topFacts}`,
+              { priority: "background" }
             );
             if (inferenceResult && !inferenceResult.toLowerCase().startsWith("none")) {
               const tokens = estimateTokens(inferenceResult);
@@ -3012,7 +3017,7 @@ Only include pairs that are actual contradictions.`;
     // ========================================================================
 
     if (url.pathname === "/reflect" && method === "POST") {
-      if (!isLLMAvailable()) return errorResponse("LLM not configured - /reflect requires inference", 400);
+      if (!isLocalModelAvailable()) return errorResponse("LLM not configured - /reflect requires inference", 400);
       try {
         const body = await req.json() as any;
         const period = body.period || "week"; // day | week | month
@@ -3091,7 +3096,7 @@ Return JSON:
   "insight": "one key non-obvious insight"
 }`;
 
-        const resp = await callLLM(reflectPrompt, memoryList);
+        const resp = await callLocalModel(reflectPrompt, memoryList, { priority: "background" });
         const cleaned = resp.replace(/```json\n?|\n?```/g, "").trim();
         let result: any;
         try {
@@ -3435,7 +3440,7 @@ Return JSON:
           tags: tagsJson ? JSON.parse(tagsJson) : [],
           episode_id: episodeId,
           decay_score: decayScore,
-          fact_extraction: isLLMAvailable() ? "queued" : "disabled",
+          fact_extraction: isLocalModelAvailable() ? "queued" : "disabled",
           status: memStatus,
           model: (model && typeof model === "string") ? model.trim() : null,
         }, 201);
@@ -5011,11 +5016,12 @@ Return JSON:
 
         // If conversation text provided, generate narrative summary via LLM
         let summary = body.summary || null;
-        if (body.conversation && isLLMAvailable() && !summary) {
+        if (body.conversation && isLocalModelAvailable() && !summary) {
           try {
-            summary = await callLLM(
+            summary = await callLocalModel(
               `You are a memory system. Summarize this conversation into a concise episodic narrative (1-3 paragraphs). Capture: what the user asked for, what the assistant did, key decisions made, problems solved, and outcomes. Include temporal flow ("first... then... finally..."). Write in past tense.`,
-              body.conversation.substring(0, 8000)
+              body.conversation.substring(0, 8000),
+              { priority: "background" }
             );
           } catch (e: any) {
             log.warn({ msg: "episode_summarization_failed", error: e.message });
@@ -5176,12 +5182,13 @@ Return JSON:
 
         let summary = ep.summary;
         if (!summary) {
-          if (isLLMAvailable()) {
+          if (isLocalModelAvailable()) {
             try {
               const memText = memories.map(m => `[${m.category}] ${m.content}`).join("\n").substring(0, 8000);
-              summary = await callLLM(
+              summary = await callLocalModel(
                 `You are a memory system. Summarize these memories from a single session into a concise episodic narrative (1-3 paragraphs). Capture: what the user asked for, what the assistant did, key decisions made, problems solved, and outcomes. Include temporal flow. Write in past tense.`,
-                memText
+                memText,
+                { priority: "background" }
               );
             } catch (e: any) {
               log.warn({ msg: "episode_llm_summary_failed", error: e.message });
@@ -5398,13 +5405,14 @@ Return JSON:
         let signal: "allow" | "warn" | "block" = "warn";
         let message = "";
 
-        if (isLLMAvailable()) {
+        if (isLocalModelAvailable()) {
           try {
             const trustContext = trustScore !== null ? `\nAGENT TRUST SCORE: ${trustScore}/100 (${trustScore < 30 ? "LOW - be strict" : trustScore < 70 ? "MODERATE" : "HIGH - earned trust"})` : "";
             const rulesText = rules.slice(0, 5).map((r, i) => `RULE ${i + 1} (importance ${r.importance}): ${r.content}`).join("\n\n");
-            const llmResult = await callLLM(
+            const llmResult = await callLocalModel(
               `You are a guardrail system. Given an agent's PROPOSED ACTION and a set of RULES from memory, determine if the action conflicts with any rule. Respond with ONLY one of: BLOCK (action directly violates a rule), WARN (action is related to a rule and should proceed with caution), or ALLOW (no conflict). After the signal word, write a brief explanation on the same line.${trustContext ? " Factor the agent's trust score into borderline decisions - low-trust agents should get WARN or BLOCK more readily." : ""}`,
-              `PROPOSED ACTION: ${action}\n\nRULES:\n${rulesText}${trustContext}`
+              `PROPOSED ACTION: ${action}\n\nRULES:\n${rulesText}${trustContext}`,
+              { priority: "background" }
             );
             const first = llmResult.trim().split("\n")[0].toUpperCase();
             if (first.startsWith("BLOCK")) { signal = "block"; message = llmResult.trim(); }
@@ -5939,7 +5947,7 @@ ${memoryBlock}
 
     if (url.pathname === "/derive" && method === "POST") {
       if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
-      if (!isLLMAvailable()) return errorResponse("LLM not configured - /derive requires inference", 400);
+      if (!isLocalModelAvailable()) return errorResponse("LLM not configured - /derive requires inference", 400);
       try {
         const body = await req.json() as any;
         const context = body.context || "";
@@ -5992,7 +6000,7 @@ Return JSON:
 
 If no meaningful inferences, return {"derived": []}`;
 
-        const resp = await callLLM(derivePrompt, `Here are the memories:\n\n${memoryList}`);
+        const resp = await callLocalModel(derivePrompt, `Here are the memories:\n\n${memoryList}`, { priority: "background" });
         if (!resp) return json({ derived: 0, facts: [] });
 
         let parsed: { derived: Array<any> };
@@ -7185,7 +7193,7 @@ If no meaningful inferences, return {"derived": []}`;
         embedding_model: EMBEDDING_MODEL,
         llm_model: LLM_MODEL,
         llm_providers: LLM_PROVIDERS.filter(isProviderAvailable).map(p => p.name),
-        llm_configured: isLLMAvailable(),
+        llm_configured: isLocalModelAvailable(),
         db_size_mb: Math.round(dbSize / 1048576 * 100) / 100,
       });
     }
@@ -8326,7 +8334,7 @@ If no meaningful inferences, return {"derived": []}`;
 
     // POST /skills/execute
     if (method === "POST" && url.pathname === "/skills/execute") {
-      if (!isLLMAvailable()) return errorResponse("No LLM configured", 503, requestId);
+      if (!isLocalModelAvailable()) return errorResponse("No LLM configured", 503, requestId);
       const body = await req.json().catch(() => ({})) as any;
       const task = String(body?.task || "").trim();
       if (!task) return errorResponse("task is required", 400, requestId);
@@ -8355,7 +8363,7 @@ If no meaningful inferences, return {"derived": []}`;
       const sysPrompt = skillContext
         ? `You are a skilled assistant. Use the following skills as guidance:\n\n${skillContext}`
         : "You are a skilled assistant.";
-      const response = await callLLM(sysPrompt, task);
+      const response = await callLocalModel(sysPrompt, task, { priority: "background" });
       return json({ response, skills_used: topSkills.map(s => s.name) });
     }
 
@@ -8379,7 +8387,7 @@ If no meaningful inferences, return {"derived": []}`;
 
     // POST /skills/:id/fix
     if (method === "POST" && url.pathname.match(/^\/skills\/[^/]+\/fix$/)) {
-      if (!isLLMAvailable()) return errorResponse("No LLM configured", 503, requestId);
+      if (!isLocalModelAvailable()) return errorResponse("No LLM configured", 503, requestId);
       const skillId = url.pathname.split("/")[2];
       const body = await req.json().catch(() => ({})) as any;
       const direction = String(body?.direction || "").trim();

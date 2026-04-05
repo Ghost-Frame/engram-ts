@@ -3,7 +3,7 @@
 // brain memories using the Engram LLM module.
 // ============================================================================
 
-import { callLLM, isLLMAvailable } from "../../llm/index.ts";
+import { callLocalModel, isLocalModelAvailable } from "../../llm/local.ts";
 import { log } from "../../config/logger.ts";
 import type { BrainQueryResult, OracleResult } from "./types.ts";
 
@@ -175,7 +175,7 @@ export async function queryOracle(
   context?: string,
 ): Promise<OracleResult> {
   // Fallback if LLM unavailable
-  if (!isLLMAvailable()) {
+  if (!isLocalModelAvailable()) {
     log.info({ msg: "oracle_fallback", reason: "llm_unavailable", query: query.substring(0, 80) });
     return formatFallback(brainResult);
   }
@@ -196,7 +196,7 @@ export async function queryOracle(
 
   let rawResponse: string;
   try {
-    rawResponse = await callLLM(ORACLE_SYSTEM_PROMPT, userPrompt);
+    rawResponse = await callLocalModel(ORACLE_SYSTEM_PROMPT, userPrompt, { priority: "background" });
   } catch (e: any) {
     log.warn({ msg: "oracle_llm_failed", error: e.message });
     return formatFallback(brainResult);

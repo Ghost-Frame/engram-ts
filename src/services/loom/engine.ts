@@ -7,7 +7,7 @@ import { db } from "../../db/index.ts";
 import { log } from "../../config/logger.ts";
 import { parseJsonFields, parseJsonFieldsAll } from "../helpers.ts";
 import { publish } from "../axon/bus.ts";
-import { callLLM, isLLMAvailable } from "../../llm/index.ts";
+import { callLocalModel, isLocalModelAvailable } from "../../llm/local.ts";
 import { validatePublicUrlWithDNS } from "../../helpers/index.ts";
 import {
   insertWorkflow, getWorkflowById, getWorkflowByNameStmt, listWorkflowsStmt, deleteWorkflowStmt,
@@ -368,7 +368,7 @@ async function executeLLMStep(
   config: Record<string, unknown>,
   input: Record<string, unknown>,
 ): Promise<void> {
-  if (!isLLMAvailable()) {
+  if (!isLocalModelAvailable()) {
     failStep(stepId, "No LLM provider available");
     return;
   }
@@ -378,7 +378,7 @@ async function executeLLMStep(
   const model = config.model as string | undefined;
 
   try {
-    const result = await callLLM(systemPrompt, userPrompt, model);
+    const result = await callLocalModel(systemPrompt, userPrompt, { priority: "background", model });
 
     // Try to parse as JSON, fall back to raw text
     let output: Record<string, unknown>;
