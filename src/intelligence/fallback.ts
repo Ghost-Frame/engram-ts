@@ -6,7 +6,7 @@
 // Tier chain: LLM -> Gemini CLI -> Rule-based NLP (Tier 2) -> Template (Tier 3)
 // ============================================================================
 
-import { isLLMAvailable } from "../llm/index.ts";
+import { isLocalModelAvailable } from "../llm/local.ts";
 import { log } from "../config/logger.ts";
 import { INTELLIGENCE_TIER } from "../config/index.ts";
 import type { DecompositionResult } from "./decomposition.ts";
@@ -26,7 +26,7 @@ function currentTier(): "llm" | "rules" | "template" {
   if (INTELLIGENCE_TIER === "rules") return "rules";
   if (INTELLIGENCE_TIER === "template") return "template";
   // auto: try LLM first, fall through
-  if (isLLMAvailable()) return "llm";
+  if (isLocalModelAvailable()) return "llm";
   return "rules"; // Default to rules when LLM unavailable
 }
 

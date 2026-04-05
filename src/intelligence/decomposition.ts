@@ -2,8 +2,8 @@
 // ATOMIC FACT DECOMPOSITION - Extract indexed facts from memories
 // ============================================================================
 
-import { callLLM, repairAndParseJSON, isLLMAvailable } from "../llm/index.ts";
-import { callGeminiCLI } from "../llm/gemini-cli.ts";
+import { repairAndParseJSON } from "../llm/index.ts";
+import { callLocalModel, isLocalModelAvailable } from "../llm/local.ts";
 import { log } from "../config/logger.ts";
 import { db, insertMemory, insertLink, writeVec } from "../db/index.ts";
 import { embed, embeddingToBuffer, addToEmbeddingCache } from "../embeddings/index.ts";
@@ -47,32 +47,20 @@ function validateDecomposition(parsed: unknown): parsed is DecompositionResult {
  */
 export interface DecompositionWithTier {
   result: DecompositionResult;
-  tier: "llm" | "gemini-cli" | "tier2-rules" | "tier3-template";
+  tier: "llm" | "tier2-rules" | "tier3-template";
 }
 
 export async function decomposeMemory(content: string): Promise<DecompositionWithTier | null> {
-  // Try LLM chain first
-  if (isLLMAvailable()) {
+  // Try local model (Ollama)
+  if (isLocalModelAvailable()) {
     try {
-      const response = await callLLM(DECOMPOSITION_PROMPT, content);
+      const response = await callLocalModel(DECOMPOSITION_PROMPT, content, { priority: "background" });
       const parsed = repairAndParseJSON(response);
       if (validateDecomposition(parsed)) return { result: parsed, tier: "llm" };
-      log.warn({ msg: "decomposition_parse_failed_llm", content_length: content.length });
+      log.warn({ msg: "decomposition_parse_failed_local", content_length: content.length });
     } catch (e: any) {
-      log.warn({ msg: "decomposition_llm_failed", error: e.message });
+      log.warn({ msg: "decomposition_local_failed", error: e.message });
     }
-  }
-
-  // Fallback: Gemini CLI
-  try {
-    const response = await callGeminiCLI(DECOMPOSITION_PROMPT, content);
-    if (response) {
-      const parsed = repairAndParseJSON(response);
-      if (validateDecomposition(parsed)) return { result: parsed, tier: "gemini-cli" };
-    }
-    log.warn({ msg: "decomposition_parse_failed_gemini_cli", content_length: content.length });
-  } catch (e: any) {
-    log.warn({ msg: "decomposition_gemini_cli_failed", error: e.message });
   }
 
   // Fallback: rule-based / template decomposition

@@ -44,7 +44,7 @@ import {
   refreshEmbeddingCache,
 } from "../embeddings/index.ts";
 import { embeddingToVectorJSON } from "../db/connection.ts";
-import { isLLMAvailable, callLLM } from "../llm/index.ts";
+import { callLocalModel, isLocalModelAvailable } from "../llm/local.ts";
 import { getMemoryWithoutEmbedding } from "../db/index.ts";
 
 export function registerEpisodeRoutes(router: Router): void {
@@ -61,11 +61,12 @@ export function registerEpisodeRoutes(router: Router): void {
 
       // If conversation text provided, generate narrative summary via LLM
       let summary = body.summary || null;
-      if (body.conversation && isLLMAvailable() && !summary) {
+      if (body.conversation && isLocalModelAvailable() && !summary) {
         try {
-          summary = await callLLM(
+          summary = await callLocalModel(
             EPISODE_SUMMARIZE_PROMPT,
             body.conversation.substring(0, LLM_TEXT_LIMIT),
+            { priority: "background" },
           );
         } catch (e: any) {
           log.warn({ msg: "episode_summarization_failed", error: e.message });
@@ -243,10 +244,10 @@ export function registerEpisodeRoutes(router: Router): void {
 
       let summary: string | null = ep.summary;
       if (!summary) {
-        if (isLLMAvailable()) {
+        if (isLocalModelAvailable()) {
           try {
             const memText = formatMemoriesForLLM(memories);
-            summary = await callLLM(FINALIZE_SUMMARIZE_PROMPT, memText);
+            summary = await callLocalModel(FINALIZE_SUMMARIZE_PROMPT, memText, { priority: "background" });
           } catch (e: any) {
             log.warn({ msg: "episode_llm_summary_failed", error: e.message });
           }

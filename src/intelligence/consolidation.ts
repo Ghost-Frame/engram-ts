@@ -4,8 +4,9 @@
 
 import { db, insertMemory, insertLink, writeVec, getClusterMembers, getClusterCandidates } from "../db/index.ts";
 import { log } from "../config/logger.ts";
-import { LLM_API_KEY, CONSOLIDATION_THRESHOLD } from "../config/index.ts";
-import { callLLM, repairAndParseJSON } from "../llm/index.ts";
+import { CONSOLIDATION_THRESHOLD } from "../config/index.ts";
+import { repairAndParseJSON } from "../llm/index.ts";
+import { callLocalModel, isLocalModelAvailable } from "../llm/local.ts";
 import { embed, embeddingToBuffer } from "../embeddings/index.ts";
 import { autoLink } from "../memory/search.ts";
 
@@ -34,7 +35,7 @@ export async function consolidateCluster(
   centerMemoryId: number,
   userId: number = 1
 ): Promise<{ summaryId: number; archivedCount: number } | null> {
-  if (!LLM_API_KEY) return null;
+  if (!isLocalModelAvailable()) return null;
 
   const members = getClusterMembers.all(centerMemoryId, userId, userId) as Array<any>;
   if (members.length < CONSOLIDATION_THRESHOLD) return null;
@@ -56,7 +57,7 @@ export async function consolidateCluster(
   }).join("\n\n");
 
   try {
-    const response = await callLLM(CONSOLIDATION_PROMPT, memberContents);
+    const response = await callLocalModel(CONSOLIDATION_PROMPT, memberContents, { priority: "background" });
     const result = repairAndParseJSON(response) as { summary?: string; title: string; importance: number; merged_facts?: string[]; removed_duplicates?: string[] } | null;
     if (!result || (!result.summary && !result.merged_facts)) {
       log.error({ msg: "consolidation_parse_failed", center_id: centerMemoryId });

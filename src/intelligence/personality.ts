@@ -2,7 +2,8 @@
 // PERSONALITY ENGINE - extraction, synthesis, caching
 // ============================================================================
 
-import { callLLM, isLLMAvailable, repairAndParseJSON } from "../llm/index.ts";
+import { repairAndParseJSON } from "../llm/index.ts";
+import { callLocalModel, isLocalModelAvailable } from "../llm/local.ts";
 import { log } from "../config/logger.ts";
 import {
   db,
@@ -83,7 +84,7 @@ export async function extractPersonalitySignals(
   memoryId: number,
   userId: number
 ): Promise<PersonalitySignal[]> {
-  if (!isLLMAvailable()) {
+  if (!isLocalModelAvailable()) {
     // Fallback to rule-based extraction
     const { getFallbackSignals, tierModelTag } = await import("./fallback.ts");
     const fallbackSignals = getFallbackSignals(content);
@@ -124,7 +125,7 @@ export async function extractPersonalitySignals(
   if (content.length < 50) return [];
 
   try {
-    const response = await callLLM(EXTRACTION_SYSTEM_PROMPT, content);
+    const response = await callLocalModel(EXTRACTION_SYSTEM_PROMPT, content, { priority: "background" });
     const signals = repairAndParseJSON(response) as PersonalitySignal[] | null;
 
     if (!Array.isArray(signals)) {
@@ -175,7 +176,7 @@ export async function extractPersonalitySignals(
 }
 
 export async function synthesizePersonalityProfile(userId: number): Promise<string> {
-  if (!isLLMAvailable()) {
+  if (!isLocalModelAvailable()) {
     // Fallback to rule-based synthesis
     const { getFallbackProfile } = await import("./fallback.ts");
 
@@ -265,7 +266,7 @@ export async function synthesizePersonalityProfile(userId: number): Promise<stri
     }
   }
 
-  const profile = await callLLM(SYNTHESIS_SYSTEM_PROMPT, userPrompt);
+  const profile = await callLocalModel(SYNTHESIS_SYSTEM_PROMPT, userPrompt, { priority: "background" });
 
   // Cache the profile
   const signalCount = (getPersonalitySignalCount.get(userId) as { count: number }).count;
