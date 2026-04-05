@@ -45,13 +45,18 @@ function validateDecomposition(parsed: unknown): parsed is DecompositionResult {
  * Decompose a memory into atomic facts.
  * Tries the LLM chain first, falls back to Gemini CLI, then gives up.
  */
-export async function decomposeMemory(content: string): Promise<DecompositionResult | null> {
+export interface DecompositionWithTier {
+  result: DecompositionResult;
+  tier: "llm" | "gemini-cli" | "tier2-rules" | "tier3-template";
+}
+
+export async function decomposeMemory(content: string): Promise<DecompositionWithTier | null> {
   // Try LLM chain first
   if (isLLMAvailable()) {
     try {
       const response = await callLLM(DECOMPOSITION_PROMPT, content);
       const parsed = repairAndParseJSON(response);
-      if (validateDecomposition(parsed)) return parsed;
+      if (validateDecomposition(parsed)) return { result: parsed, tier: "llm" };
       log.warn({ msg: "decomposition_parse_failed_llm", content_length: content.length });
     } catch (e: any) {
       log.warn({ msg: "decomposition_llm_failed", error: e.message });
@@ -63,14 +68,18 @@ export async function decomposeMemory(content: string): Promise<DecompositionRes
     const response = await callGeminiCLI(DECOMPOSITION_PROMPT, content);
     if (response) {
       const parsed = repairAndParseJSON(response);
-      if (validateDecomposition(parsed)) return parsed;
+      if (validateDecomposition(parsed)) return { result: parsed, tier: "gemini-cli" };
     }
     log.warn({ msg: "decomposition_parse_failed_gemini_cli", content_length: content.length });
   } catch (e: any) {
     log.warn({ msg: "decomposition_gemini_cli_failed", error: e.message });
   }
 
-  return null;
+  // Fallback: rule-based / template decomposition
+  const { getFallbackDecomposition, tierModelTag } = await import("./fallback.ts");
+  const fallbackResult = getFallbackDecomposition(content);
+  if (!fallbackResult) return null;
+  return { result: fallbackResult, tier: tierModelTag() as "tier2-rules" | "tier3-template" };
 }
 
 /**
@@ -89,6 +98,7 @@ export async function storeFactChildren(
     episodeId: number | null;
     tags: string | null;
     sessionId: string | null;
+    model?: string | null;
   },
 ): Promise<number> {
   const capped = facts.slice(0, DECOMPOSITION_MAX_FACTS);
@@ -127,7 +137,7 @@ export async function storeFactChildren(
         null,                           // forget_after
         null,                           // forget_reason
         0,                              // is_inference
-        null,                           // model
+        parentMeta.model ?? null,       // model
         parentMeta.userId,              // user_id
         parentMeta.spaceId,             // space_id
       ) as { id: number; created_at: string };
@@ -195,16 +205,16 @@ export async function decomposeAndStore(
   if (content.startsWith("[auto-captured]")) return 0;
   if (meta.category === "fact") return 0;
 
-  const result = await decomposeMemory(content);
-  if (!result) {
+  const decomposition = await decomposeMemory(content);
+  if (!decomposition) {
     log.warn({ msg: "decomposition_failed", memory_id: memoryId });
     return 0;
   }
 
-  if (result.skip) {
+  if (decomposition.result.skip) {
     db.prepare("UPDATE memories SET is_decomposed = 1 WHERE id = ?").run(memoryId);
     return 0;
   }
 
-  return storeFactChildren(memoryId, result.facts, meta);
+  return storeFactChildren(memoryId, decomposition.result.facts, { ...meta, model: decomposition.tier });
 }

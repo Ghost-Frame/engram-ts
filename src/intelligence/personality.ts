@@ -84,8 +84,40 @@ export async function extractPersonalitySignals(
   userId: number
 ): Promise<PersonalitySignal[]> {
   if (!isLLMAvailable()) {
-    log.debug({ msg: "personality_extraction_skipped", reason: "no_llm" });
-    return [];
+    // Fallback to rule-based extraction
+    const { getFallbackSignals, tierModelTag } = await import("./fallback.ts");
+    const fallbackSignals = getFallbackSignals(content);
+    if (fallbackSignals.length === 0) return [];
+
+    // Validate and insert each signal (same as LLM path)
+    const validSignals: PersonalitySignal[] = [];
+    const validTypes = new Set(["preference", "value", "motivation", "decision", "emotion", "identity"]);
+    const validValences = new Set(["positive", "negative", "neutral", "mixed"]);
+
+    for (const sig of fallbackSignals) {
+      if (!sig.signal_type || !validTypes.has(sig.signal_type)) continue;
+      if (!sig.subject || typeof sig.subject !== "string") continue;
+      if (!sig.valence || !validValences.has(sig.valence)) continue;
+
+      const intensity = Math.max(0, Math.min(1, Number(sig.intensity) || 0.5));
+
+      try {
+        insertPersonalitySignal.run(
+          memoryId, userId, sig.signal_type, sig.subject.slice(0, 200),
+          sig.valence, intensity, sig.reasoning?.slice(0, 1000) || null,
+          sig.source_text?.slice(0, 500) || null
+        );
+        validSignals.push({ ...sig, intensity });
+      } catch (e: any) {
+        log.warn({ msg: "personality_signal_insert_failed", memoryId, error: e.message });
+      }
+    }
+
+    if (validSignals.length > 0) {
+      invalidatePersonalityProfile.run(userId);
+      log.debug({ msg: "personality_extracted_fallback", memoryId, signals: validSignals.length, tier: tierModelTag() });
+    }
+    return validSignals;
   }
 
   // Skip very short content (unlikely to contain personality signals)
@@ -144,7 +176,37 @@ export async function extractPersonalitySignals(
 
 export async function synthesizePersonalityProfile(userId: number): Promise<string> {
   if (!isLLMAvailable()) {
-    throw new Error("LLM not available for personality synthesis");
+    // Fallback to rule-based synthesis
+    const { getFallbackProfile } = await import("./fallback.ts");
+
+    const signals = getPersonalitySignals.all(userId) as Array<{
+      signal_type: string; subject: string; valence: string;
+      intensity: number; reasoning: string; source_text: string;
+    }>;
+
+    if (signals.length === 0) {
+      return "Insufficient data for personality synthesis. No personality signals have been extracted yet.";
+    }
+
+    const preferences = db.prepare(
+      "SELECT domain, preference, strength FROM user_preferences WHERE user_id = ? ORDER BY strength DESC LIMIT 50"
+    ).all(userId) as Array<{ domain: string; preference: string; strength: number }>;
+
+    const facts = db.prepare(
+      "SELECT subject, verb, object FROM structured_facts WHERE user_id = ? LIMIT 50"
+    ).all(userId) as Array<{ subject: string; verb: string; object: string }>;
+
+    const staticMemories = db.prepare(
+      "SELECT content FROM memories WHERE user_id = ? AND is_static = 1 AND is_forgotten = 0 ORDER BY importance DESC LIMIT 20"
+    ).all(userId) as Array<{ content: string }>;
+
+    const profile = getFallbackProfile(signals, preferences, facts, staticMemories);
+
+    const signalCount = (getPersonalitySignalCount.get(userId) as { count: number }).count;
+    upsertPersonalityProfile.run(userId, profile, signalCount);
+
+    log.info({ msg: "personality_profile_synthesized_fallback", userId, signals: signalCount });
+    return profile;
   }
 
   // Gather all personality signals

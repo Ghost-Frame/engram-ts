@@ -228,11 +228,11 @@ function getPersonalitySignalStatement() {
   return personalitySignalSearchStatement;
 }
 
-function normalizeText(text: string): string {
+export function normalizeText(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 
-function tokenizeQuery(query: string): string[] {
+export function tokenizeQuery(query: string): string[] {
   return Array.from(new Set(
     normalizeText(query)
       .split(" ")
