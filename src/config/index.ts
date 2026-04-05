@@ -71,7 +71,7 @@ export const LLM_MODEL = process.env.LLM_MODEL || "gemini-2.5-flash";
 export const LLM_STRATEGY = (process.env.LLM_STRATEGY || "fallback") as "fallback" | "round-robin";
 
 // Decomposition config
-export const DECOMPOSITION_ENABLED = process.env.ENGRAM_DECOMPOSITION !== "0";
+export const DECOMPOSITION_ENABLED = process.env.ENGRAM_DECOMPOSITION === "1";
 export const DECOMPOSITION_MIN_LENGTH = Number(process.env.ENGRAM_DECOMPOSITION_MIN_LENGTH || 20);
 export const DECOMPOSITION_MAX_FACTS = Number(process.env.ENGRAM_DECOMPOSITION_MAX_FACTS || 8);
 export const DECOMPOSITION_RATE_LIMIT = Number(process.env.ENGRAM_DECOMPOSITION_RATE_LIMIT || 2);
