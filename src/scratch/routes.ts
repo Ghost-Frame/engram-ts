@@ -22,7 +22,7 @@ import {
   embeddingToVectorJSON,
 } from "../embeddings/index.ts";
 import { autoLink } from "../memory/search.ts";
-import { isLLMAvailable, callLLM } from "../llm/index.ts";
+import { callLocalModel, isLocalModelAvailable } from "../llm/local.ts";
 import type { ScratchEntryRow } from "./types.ts";
 
 export function registerScratchRoutes(router: Router): void {
@@ -144,7 +144,7 @@ export function registerScratchRoutes(router: Router): void {
       // Auto-summarize on session end if LLM is available and entries exist
       let summarized = false;
       let summaryId: number | null = null;
-      if (isLLMAvailable()) {
+      if (isLocalModelAvailable()) {
         const rows = getScratchSessionAll.all(auth.user_id, session) as ScratchEntryRow[];
         if (rows.length >= 2) { // only summarize if there's meaningful content
           try {
@@ -154,9 +154,10 @@ export function registerScratchRoutes(router: Router): void {
               `[${r.entry_key}] ${r.value || "(empty)"}`
             ).join("\n");
 
-            const summary = await callLLM(
+            const summary = await callLocalModel(
               `You extract lasting knowledge from agent work sessions. Given an agent's scratchpad entries, identify facts worth remembering long-term (infrastructure details, endpoints, architectural decisions, bugs found, solutions). Ignore transient state. If nothing is worth keeping, say "nothing". Be concise.`,
-              `Agent: ${agent}\nModel: ${model}\n\nEntries:\n${entriesText}`
+              `Agent: ${agent}\nModel: ${model}\n\nEntries:\n${entriesText}`,
+              { priority: "background" },
             );
 
             if (summary && summary.toLowerCase().trim() !== "nothing") {
@@ -182,7 +183,7 @@ export function registerScratchRoutes(router: Router): void {
         clientIp);
       const result: Record<string, any> = { deleted: true, session };
       if (summarized) { result.summarized = true; result.memory_id = summaryId; }
-      else if (!isLLMAvailable()) { result.summarized = false; result.reason = "llm_not_available"; }
+      else if (!isLocalModelAvailable()) { result.summarized = false; result.reason = "llm_not_available"; }
       return json(result);
     } catch (e: any) {
       return safeError("Scratch delete", e);
@@ -279,10 +280,11 @@ export function registerScratchRoutes(router: Router): void {
 
       let summary: string;
 
-      if (isLLMAvailable()) {
-        summary = await callLLM(
+      if (isLocalModelAvailable()) {
+        summary = await callLocalModel(
           `You extract lasting knowledge from agent work sessions. Given an agent's scratchpad entries from a session, identify facts, decisions, or discoveries worth remembering long-term. Ignore transient state (files being edited, tasks in progress). Focus on: infrastructure details, credentials/endpoints, architectural decisions, bugs found, solutions applied. If nothing is worth keeping, say "nothing". Be concise - one line per fact.`,
-          `Agent: ${agent}\nModel: ${model}\nSession: ${session}\n\nEntries:\n${entriesText}`
+          `Agent: ${agent}\nModel: ${model}\nSession: ${session}\n\nEntries:\n${entriesText}`,
+          { priority: "background" },
         );
       } else {
         // No LLM: just combine entries as-is

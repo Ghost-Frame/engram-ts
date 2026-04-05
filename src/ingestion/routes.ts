@@ -10,8 +10,9 @@ import type { Router } from "../router/types.ts";
 import { getContext, hasScope } from "../middleware/auth.ts";
 import { json, errorResponse, safeError } from "../helpers/index.ts";
 import { log, opsCounters } from "../config/logger.ts";
-import { LLM_API_KEY, DEFAULT_IMPORTANCE } from "../config/index.ts";
-import { callLLM, isLLMAvailable, extractFacts, processExtractionResult } from "../llm/index.ts";
+import { DEFAULT_IMPORTANCE } from "../config/index.ts";
+import { extractFacts, processExtractionResult } from "../llm/index.ts";
+import { callLocalModel, isLocalModelAvailable } from "../llm/local.ts";
 import { embedWithChunking, embeddingToBuffer, cosineSimilarity, getCachedEmbeddings } from "../embeddings/index.ts";
 import { autoLink } from "../memory/search.ts";
 import { db, insertMemory, writeVec, linkMemoryEntity, linkMemoryProject } from "../db/index.ts";
@@ -32,7 +33,7 @@ export function registerIngestionRoutes(router: Router): void {
   router.post("/add", async (req) => {
     const { auth, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
-    if (!isLLMAvailable()) return errorResponse("LLM not configured - /add requires fact extraction", 400);
+    if (!isLocalModelAvailable()) return errorResponse("LLM not configured - /add requires fact extraction", 400);
     try {
       const body = rawBody as any;
       const messages = body.messages as Array<{ role: string; content: string }>;
@@ -89,7 +90,7 @@ Return JSON:
 
 If no meaningful facts, return {"facts": []}`;
 
-      const llmResp = await callLLM(extractionPrompt, convoText);
+      const llmResp = await callLocalModel(extractionPrompt, convoText, { priority: "background" });
       if (!llmResp) return json({ added: 0, facts: [] });
 
       let extracted: { facts: Array<any> };
@@ -152,7 +153,7 @@ If no meaningful facts, return {"facts": []}`;
         }
 
         // TODO: async fact extraction for relationship detection
-        if (LLM_API_KEY) {
+        if (isLocalModelAvailable()) {
           (async () => {
             try {
               const allMems = getCachedEmbeddings(true, auth.user_id);
@@ -213,7 +214,7 @@ If no meaningful facts, return {"facts": []}`;
   router.post("/ingest", async (req) => {
     const { auth, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
-    if (!isLLMAvailable()) return errorResponse("LLM not configured - /ingest requires fact extraction", 400);
+    if (!isLocalModelAvailable()) return errorResponse("LLM not configured - /ingest requires fact extraction", 400);
     try {
       const body = rawBody as any;
       const { url: ingestUrl, text: ingestText, entity_ids, project_ids, episode_id, source } = body;
@@ -317,7 +318,7 @@ Return JSON:
   ]
 }`;
 
-        const llmResp = await callLLM(extractionPrompt, chunk);
+        const llmResp = await callLocalModel(extractionPrompt, chunk, { priority: "background" });
         if (!llmResp) continue;
 
         let extracted: { facts: Array<any> };
@@ -366,7 +367,7 @@ Return JSON:
           }
 
           // TODO: async fact extraction for relationship detection
-          if (LLM_API_KEY) {
+          if (isLocalModelAvailable()) {
             (async () => {
               try {
                 const allMems = getCachedEmbeddings(true, auth.user_id);
@@ -417,7 +418,7 @@ Return JSON:
   router.post("/derive", async (req) => {
     const { auth, body: rawBody } = getContext(req);
     if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
-    if (!isLLMAvailable()) return errorResponse("LLM not configured - /derive requires inference", 400);
+    if (!isLocalModelAvailable()) return errorResponse("LLM not configured - /derive requires inference", 400);
     try {
       const body = rawBody as any;
       const context = body.context || "";
@@ -470,7 +471,7 @@ Return JSON:
 
 If no meaningful inferences, return {"derived": []}`;
 
-      const resp = await callLLM(derivePrompt, `Here are the memories:\n\n${memoryList}`);
+      const resp = await callLocalModel(derivePrompt, `Here are the memories:\n\n${memoryList}`, { priority: "background" });
       if (!resp) return json({ derived: 0, facts: [] });
 
       let parsed: { derived: Array<any> };

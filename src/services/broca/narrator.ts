@@ -4,7 +4,7 @@
 // ============================================================================
 
 import { log } from "../../config/logger.ts";
-import { callLLM, isLLMAvailable } from "../../llm/index.ts";
+import { callLocalModel, isLocalModelAvailable } from "../../llm/local.ts";
 
 // - Template map: action -> narrative generator --
 
@@ -72,7 +72,7 @@ export async function narrateWithLLM(
   action: string,
   payload: Record<string, unknown>,
 ): Promise<string> {
-  if (!isLLMAvailable()) {
+  if (!isLocalModelAvailable()) {
     return `${agent} performed ${action} on ${service}`;
   }
 
@@ -80,7 +80,7 @@ export async function narrateWithLLM(
   const userPrompt = `Agent: ${agent}, Service: ${service}, Action: ${action}, Details: ${JSON.stringify(payload)}`;
 
   try {
-    const result = await callLLM(systemPrompt, userPrompt);
+    const result = await callLocalModel(systemPrompt, userPrompt, { priority: "background" });
     return result.trim() || `${agent} performed ${action} on ${service}`;
   } catch (e: any) {
     log.warn({ msg: "broca_llm_narrate_failed", action, error: e.message });

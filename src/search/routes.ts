@@ -9,7 +9,6 @@ import { log, opsCounters } from "../config/logger.ts";
 import { SEARCH_MIN_SCORE, RERANKER_ENABLED } from "../config/index.ts";
 import { hybridSearch } from "../memory/search.ts";
 import { crossEncoderRerank, isRerankerReady } from "../reranker/index.ts";
-import { rerank } from "../llm/index.ts";
 import { getProfileForInjection, queueResynthesisIfStale } from "../intelligence/personality.ts";
 import { buildWorkingMemoryBlock, type ScratchEntryRow } from "../routes/types.ts";
 import {
@@ -91,9 +90,6 @@ export function registerSearchRoutes(router: Router): void {
       const explicitOff = body.rerank === false;
       if (!explicitOff && RERANKER_ENABLED && isRerankerReady() && results.length > 3) {
         results = await crossEncoderRerank(query, results) as typeof results;
-        results = results.slice(0, Math.min(limit || 10, 50));
-      } else if (body.rerank === true && results.length > 3) {
-        results = await rerank(query, results) as typeof results;
         results = results.slice(0, Math.min(limit || 10, 50));
       }
 

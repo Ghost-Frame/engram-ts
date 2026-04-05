@@ -7,7 +7,7 @@ import type { ContextDeps } from "./index.ts";
 import { embed, getCachedEmbeddings } from "../embeddings/index.ts";
 import { hybridSearch } from "../memory/search.ts";
 import { crossEncoderRerank, isRerankerReady } from "../reranker/index.ts";
-import { isLLMAvailable, callLLM } from "../llm/index.ts";
+import { callLocalModel, isLocalModelAvailable } from "../llm/local.ts";
 import { getProfileForInjection, queueResynthesisIfStale } from "../intelligence/personality.ts";
 import { buildWorkingMemoryBlock } from "../routes/types.ts";
 import { db } from "../db/connection.ts";
@@ -42,10 +42,10 @@ export function buildContextDeps(): ContextDeps {
     getRecentDynamic: (userId: number, limit: number) =>
       getRecentDynamicMemories.all(userId, limit) as any[],
     callLLM: async (systemPrompt: string, userPrompt: string) => {
-      try { return await callLLM(systemPrompt, userPrompt); }
+      try { return await callLocalModel(systemPrompt, userPrompt, { priority: "background" }); }
       catch { return null; }
     },
-    isLLMAvailable,
+    isLLMAvailable: isLocalModelAvailable,
     listScratchEntriesForContext: (userId: number, session: string | null) =>
       listScratchEntriesForContext.all(userId, session, session) as any[],
     buildWorkingMemoryBlock: (rows: any[]) => buildWorkingMemoryBlock(rows) || null,

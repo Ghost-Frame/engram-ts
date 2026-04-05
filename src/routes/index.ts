@@ -95,7 +95,7 @@ import { updateCooccurrences } from "../graph/cooccurrence.ts";
 import { fsrsProcessReview, fsrsRetrievability, fsrsNextInterval, FSRSRating, calculateDecayScore as fsrsCalculateDecayScore } from "../fsrs/index.ts";
 
 // LLM + extraction
-import { callLLM, extractFacts, processExtractionResult, rerank, isLLMAvailable, isProviderAvailable } from "../llm/index.ts";
+import { callLLM, extractFacts, processExtractionResult, isLLMAvailable, isProviderAvailable } from "../llm/index.ts";
 
 // Cross-encoder reranker
 import { crossEncoderRerank, isRerankerReady } from "../reranker/index.ts";
@@ -3930,14 +3930,10 @@ Return JSON:
         }
 
         // Rerank results for better precision
-        // Cross-encoder: auto-on when loaded (disable per-request with rerank: false)
-        // LLM reranker: opt-in fallback (rerank: true when cross-encoder unavailable)
+        // Cross-encoder reranker (disable per-request with rerank: false)
         const explicitOff = body.rerank === false;
         if (!explicitOff && RERANKER_ENABLED && isRerankerReady() && results.length > 3) {
           results = await crossEncoderRerank(query, results) as typeof results;
-          results = results.slice(0, Math.min(limit || 10, 50));
-        } else if (body.rerank === true && results.length > 3) {
-          results = await rerank(query, results) as typeof results;
           results = results.slice(0, Math.min(limit || 10, 50));
         }
 

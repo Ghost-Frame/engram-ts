@@ -4,8 +4,7 @@
 
 import { db, getStaticMemories, getRecentDynamicMemories, getNoEmbedding, getMemory, updateMemoryEmbedding, updateMemoryVec, embeddingToVectorJSON } from "../db/index.ts";
 import { log } from "../config/logger.ts";
-import { LLM_API_KEY } from "../config/index.ts";
-import { callLLM } from "../llm/index.ts";
+import { callLocalModel, isLocalModelAvailable } from "../llm/local.ts";
 import { embed, embeddingToBuffer, bufferToEmbedding } from "../embeddings/index.ts";
 import { autoLink } from "./search.ts";
 
@@ -39,14 +38,15 @@ export async function generateProfile(userId: number = 1, generateSummary: boole
     })),
   };
 
-  if (generateSummary && LLM_API_KEY) {
+  if (generateSummary && isLocalModelAvailable()) {
     try {
       const staticText = staticFacts.map(f => `- [${f.category}] ${f.content}`).join("\n");
       const dynamicText = recentDynamic.slice(0, 10).map(f => `- [${f.category}] ${f.content}`).join("\n");
 
-      const summary = await callLLM(
+      const summary = await callLocalModel(
         "You are a profile summarizer. Given a user's permanent facts and recent activity, write a concise 2-4 sentence profile summary. Be factual and direct.",
-        `PERMANENT FACTS:\n${staticText || "None"}\n\nRECENT ACTIVITY:\n${dynamicText || "None"}`
+        `PERMANENT FACTS:\n${staticText || "None"}\n\nRECENT ACTIVITY:\n${dynamicText || "None"}`,
+        { priority: "background" },
       );
       profile.summary = summary.trim();
     } catch (e: any) {

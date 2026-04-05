@@ -10,7 +10,7 @@ import { db, audit } from "../db/index.ts";
 import { updateAgentTrust } from "../db/index.ts";
 import { SIGNING_SECRET_FILE } from "../config/index.ts";
 import { hybridSearch } from "../memory/search.ts";
-import { callLLM, isLLMAvailable } from "../llm/index.ts";
+import { callLocalModel, isLocalModelAvailable } from "../llm/local.ts";
 import { signExecution, computeTrustScore, generateSigningSecret } from "../../sign/index.ts";
 
 // Load or generate signing secret
@@ -86,13 +86,14 @@ export function registerGuardRoutes(router: Router): void {
       let signal: "allow" | "warn" | "block" = "warn";
       let message = "";
 
-      if (isLLMAvailable()) {
+      if (isLocalModelAvailable()) {
         try {
           const trustContext = trustScore !== null ? `\nAGENT TRUST SCORE: ${trustScore}/100 (${trustScore < 30 ? "LOW - be strict" : trustScore < 70 ? "MODERATE" : "HIGH - earned trust"})` : "";
           const rulesText = rules.slice(0, 5).map((r, i) => `RULE ${i + 1} (importance ${r.importance}): ${r.content}`).join("\n\n");
-          const llmResult = await callLLM(
+          const llmResult = await callLocalModel(
             `You are a guardrail system. Given an agent's PROPOSED ACTION and a set of RULES from memory, determine if the action conflicts with any rule. Respond with ONLY one of: BLOCK (action directly violates a rule), WARN (action is related to a rule and should proceed with caution), or ALLOW (no conflict). After the signal word, write a brief explanation on the same line.${trustContext ? " Factor the agent's trust score into borderline decisions - low-trust agents should get WARN or BLOCK more readily." : ""}`,
-            `PROPOSED ACTION: ${action}\n\nRULES:\n${rulesText}${trustContext}`
+            `PROPOSED ACTION: ${action}\n\nRULES:\n${rulesText}${trustContext}`,
+            { priority: "background" },
           );
           const first = llmResult.trim().split("\n")[0].toUpperCase();
           if (first.startsWith("BLOCK")) { signal = "block"; message = llmResult.trim(); }
