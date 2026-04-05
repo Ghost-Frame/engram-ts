@@ -57,6 +57,7 @@ export function createRouter(): Router {
         delete: (path, handler) => addRoute("DELETE", path, handler, prefix),
         use: router.use,
         group: (subPrefix, subFn) => router.group(prefix + subPrefix, subFn),
+        fallback: router.fallback,
         handle: router.handle,
       };
       fn(grouped);

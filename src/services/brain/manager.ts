@@ -313,13 +313,13 @@ export async function brainStats(): Promise<BrainStats> {
 }
 
 export async function brainDreamCycle(): Promise<any> {
-    return sendCommand({ cmd: dream_cycle });
+    return sendCommand({ cmd: "dream_cycle" });
 }
 
 export async function brainFeedbackSignal(memoryIds: number[], edgePairs: [number, number][], useful: boolean): Promise<any> {
-    return sendCommand({ cmd: feedback_signal, memory_ids: memoryIds, edge_pairs: edgePairs, useful });
+    return sendCommand({ cmd: "feedback_signal", memory_ids: memoryIds, edge_pairs: edgePairs, useful });
 }
 
 export async function brainEvolutionTrain(): Promise<any> {
-    return sendCommand({ cmd: evolution_train });
+    return sendCommand({ cmd: "evolution_train" });
 }

@@ -33,7 +33,7 @@ export function processArtifact(input: ArtifactInput, userId?: number): StoredAr
   let encrypted = false;
   const masterKey = getMasterKey();
   if (masterKey && userId != null) {
-    storedData = encryptArtifact(data, masterKey, userId);
+    storedData = encryptArtifact(data, masterKey, userId) as Buffer<ArrayBuffer>;
     encrypted = true;
   }
 

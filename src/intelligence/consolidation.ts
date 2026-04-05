@@ -106,7 +106,7 @@ export async function consolidateCluster(
     writeVec(summaryMem.id, embArray);
     await autoLink(summaryMem.id, embArray, userId);
     log.info({ msg: "consolidated", linked, summary_id: summaryMem.id, title: result.title });
-    return { summaryId: summaryMem.id, linkedCount: linked };
+    return { summaryId: summaryMem.id, archivedCount: linked };
   } catch (e: any) {
     log.error({ msg: "consolidation_failed", center_id: centerMemoryId, error: e.message });
     return null;
@@ -118,7 +118,7 @@ export async function runConsolidationSweep(userId: number = 1): Promise<number>
   let totalConsolidated = 0;
   for (const c of candidates) {
     const result = await consolidateCluster(c.source_id, userId);
-    if (result) totalConsolidated += result.linkedCount;
+    if (result) totalConsolidated += result.archivedCount;
   }
   return totalConsolidated;
 }
