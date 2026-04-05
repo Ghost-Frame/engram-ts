@@ -1,14 +1,13 @@
 // ============================================================================
-// LLM - Client, fact extraction, reranker
-// Supports: Anthropic, MiniMax, Vertex AI, OpenAI-compatible (Ollama, LiteLLM, vLLM, Gemini, Groq, DeepSeek)
-// Set via env: LLM_API_KEY, LLM_URL, LLM_MODEL
+// LLM UTILITIES - JSON parsing, fact extraction, result processing
+// All inference now routes through callLocalModel in ./local.ts
+// This file retains only utilities and the extractFacts pipeline.
 // ============================================================================
 
-import { LLM_URL, LLM_API_KEY, LLM_MODEL, LLM_PROVIDERS, LLM_STRATEGY, type LLMProvider, RERANKER_ENABLED, RERANKER_TOP_K } from "../config/index.ts";
+import { LLM_PROVIDERS, type LLMProvider } from "../config/index.ts";
 import { log, opsCounters } from "../config/logger.ts";
-import { withSpan } from "../tracing.ts";
 import { postProcessNewFacts } from "../intelligence/temporal.ts";
-import { getVertexAccessToken } from "../auth/google-auth.ts";
+import { callLocalModel } from "./local.ts";
 
 interface FactExtractionResult {
   facts: Array<{
@@ -26,7 +25,7 @@ interface FactExtractionResult {
   };
 }
 
-// --- LLM availability check ---
+// --- Provider availability check (used by health/admin status reporting) ---
 
 export function isProviderAvailable(p: LLMProvider): boolean {
   if (p.key) return true;
@@ -35,216 +34,8 @@ export function isProviderAvailable(p: LLMProvider): boolean {
   return false;
 }
 
-let _llmReachable: boolean | null = null;
-
-export async function probeLLM(): Promise<boolean> {
-  // Any provider with an API key or Vertex SA auth means LLM is available
-  if (LLM_PROVIDERS.some(isProviderAvailable)) { _llmReachable = true; return true; }
-  if (!LLM_URL.includes("127.0.0.1") && !LLM_URL.includes("localhost")) { _llmReachable = false; return false; }
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 2000);
-    const resp = await fetch(LLM_URL.replace(/\/chat\/completions$/, "/models"), { signal: ctrl.signal });
-    clearTimeout(timer);
-    _llmReachable = resp.ok;
-  } catch {
-    _llmReachable = false;
-  }
-  log.info({ msg: "llm_probe", reachable: _llmReachable, providers: LLM_PROVIDERS.map(p => p.name) });
-  return _llmReachable;
-}
-
-export function isLLMAvailable(): boolean {
-  if (LLM_PROVIDERS.some(isProviderAvailable)) return true;
-  if (_llmReachable === false) return false;
-  if (_llmReachable === true) return true;
-  if (LLM_URL.includes("127.0.0.1") || LLM_URL.includes("localhost")) return true;
-  return false;
-}
-
-// --- Single-provider call (internal) ---
-
-function isRetryable(status: number): boolean {
-  return status === 429 || status === 500 || status === 502 || status === 503 || status === 529;
-}
-
-async function callProvider(provider: LLMProvider, systemPrompt: string, userPrompt: string, model?: string): Promise<string> {
-  const useModel = model || provider.model;
-  const url = provider.url;
-  const key = provider.key;
-
-  // Provider detection
-  let isAnthropic = false;
-  let isMiniMax = false;
-  let isVertexAI = false;
-  try {
-    const hostname = new URL(url).hostname.toLowerCase();
-    isAnthropic = hostname === "api.anthropic.com" || hostname.endsWith(".api.anthropic.com");
-    isMiniMax = hostname === "api.minimax.io" || hostname.endsWith(".minimaxi.com");
-    isVertexAI = hostname.endsWith("-aiplatform.googleapis.com");
-  } catch {}
-
-  if (isAnthropic) {
-    if (!key) throw new Error("API key required for Anthropic");
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: useModel, max_tokens: 2000, system: systemPrompt, messages: [{ role: "user", content: userPrompt }] }),
-    });
-    if (!resp.ok) {
-      const text = await resp.text();
-      const err = new Error(`LLM ${provider.name} failed (${resp.status}): ${text}`);
-      (err as any).status = resp.status;
-      throw err;
-    }
-    const data = await resp.json() as any;
-    return data.content?.[0]?.text || "";
-  }
-
-  // MiniMax: OpenAI-compatible but requires API key
-  if (isMiniMax && !key) throw new Error("API key required for MiniMax");
-
-  // OpenAI-compatible (also handles MiniMax, Gemini, Groq, DeepSeek, Vertex AI, etc.)
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (isVertexAI) {
-    // Vertex AI uses OAuth2 bearer tokens from service account
-    try {
-      const token = await getVertexAccessToken();
-      headers["Authorization"] = `Bearer ${token}`;
-    } catch (e: any) {
-      // Fall back to the provider's key if service account auth fails
-      if (key) headers["Authorization"] = `Bearer ${key}`;
-      else throw new Error(`Vertex AI auth failed: ${e.message}`);
-    }
-  } else if (key) {
-    headers["Authorization"] = `Bearer ${key}`;
-  }
-
-  const resp = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model: useModel,
-      messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
-      max_tokens: 2000,
-      temperature: 0.1,
-    }),
-  });
-
-  if (!resp.ok) {
-    const text = await resp.text();
-    const err = new Error(`LLM ${provider.name} failed (${resp.status}): ${text}`);
-    (err as any).status = resp.status;
-    throw err;
-  }
-
-  const data = await resp.json() as any;
-  return data.choices?.[0]?.message?.content || "";
-}
-
-// --- Main LLM call with fallback chain or round-robin ---
-
-let _rrIndex = 0;
-
-export async function callLLM(systemPrompt: string, userPrompt: string, model?: string): Promise<string> {
-  return withSpan("engram.callLLM", { "llm.strategy": LLM_STRATEGY, "llm.model": model || LLM_MODEL, "llm.prompt_length": userPrompt.length }, async (span) => {
-    const providers = LLM_PROVIDERS.filter(isProviderAvailable);
-    if (providers.length === 0) throw new Error("No LLM providers configured");
-
-    const startIdx = LLM_STRATEGY === "round-robin" ? _rrIndex % providers.length : 0;
-    if (LLM_STRATEGY === "round-robin") _rrIndex++;
-
-    let lastError: Error | null = null;
-    for (let i = 0; i < providers.length; i++) {
-      const provider = providers[(startIdx + i) % providers.length];
-      try {
-        const result = await callProvider(provider, systemPrompt, userPrompt, model);
-        _llmReachable = true;
-        span.setAttribute("llm.provider_used", provider.name);
-        span.setAttribute("llm.response_length", result.length);
-        if (LLM_STRATEGY === "round-robin" && providers.length > 1) {
-          log.info({ msg: "llm_round_robin", provider: provider.name, index: (startIdx + i) % providers.length });
-        }
-        return result;
-      } catch (e: any) {
-        lastError = e;
-        const status = e?.status || 0;
-        const isConn = e?.cause?.code === "ECONNREFUSED" || e?.message?.includes("ECONNREFUSED") || e?.message?.includes("fetch failed");
-
-        if (isConn || isRetryable(status)) {
-          log.warn({ msg: "llm_provider_failed", provider: provider.name, status, error: e.message, remaining: providers.length - i - 1 });
-          span.addEvent("llm_provider_failed", { provider: provider.name, status });
-          continue;
-        }
-        throw e;
-      }
-    }
-
-    _llmReachable = false;
-    throw lastError || new Error("All LLM providers failed");
-  });
-}
-
-const FACT_EXTRACTION_PROMPT = `You are a fact extraction engine for a persistent memory system. Your job is to analyze new content being stored and compare it with existing memories.
-
-Given the NEW CONTENT and up to 3 SIMILAR EXISTING MEMORIES, you must:
-1. Determine if this new content updates, extends, or duplicates any existing memory
-2. Classify whether each fact is STATIC (permanent, unlikely to change - like preferences, identity, infrastructure) or DYNAMIC (temporary, likely to change - like current tasks, recent events, moods)
-3. For dynamic facts, estimate when they should be forgotten (if applicable)
-4. Rate importance 1-10
-
-Respond with ONLY valid JSON (no markdown, no backticks):
-{
-  "facts": [
-    {
-      "content": "extracted fact text",
-      "category": "task|discovery|decision|state|issue",
-      "is_static": true/false,
-      "forget_after": "ISO datetime or null",
-      "forget_reason": "reason or null",
-      "importance": 1-10
-    }
-  ],
-  "tags": ["lowercase", "keyword", "tags"],
-  "structured_facts": [
-    {
-      "subject": "who (user/assistant/entity name)",
-      "verb": "what action",
-      "object": "what was acted upon",
-      "quantity": null,
-      "unit": null,
-      "date_ref": "relative date if mentioned (yesterday, last week)",
-      "date_approx": "YYYY-MM-DD if determinable",
-      "location": "where it happened (city/building/server/null)",
-      "context": "why/how - brief causal context (null if not applicable)"
-    }
-  ],
-  "preferences": [{"domain": "category", "preference": "likes/dislikes X"}],
-  "state_updates": [{"key": "current_role|current_location|etc", "value": "new value"}],
-  "relation_to_existing": {
-    "type": "none|updates|extends|duplicate|contradicts|caused_by|prerequisite_for|corrects",
-    "existing_memory_id": number_or_null,
-    "reason": "why this relation was determined"
-  }
-}
-
-Rules:
-- "corrects" = explicit correction of existing memory. HIGHEST priority relation.
-- "updates" = supersedes with newer info
-- "extends" = adds to without contradicting
-- "duplicate" = same thing
-- "contradicts" = directly conflicts
-- "caused_by" / "prerequisite_for" = causal relationships
-- "none" = no meaningful relation
-- For forget_after: ISO 8601 datetime. Permanent facts = null.
-- 1-3 key facts per content
-- Extract BOTH user facts AND assistant actions. If the assistant recommended, implemented, fixed, diagnosed, or produced something, extract that as a fact too (e.g. "assistant implemented FSRS-6 spaced repetition", "assistant recommended using WAL mode").
-- Include "tags": 2-5 lowercase keywords
-- For structured_facts: decompose into atomic WHAT/WHEN/WHERE/WHO/WHY dimensions. WHO = subject, WHAT = verb+object, WHEN = date_ref/date_approx, WHERE = location, WHY = context. Include as many dimensions as the content provides.
-- Include "preferences", "state_updates" if applicable`;
-
 // ============================================================================
-// ROBUST JSON PARSING - repair common LLM output issues
+// ROBUST JSON PARSING - repair common model output issues
 // ============================================================================
 
 export function repairAndParseJSON(raw: string): unknown | null {
@@ -254,13 +45,12 @@ export function repairAndParseJSON(raw: string): unknown | null {
   const firstBrace = str.indexOf("{");
   const firstBracket = str.indexOf("[");
   let start = -1;
-  let openChar: string;
   let closeChar: string;
   if (firstBrace === -1 && firstBracket === -1) return null;
   if (firstBracket === -1 || (firstBrace !== -1 && firstBrace < firstBracket)) {
-    start = firstBrace; openChar = "{"; closeChar = "}";
+    start = firstBrace; closeChar = "}";
   } else {
-    start = firstBracket; openChar = "["; closeChar = "]";
+    start = firstBracket; closeChar = "]";
   }
   const lastClose = str.lastIndexOf(closeChar);
   if (lastClose > start) {
@@ -322,14 +112,16 @@ export function repairAndParseJSON(raw: string): unknown | null {
   }
 }
 
-async function callLLMAndParse<T>(
+// --- Call local model and parse JSON with retry ---
+
+async function callLocalAndParse<T>(
   systemPrompt: string,
   userPrompt: string,
   validator: (result: unknown) => result is T
 ): Promise<T | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const response = await callLLM(systemPrompt, userPrompt);
+      const response = await callLocalModel(systemPrompt, userPrompt, { priority: "background" });
       const parsed = repairAndParseJSON(response);
       if (parsed !== null && validator(parsed)) return parsed;
       if (attempt === 0) {
@@ -344,6 +136,68 @@ async function callLLMAndParse<T>(
   log.error({ msg: "json_parse_exhausted", prompt_length: userPrompt.length });
   return null;
 }
+
+// ============================================================================
+// FACT EXTRACTION
+// ============================================================================
+
+const FACT_EXTRACTION_PROMPT = `You are a fact extraction engine for a persistent memory system. Your job is to analyze new content being stored and compare it with existing memories.
+
+Given the NEW CONTENT and up to 3 SIMILAR EXISTING MEMORIES, you must:
+1. Determine if this new content updates, extends, or duplicates any existing memory
+2. Classify whether each fact is STATIC (permanent, unlikely to change - like preferences, identity, infrastructure) or DYNAMIC (temporary, likely to change - like current tasks, recent events, moods)
+3. For dynamic facts, estimate when they should be forgotten (if applicable)
+4. Rate importance 1-10
+
+Respond with ONLY valid JSON (no markdown, no backticks):
+{
+  "facts": [
+    {
+      "content": "extracted fact text",
+      "category": "task|discovery|decision|state|issue",
+      "is_static": true/false,
+      "forget_after": "ISO datetime or null",
+      "forget_reason": "reason or null",
+      "importance": 1-10
+    }
+  ],
+  "tags": ["lowercase", "keyword", "tags"],
+  "structured_facts": [
+    {
+      "subject": "who (user/assistant/entity name)",
+      "verb": "what action",
+      "object": "what was acted upon",
+      "quantity": null,
+      "unit": null,
+      "date_ref": "relative date if mentioned (yesterday, last week)",
+      "date_approx": "YYYY-MM-DD if determinable",
+      "location": "where it happened (city/building/server/null)",
+      "context": "why/how - brief causal context (null if not applicable)"
+    }
+  ],
+  "preferences": [{"domain": "category", "preference": "likes/dislikes X"}],
+  "state_updates": [{"key": "current_role|current_location|etc", "value": "new value"}],
+  "relation_to_existing": {
+    "type": "none|updates|extends|duplicate|contradicts|caused_by|prerequisite_for|corrects",
+    "existing_memory_id": number_or_null,
+    "reason": "why this relation was determined"
+  }
+}
+
+Rules:
+- "corrects" = explicit correction of existing memory. HIGHEST priority relation.
+- "updates" = supersedes with newer info
+- "extends" = adds to without contradicting
+- "duplicate" = same thing
+- "contradicts" = directly conflicts
+- "caused_by" / "prerequisite_for" = causal relationships
+- "none" = no meaningful relation
+- For forget_after: ISO 8601 datetime. Permanent facts = null.
+- 1-3 key facts per content
+- Extract BOTH user facts AND assistant actions. If the assistant recommended, implemented, fixed, diagnosed, or produced something, extract that as a fact too (e.g. "assistant implemented FSRS-6 spaced repetition", "assistant recommended using WAL mode").
+- Include "tags": 2-5 lowercase keywords
+- For structured_facts: decompose into atomic WHAT/WHEN/WHERE/WHO/WHY dimensions. WHO = subject, WHAT = verb+object, WHEN = date_ref/date_approx, WHERE = location, WHY = context. Include as many dimensions as the content provides.
+- Include "preferences", "state_updates" if applicable`;
 
 export async function extractFacts(
   content: string,
@@ -360,7 +214,7 @@ export async function extractFacts(
     } else {
       userPrompt += "SIMILAR EXISTING MEMORIES: none found\n";
     }
-    const result = await callLLMAndParse<FactExtractionResult>(
+    const result = await callLocalAndParse<FactExtractionResult>(
       FACT_EXTRACTION_PROMPT, userPrompt,
       (r): r is FactExtractionResult => !!r && Array.isArray((r as any).facts)
     );
@@ -382,10 +236,8 @@ import { emitWebhookEvent } from "../platform/webhooks.ts";
 
 function propagateConfidence(memoryId: number, relationType: string, existingMemoryId: number, userId: number): void {
   if (relationType === "updates") {
-    // Old memory's confidence drops - it's been superseded
     updateConfidence.run(0.3, existingMemoryId);
   } else if (relationType === "contradicts") {
-    // Both memories get reduced confidence - conflict needs resolution
     const existing = getMemoryWithoutEmbedding.get(existingMemoryId) as any;
     const current = getMemoryWithoutEmbedding.get(memoryId) as any;
     if (existing) {
@@ -393,7 +245,7 @@ function propagateConfidence(memoryId: number, relationType: string, existingMem
       updateConfidence.run(newConf, existingMemoryId);
     }
     if (current) {
-      updateConfidence.run(0.7, memoryId); // newer info gets slight benefit of doubt
+      updateConfidence.run(0.7, memoryId);
     }
 
     emitWebhookEvent("contradiction.detected", {
@@ -403,7 +255,6 @@ function propagateConfidence(memoryId: number, relationType: string, existingMem
       existing_content: existing?.content,
     }, userId);
   } else if (relationType === "extends") {
-    // Extended memory gets a small confidence boost - it's been corroborated
     const existing = getMemoryWithoutEmbedding.get(existingMemoryId) as any;
     if (existing) {
       const newConf = Math.min(1.0, (existing.confidence || 1.0) * 1.05);
@@ -504,7 +355,6 @@ export function processExtractionResult(
         log.warn({ msg: "structured_fact_insert_failed", memory_id: newMemoryId, error: e?.message });
       }
     }
-    // Stamp episode provenance from the parent memory onto LLM-extracted facts
     try {
       const mem = db.prepare("SELECT episode_id FROM memories WHERE id = ?").get(newMemoryId) as { episode_id: number | null } | undefined;
       if (mem?.episode_id) {
@@ -514,7 +364,6 @@ export function processExtractionResult(
     } catch (e: any) {
       log.warn({ msg: "episode_provenance_stamp_failed", memory_id: newMemoryId, error: e?.message });
     }
-    // Bi-temporal: set valid_at and detect contradictions for LLM-extracted facts
     postProcessNewFacts(newMemoryId, ownerId);
   }
 
@@ -541,55 +390,5 @@ export function processExtractionResult(
         log.warn({ msg: "state_upsert_failed", memory_id: newMemoryId, error: e?.message });
       }
     }
-  }
-}
-
-// ============================================================================
-// LLM-BASED RERANKER
-// ============================================================================
-
-export async function rerank(
-  query: string,
-  candidates: Array<{ id: number; content: string; score: number; [k: string]: any }>,
-  topK: number = RERANKER_TOP_K
-): Promise<typeof candidates> {
-  if (!RERANKER_ENABLED || !isLLMAvailable() || candidates.length <= 3) return candidates;
-
-  const toRerank = candidates.slice(0, Math.min(topK, candidates.length));
-  const numbered = toRerank.map((c, i) => `[${i}] ${c.content.substring(0, 200)}`).join("\n");
-
-  const prompt = `Given the query, rank the following documents by relevance. Return ONLY a JSON array of indices from most to least relevant.
-
-Query: "${query}"
-
-Documents:
-${numbered}
-
-Return format: [most_relevant_index, next_most_relevant, ...]`;
-
-  try {
-    const resp = await callLLM("You are a document reranking engine. Return only a JSON array of integer indices.", prompt);
-    if (!resp) return candidates;
-    const match = resp.match(/\[[\d,\s]+\]/);
-    if (!match) return candidates;
-    const indices = JSON.parse(match[0]) as number[];
-    const reranked: typeof candidates = [];
-    for (let rank = 0; rank < indices.length; rank++) {
-      const idx = indices[rank];
-      if (idx >= 0 && idx < toRerank.length) {
-        const item = { ...toRerank[idx] };
-        item.score = item.score * (1 + (indices.length - rank) / indices.length * 0.5);
-        reranked.push(item);
-      }
-    }
-    const rerankedIds = new Set(reranked.map(r => r.id));
-    for (const c of candidates) {
-      if (!rerankedIds.has(c.id)) reranked.push(c);
-    }
-    return reranked;
-  } catch (e: any) {
-    opsCounters.reranker_fallbacks++;
-    log.warn({ msg: "llm_rerank_failed", query: query.substring(0, 80), error: e?.message });
-    return candidates;
   }
 }
