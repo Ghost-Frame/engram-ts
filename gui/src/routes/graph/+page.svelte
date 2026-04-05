@@ -410,6 +410,8 @@
         if (highlightLinks.has(link)) return true;
         return (link.weight ?? 0) >= wt;
       });
+    // Force re-render after updating accessors
+    graphInstance.refresh();
   });
 
   // Clusters: toggle community clustering forces
