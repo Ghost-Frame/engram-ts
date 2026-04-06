@@ -114,21 +114,21 @@ export function getEvent(id: number, userId: number) {
 
 // - Channels --
 
-export function listChannels() {
+export function listChannels(userId: number) {
   return db.prepare(`
     SELECT c.*,
-      (SELECT COUNT(*) FROM axon_events WHERE channel = c.name) as event_count,
-      (SELECT COUNT(*) FROM axon_subscriptions WHERE channel = c.name) as subscriber_count
-    FROM axon_channels c ORDER BY c.name
-  `).all();
+      (SELECT COUNT(*) FROM axon_events WHERE channel = c.name AND user_id = ?) as event_count,
+      (SELECT COUNT(*) FROM axon_subscriptions WHERE channel = c.name AND user_id = ?) as subscriber_count
+    FROM axon_channels c WHERE c.user_id = ? ORDER BY c.name
+  `).all(userId, userId, userId);
 }
 
-export function createChannel(name: string, description?: string, retainHours?: number) {
+export function createChannel(userId: number, name: string, description?: string, retainHours?: number) {
   const retain = retainHours ?? 168;
   db.prepare(
-    "INSERT INTO axon_channels (name, description, retain_hours) VALUES (?, ?, ?)"
-  ).run(name, description ?? null, retain);
-  return db.prepare("SELECT * FROM axon_channels WHERE name = ?").get(name);
+    "INSERT INTO axon_channels (name, description, retain_hours, user_id) VALUES (?, ?, ?, ?)"
+  ).run(name, description ?? null, retain, userId);
+  return db.prepare("SELECT * FROM axon_channels WHERE name = ? AND user_id = ?").get(name, userId);
 }
 
 // - Subscriptions --

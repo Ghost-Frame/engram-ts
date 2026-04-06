@@ -69,6 +69,10 @@ migrate(`ALTER TABLE axon_cursors ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`
 migrate(`CREATE INDEX IF NOT EXISTS idx_axon_events_user ON axon_events(user_id)`);
 migrate(`CREATE UNIQUE INDEX IF NOT EXISTS idx_axon_subs_user_agent_channel ON axon_subscriptions(user_id, agent, channel)`);
 
+migrate(`ALTER TABLE axon_channels ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`);
+migrate(`CREATE INDEX IF NOT EXISTS idx_axon_channels_user ON axon_channels(user_id)`);
+migrate(`CREATE UNIQUE INDEX IF NOT EXISTS idx_axon_channels_user_name ON axon_channels(user_id, name)`);
+
 // - Seed default channels --
 
 const seedChannel = db.prepare("INSERT OR IGNORE INTO axon_channels (name, description) VALUES (?, ?)");
