@@ -24,7 +24,7 @@ jobs:
 
       - name: Start server
         run: |
-          ENGRAM_OPEN_ACCESS=1 ENGRAM_OPEN_ACCESS_SCOPES=read,write,admin node --experimental-strip-types server-split.ts &
+          ENGRAM_OPEN_ACCESS=1 ENGRAM_OPEN_ACCESS_SCOPES=read,write,admin node --experimental-strip-types server.ts &
           timeout 30 bash -c 'until curl -sf http://127.0.0.1:4200/live > /dev/null 2>&1; do sleep 1; done'
 
       - name: Contract tests

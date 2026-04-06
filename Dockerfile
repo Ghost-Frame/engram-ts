@@ -2,9 +2,9 @@ FROM node:25-slim
 
 LABEL org.opencontainers.image.title="Engram" \
       org.opencontainers.image.description="Persistent memory system for AI agents" \
-      org.opencontainers.image.url="https://codeberg.org/GhostFrame/engram" \
-      org.opencontainers.image.source="https://codeberg.org/GhostFrame/engram" \
-      org.opencontainers.image.documentation="https://codeberg.org/GhostFrame/engram" \
+      org.opencontainers.image.url="https://github.com/Ghost-Frame/engram" \
+      org.opencontainers.image.source="https://github.com/Ghost-Frame/engram" \
+      org.opencontainers.image.documentation="https://github.com/Ghost-Frame/engram" \
       org.opencontainers.image.licenses="Elastic-2.0" \
       org.opencontainers.image.vendor="Syntheos"
 

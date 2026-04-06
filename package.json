@@ -4,7 +4,7 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "https://github.com/zanfiel/engram.git"
+    "url": "https://github.com/Ghost-Frame/engram.git"
   },
   "engines": {
     "node": ">=22.0.0"
@@ -13,7 +13,7 @@
     "./sdk": "./sdk/index.ts"
   },
   "files": [
-    "server-split.ts",
+    "server.ts",
     "mcp-server.ts",
     "sdk/",
     "src/",
@@ -29,13 +29,13 @@
     "CHANGELOG.md"
   ],
   "bin": {
-    "engram": "./server-split.ts",
+    "engram": "./server.ts",
     "engram-mcp": "./mcp-server.ts",
     "engram-cli": "./src/cli/index.ts"
   },
   "scripts": {
-    "start": "node --experimental-strip-types --env-file=.env server-split.ts",
-    "dev": "node --experimental-strip-types --env-file=.env --watch server-split.ts",
+    "start": "node --experimental-strip-types --env-file=.env server.ts",
+    "dev": "node --experimental-strip-types --env-file=.env --watch server.ts",
     "mcp": "node --experimental-strip-types mcp-server.ts",
     "test": "node --test tests/api.test.mjs",
     "typecheck": "tsc --noEmit",
