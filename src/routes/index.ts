@@ -3431,7 +3431,7 @@ Return JSON:
 
         // === DURABLE POST-STORE PIPELINE ===
         // Enqueue to job table for reliable processing with retries.
-        // Worker loop in server-split.ts processes these every 2 seconds.
+        // Worker loop in server.ts processes these every 2 seconds.
         if (embArray) {
           const embBase64 = Buffer.from(embArray.buffer, embArray.byteOffset, embArray.byteLength).toString("base64");
           enqueueJob("post_store", {
@@ -8537,7 +8537,7 @@ function autoArchiveDeadMemories(): void {
 }
 
 // Schedule background jobs
-// NOTE: Decay refresh runs in server-split.ts (15min, lease-protected). Do NOT duplicate here.
+// NOTE: Decay refresh runs in server.ts (15min, lease-protected). Do NOT duplicate here.
 
 // Auto-archive: every 24 hours
 setInterval(() => { autoArchiveDeadMemories(); }, 24 * 60 * 60 * 1000);

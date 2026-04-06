@@ -81,7 +81,7 @@ docker compose up -d
 
 # Or run directly (Node 22+)
 npm install
-node --experimental-strip-types server-split.ts
+node --experimental-strip-types server.ts
 ```
 
 Create an API key, then store and search:
@@ -809,7 +809,7 @@ docker compose up -d
 
 ```bash
 npm install
-node --experimental-strip-types server-split.ts
+node --experimental-strip-types server.ts
 ```
 
 ### Storage

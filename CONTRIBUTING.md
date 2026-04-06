@@ -29,7 +29,7 @@ Engram is a single-process TypeScript server with zero external service dependen
 
 ```
 archive/server.ts.legacy-monolith  (archived monolith, ~7400 lines, do not use)
-server-split.ts    modular entrypoint, imports from src/
+server.ts    modular entrypoint, imports from src/
 mcp-server.ts      MCP server, JSON-RPC 2.0 stdio transport
 src/
 ├── auth/          API keys, GUI cookies, RBAC, Google Cloud auth
@@ -68,7 +68,7 @@ landing.html       marketing landing page
 
 ### Key Design Decisions
 
-1. **Modular architecture**: The server was split from a monolith (`archive/server.ts.legacy-monolith`, ~7400 lines) into `src/` modules. The only supported entrypoint is `server-split.ts`.
+1. **Modular architecture**: The server was split from a monolith (`archive/server.ts.legacy-monolith`, ~7400 lines) into `src/` modules. The only supported entrypoint is `server.ts`.
 
 2. **libsql, not better-sqlite3**: We use libsql for native FLOAT32 vector columns and HNSW index support. This gives us vector search without an external service.
 
@@ -103,7 +103,7 @@ API tests use Node.js built-in test runner. Start the server, then:
 ENGRAM_URL=http://localhost:4200 node --test tests/api.test.mjs
 
 # Or use ENGRAM_OPEN_ACCESS=1 to skip auth headers
-ENGRAM_OPEN_ACCESS=1 node --experimental-strip-types server-split.ts &
+ENGRAM_OPEN_ACCESS=1 node --experimental-strip-types server.ts &
 ENGRAM_URL=http://localhost:4200 node --test tests/api.test.mjs
 ```
 

@@ -1,6 +1,6 @@
 // ============================================================================
 // TRACING - OpenTelemetry distributed tracing for Engram
-// Must be imported BEFORE all other modules in server-split.ts
+// Must be imported BEFORE all other modules in server.ts
 // ============================================================================
 
 import { NodeSDK } from "@opentelemetry/sdk-node";

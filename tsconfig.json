@@ -22,7 +22,7 @@
     "noEmit": true
   },
   "include": [
-    "server-split.ts",
+    "server.ts",
     "mcp-server.ts",
     "src/**/*.ts"
   ],
