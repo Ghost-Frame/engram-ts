@@ -34,13 +34,13 @@ export async function handleSomaRoutes(
   // - Agents (fixed routes FIRST, before parameterized) --
 
   if (sub === "/agents" && method === "POST") {
-    const { body: rawBody } = getContext(req);
+    const { body: rawBody, auth } = getContext(req);
     const body = (rawBody || {}) as any;
     const { name, type, description, capabilities, config } = body;
     if (!name || typeof name !== "string") return errorResponse("name required", 400, requestId);
     if (!type || typeof type !== "string") return errorResponse("type required", 400, requestId);
     try {
-      return json(registerAgent({ name, type, description, capabilities, config }), 201);
+      return json(registerAgent(auth.user_id, { name, type, description, capabilities, config }), 201);
     } catch (e: any) {
       if (e.message?.includes("UNIQUE")) return errorResponse("Agent already exists", 409, requestId);
       throw e;
@@ -48,7 +48,8 @@ export async function handleSomaRoutes(
   }
 
   if (sub === "/agents" && method === "GET") {
-    return json(listAgents({
+    const { auth } = getContext(req);
+    return json(listAgents(auth.user_id, {
       type: url.searchParams.get("type") ?? undefined,
       status: url.searchParams.get("status") ?? undefined,
       capability: url.searchParams.get("capability") ?? undefined,
@@ -58,38 +59,42 @@ export async function handleSomaRoutes(
 
   // GET /soma/agents/stale - MUST come before /soma/agents/:id
   if (sub === "/agents/stale" && method === "GET") {
+    const { auth } = getContext(req);
     const minutes = bounded(url.searchParams.get("minutes"), 1, 1440, 5);
-    return json(getStaleAgents(minutes));
+    return json(getStaleAgents(auth.user_id, minutes));
   }
 
   // GET /soma/agents/capability/:name - MUST come before /soma/agents/:id
   const capMatch = sub.match(/^\/agents\/capability\/(.+)$/);
   if (capMatch && method === "GET") {
-    return json(findByCapability(decodeURIComponent(capMatch[1])));
+    const { auth } = getContext(req);
+    return json(findByCapability(auth.user_id, decodeURIComponent(capMatch[1])));
   }
 
   // /soma/agents/:id routes
   const agentMatch = sub.match(/^\/agents\/(\d+)$/);
 
   if (agentMatch && method === "GET") {
-    const agent = getAgent(parseInt(agentMatch[1], 10));
+    const { auth } = getContext(req);
+    const agent = getAgent(parseInt(agentMatch[1], 10), auth.user_id);
     if (!agent) return errorResponse("Agent not found", 404, requestId);
     return json(agent);
   }
 
   if (agentMatch && method === "PATCH") {
-    const { body: rawBody } = getContext(req);
+    const { body: rawBody, auth } = getContext(req);
     const body = (rawBody || {}) as any;
     if (body.status !== undefined && !VALID_AGENT_STATUSES.has(body.status)) {
       return errorResponse(`Invalid status. Must be one of: ${[...VALID_AGENT_STATUSES].join(", ")}`, 400, requestId);
     }
-    const agent = updateAgent(parseInt(agentMatch[1], 10), body);
+    const agent = updateAgent(parseInt(agentMatch[1], 10), auth.user_id, body);
     if (!agent) return errorResponse("Agent not found", 404, requestId);
     return json(agent);
   }
 
   if (agentMatch && method === "DELETE") {
-    const ok = deregisterAgent(parseInt(agentMatch[1], 10));
+    const { auth } = getContext(req);
+    const ok = deregisterAgent(parseInt(agentMatch[1], 10), auth.user_id);
     if (!ok) return errorResponse("Agent not found", 404, requestId);
     return json({ ok: true });
   }
@@ -97,12 +102,12 @@ export async function handleSomaRoutes(
   // POST /soma/agents/:id/heartbeat
   const hbMatch = sub.match(/^\/agents\/(\d+)\/heartbeat$/);
   if (hbMatch && method === "POST") {
-    const { body: rawBody } = getContext(req);
+    const { body: rawBody, auth } = getContext(req);
     const body = (rawBody || {}) as any;
     if (body.status !== undefined && !VALID_AGENT_STATUSES.has(body.status)) {
       return errorResponse(`Invalid status. Must be one of: ${[...VALID_AGENT_STATUSES].join(", ")}`, 400, requestId);
     }
-    const agent = heartbeat(parseInt(hbMatch[1], 10), body.status);
+    const agent = heartbeat(parseInt(hbMatch[1], 10), auth.user_id, body.status);
     if (!agent) return errorResponse("Agent not found", 404, requestId);
     return json(agent);
   }
@@ -124,8 +129,9 @@ export async function handleSomaRoutes(
   // POST /soma/agents/:id/logs
   const logMatch = sub.match(/^\/agents\/(\d+)\/logs$/);
   if (logMatch && method === "POST") {
+    const { auth } = getContext(req);
     const agentId = parseInt(logMatch[1], 10);
-    if (!getAgent(agentId)) return errorResponse("Agent not found", 404, requestId);
+    if (!getAgent(agentId, auth.user_id)) return errorResponse("Agent not found", 404, requestId);
     const { body: rawBody } = getContext(req);
     const body = (rawBody || {}) as any;
     if (!body.message || typeof body.message !== "string") return errorResponse("message required", 400, requestId);
@@ -135,7 +141,10 @@ export async function handleSomaRoutes(
 
   // GET /soma/agents/:id/logs
   if (logMatch && method === "GET") {
-    const logs = getLogs(parseInt(logMatch[1], 10), {
+    const { auth } = getContext(req);
+    const agentId = parseInt(logMatch[1], 10);
+    if (!getAgent(agentId, auth.user_id)) return errorResponse("Agent not found", 404, requestId);
+    const logs = getLogs(agentId, {
       level: url.searchParams.get("level") ?? undefined,
       limit: bounded(url.searchParams.get("limit"), 1, 1000, 100),
     });
@@ -145,16 +154,17 @@ export async function handleSomaRoutes(
   // - Groups --
 
   if (sub === "/groups" && method === "GET") {
-    return json(listGroups());
+    const { auth } = getContext(req);
+    return json(listGroups(auth.user_id));
   }
 
   if (sub === "/groups" && method === "POST") {
-    const { body: rawBody } = getContext(req);
+    const { body: rawBody, auth } = getContext(req);
     const body = (rawBody || {}) as any;
     const { name, description } = body;
     if (!name || typeof name !== "string") return errorResponse("name required", 400, requestId);
     try {
-      return json(createGroup({ name, description }), 201);
+      return json(createGroup(auth.user_id, { name, description }), 201);
     } catch (e: any) {
       if (e.message?.includes("UNIQUE")) return errorResponse("Group already exists", 409, requestId);
       throw e;
@@ -164,7 +174,8 @@ export async function handleSomaRoutes(
   // DELETE /soma/groups/:id
   const groupMatch = sub.match(/^\/groups\/(\d+)$/);
   if (groupMatch && method === "DELETE") {
-    const ok = deleteGroup(parseInt(groupMatch[1], 10));
+    const { auth } = getContext(req);
+    const ok = deleteGroup(parseInt(groupMatch[1], 10), auth.user_id);
     if (!ok) return errorResponse("Group not found", 404, requestId);
     return json({ ok: true });
   }
@@ -172,20 +183,21 @@ export async function handleSomaRoutes(
   // GET /soma/groups/:id/members
   const membersMatch = sub.match(/^\/groups\/(\d+)\/members$/);
   if (membersMatch && method === "GET") {
-    const group = getGroupFn(parseInt(membersMatch[1], 10));
+    const { auth } = getContext(req);
+    const group = getGroupFn(parseInt(membersMatch[1], 10), auth.user_id);
     if (!group) return errorResponse("Group not found", 404, requestId);
-    return json(getGroupMembers(parseInt(membersMatch[1], 10)));
+    return json(getGroupMembers(parseInt(membersMatch[1], 10), auth.user_id));
   }
 
   // POST /soma/groups/:id/members
   if (membersMatch && method === "POST") {
-    const { body: rawBody } = getContext(req);
+    const { body: rawBody, auth } = getContext(req);
     const body = (rawBody || {}) as any;
     const agentId = body.agent_id;
     if (!agentId || typeof agentId !== "number") return errorResponse("agent_id required", 400, requestId);
-    const group = getGroupFn(parseInt(membersMatch[1], 10));
+    const group = getGroupFn(parseInt(membersMatch[1], 10), auth.user_id);
     if (!group) return errorResponse("Group not found", 404, requestId);
-    const agent = getAgent(agentId);
+    const agent = getAgent(agentId, auth.user_id);
     if (!agent) return errorResponse("Agent not found", 404, requestId);
     return json(addToGroup(agentId, parseInt(membersMatch[1], 10)), 201);
   }
@@ -193,6 +205,7 @@ export async function handleSomaRoutes(
   // DELETE /soma/groups/:id/members/:agentId
   const rmMemberMatch = sub.match(/^\/groups\/(\d+)\/members\/(\d+)$/);
   if (rmMemberMatch && method === "DELETE") {
+    const { auth } = getContext(req);
     const ok = removeFromGroup(parseInt(rmMemberMatch[2], 10), parseInt(rmMemberMatch[1], 10));
     if (!ok) return errorResponse("Membership not found", 404, requestId);
     return json({ ok: true });

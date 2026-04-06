@@ -29,22 +29,23 @@ export async function handleAxonRoutes(
   // - Publish --
 
   if (sub === "/publish" && method === "POST") {
-    const { body: rawBody } = getContext(req);
+    const { body: rawBody, auth } = getContext(req);
     const body = (rawBody || {}) as any;
     const { channel, source, type, payload } = body;
     if (!channel || typeof channel !== "string") return errorResponse("channel required", 400, requestId);
     if (!source || typeof source !== "string") return errorResponse("source required", 400, requestId);
     if (!type || typeof type !== "string") return errorResponse("type required", 400, requestId);
     if (type.includes("\n")) return errorResponse("type must not contain newline characters", 400, requestId);
-    publish(channel, source, type, payload ?? {});
+    publish(auth.user_id, channel, source, type, payload ?? {});
     return json({ ok: true }, 201);
   }
 
   // - Events --
 
   if (sub === "/events" && method === "GET") {
+    const { auth } = getContext(req);
     const since_id = url.searchParams.has("since_id") ? parseInt(url.searchParams.get("since_id")!, 10) : undefined;
-    return json(getEvents({
+    return json(getEvents(auth.user_id, {
       channel: url.searchParams.get("channel") ?? undefined,
       type: url.searchParams.get("type") ?? undefined,
       source: url.searchParams.get("source") ?? undefined,
@@ -55,7 +56,8 @@ export async function handleAxonRoutes(
 
   const eventMatch = sub.match(/^\/events\/(\d+)$/);
   if (eventMatch && method === "GET") {
-    const event = getEvent(parseInt(eventMatch[1], 10));
+    const { auth } = getContext(req);
+    const event = getEvent(parseInt(eventMatch[1], 10), auth.user_id);
     if (!event) return errorResponse("Event not found", 404, requestId);
     return json(event);
   }
@@ -82,13 +84,13 @@ export async function handleAxonRoutes(
   // - Subscriptions --
 
   if (sub === "/subscribe" && method === "POST") {
-    const { body: rawBody } = getContext(req);
+    const { body: rawBody, auth } = getContext(req);
     const body = (rawBody || {}) as any;
     const { agent, channel, filter_type, webhook_url } = body;
     if (!agent || typeof agent !== "string") return errorResponse("agent required", 400, requestId);
     if (!channel || typeof channel !== "string") return errorResponse("channel required", 400, requestId);
     try {
-      const result = await subscribe(agent, channel, filter_type, webhook_url);
+      const result = await subscribe(auth.user_id, agent, channel, filter_type, webhook_url);
       return json(result, 201);
     } catch (e: any) {
       return errorResponse(e.message ?? "Subscription failed", 400, requestId);
@@ -96,34 +98,37 @@ export async function handleAxonRoutes(
   }
 
   if (sub === "/unsubscribe" && method === "POST") {
-    const { body: rawBody } = getContext(req);
+    const { body: rawBody, auth } = getContext(req);
     const body = (rawBody || {}) as any;
     const { agent, channel } = body;
     if (!agent || typeof agent !== "string") return errorResponse("agent required", 400, requestId);
     if (!channel || typeof channel !== "string") return errorResponse("channel required", 400, requestId);
-    const ok = unsubscribe(agent, channel);
+    const ok = unsubscribe(auth.user_id, agent, channel);
     if (!ok) return errorResponse("Subscription not found", 404, requestId);
     return json({ ok: true });
   }
 
   if (sub === "/subscriptions" && method === "GET") {
-    return json(getSubscriptions(url.searchParams.get("agent") ?? undefined));
+    const { auth } = getContext(req);
+    return json(getSubscriptions(auth.user_id, url.searchParams.get("agent") ?? undefined));
   }
 
   // - Poll --
 
   if (sub === "/poll" && method === "GET") {
+    const { auth } = getContext(req);
     const agent = url.searchParams.get("agent");
     const channel = url.searchParams.get("channel");
     if (!agent) return errorResponse("agent query param required", 400, requestId);
     if (!channel) return errorResponse("channel query param required", 400, requestId);
     const limit = bounded(url.searchParams.get("limit"), 1, 1000, 100);
-    return json(poll(agent, channel, limit));
+    return json(poll(auth.user_id, agent, channel, limit));
   }
 
   // - SSE Stream --
 
   if (sub === "/stream" && method === "GET") {
+    const { auth } = getContext(req);
     const agent = url.searchParams.get("agent");
     const channelsParam = url.searchParams.get("channels");
     if (!agent) return errorResponse("agent query param required", 400, requestId);
@@ -132,7 +137,7 @@ export async function handleAxonRoutes(
     if (channels.length === 0) return errorResponse("at least one channel required", 400, requestId);
     const filterType = url.searchParams.get("filter_type") ?? undefined;
     const lastEventId = url.searchParams.has("last_event_id") ? parseInt(url.searchParams.get("last_event_id")!, 10) : undefined;
-    return startSSE(agent, channels, filterType, lastEventId !== undefined && Number.isFinite(lastEventId) ? lastEventId : undefined);
+    return startSSE(auth.user_id, agent, channels, filterType, lastEventId !== undefined && Number.isFinite(lastEventId) ? lastEventId : undefined);
   }
 
   // - Stats --

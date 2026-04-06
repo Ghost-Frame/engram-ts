@@ -45,7 +45,11 @@ migrate(`CREATE INDEX IF NOT EXISTS idx_chiasm_tasks_agent ON chiasm_tasks(agent
 migrate(`CREATE INDEX IF NOT EXISTS idx_chiasm_tasks_project ON chiasm_tasks(project)`);
 migrate(`CREATE INDEX IF NOT EXISTS idx_chiasm_task_updates_task_id ON chiasm_task_updates(task_id)`);
 
+migrate(`ALTER TABLE chiasm_tasks ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`);
+migrate(`ALTER TABLE chiasm_task_updates ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`);
+migrate(`CREATE INDEX IF NOT EXISTS idx_chiasm_tasks_user ON chiasm_tasks(user_id)`);
+
 // - Prepared statements --
 
-export const getTaskById = db.prepare("SELECT * FROM chiasm_tasks WHERE id = ?");
-export const deleteTaskStmt = db.prepare("DELETE FROM chiasm_tasks WHERE id = ?");
+export const getTaskById = db.prepare("SELECT * FROM chiasm_tasks WHERE id = ? AND user_id = ?");
+export const deleteTaskStmt = db.prepare("DELETE FROM chiasm_tasks WHERE id = ? AND user_id = ?");

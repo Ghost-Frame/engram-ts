@@ -26,7 +26,8 @@ export async function handleChiasmRoutes(
   // - Tasks --
 
   if (path === "/tasks" && method === "GET") {
-    return json(listTasks({
+    const { auth } = getContext(req);
+    return json(listTasks(auth.user_id, {
       agent: url.searchParams.get("agent") ?? undefined,
       project: url.searchParams.get("project") ?? undefined,
       status: url.searchParams.get("status") ?? undefined,
@@ -36,7 +37,7 @@ export async function handleChiasmRoutes(
   }
 
   if (path === "/tasks" && method === "POST") {
-    const { body: rawBody } = getContext(req);
+    const { body: rawBody, auth } = getContext(req);
     const body = (rawBody || {}) as any;
     const { agent, project, title, summary } = body;
     if (!agent || !project || !title) return errorResponse("agent, project, and title are required", 400, requestId);
@@ -46,7 +47,7 @@ export async function handleChiasmRoutes(
     if (summary !== undefined && typeof summary !== "string") {
       return errorResponse("summary must be a string", 400, requestId);
     }
-    return json(createTask({ agent, project, title, summary }), 201);
+    return json(createTask(auth.user_id, { agent, project, title, summary }), 201);
   }
 
   // /tasks/stats must come before /tasks/:id
@@ -57,16 +58,17 @@ export async function handleChiasmRoutes(
   const taskMatch = path.match(/^\/tasks\/(\d+)$/);
 
   if (taskMatch && method === "GET") {
-    const task = getTask(parseInt(taskMatch[1], 10));
+    const { auth } = getContext(req);
+    const task = getTask(parseInt(taskMatch[1], 10), auth.user_id);
     if (!task) return errorResponse("Task not found", 404, requestId);
     return json(task);
   }
 
   if (taskMatch && method === "PATCH") {
-    const { body: rawBody } = getContext(req);
+    const { body: rawBody, auth } = getContext(req);
     const body = (rawBody || {}) as any;
     const taskId = parseInt(taskMatch[1], 10);
-    const existing = getTask(taskId);
+    const existing = getTask(taskId, auth.user_id);
     if (!existing) return errorResponse("Task not found", 404, requestId);
 
     if (body.agent !== undefined) return errorResponse("agent cannot be updated", 400, requestId);
@@ -80,25 +82,27 @@ export async function handleChiasmRoutes(
       return errorResponse(`Invalid status. Must be one of: ${[...VALID_STATUSES].join(", ")}`, 400, requestId);
     }
 
-    const task = updateTask(taskId, { status: body.status, summary: body.summary });
+    const task = updateTask(taskId, auth.user_id, { status: body.status, summary: body.summary });
     if (!task) return errorResponse("Task not found", 404, requestId);
     return json(task);
   }
 
   if (taskMatch && method === "DELETE") {
+    const { auth } = getContext(req);
     const taskId = parseInt(taskMatch[1], 10);
-    const existing = getTask(taskId);
+    const existing = getTask(taskId, auth.user_id);
     if (!existing) return errorResponse("Task not found", 404, requestId);
-    deleteTask(taskId);
+    deleteTask(taskId, auth.user_id);
     return json({ ok: true });
   }
 
   // - Feed --
 
   if (path === "/feed" && method === "GET") {
+    const { auth } = getContext(req);
     const limit = bounded(url.searchParams.get("limit"), 1, 200, 50);
     const offset = bounded(url.searchParams.get("offset"), 0, Number.MAX_SAFE_INTEGER, 0);
-    return json(getFeed(limit, offset));
+    return json(getFeed(auth.user_id, limit, offset));
   }
 
   return null;

@@ -34,19 +34,25 @@ import { log } from "./src/config/logger.ts";
   }
 }
 
-// Crash-loop protection: if we crashed within 60s, enter safe mode
+// Crash-loop protection: 3 crashes in 5 minutes triggers safe mode
 const CRASH_SENTINEL = resolve(DATA_DIR, ".engram-startup-ts");
 let SAFE_MODE = false;
 try {
   if (existsSync(CRASH_SENTINEL)) {
-    const lastStart = parseInt(readFileSync(CRASH_SENTINEL, "utf-8").trim(), 10);
-    if (!isNaN(lastStart) && Date.now() - lastStart < 60000) {
+    const data = readFileSync(CRASH_SENTINEL, "utf-8").trim();
+    const timestamps = data.split("\n").filter(Boolean).map(Number).filter(n => !isNaN(n));
+    const recentCrashes = timestamps.filter(ts => Date.now() - ts < 300_000);
+    if (recentCrashes.length >= 3) {
       SAFE_MODE = true;
-      log.warn({ msg: "safe_mode_activated", reason: "crash_loop_detected", last_start_ms_ago: Date.now() - lastStart });
+      log.warn({ msg: "safe_mode_activated", crashes_in_5min: recentCrashes.length });
     }
+    writeFileSync(CRASH_SENTINEL, [...recentCrashes, Date.now()].join("\n"));
+  } else {
+    writeFileSync(CRASH_SENTINEL, String(Date.now()));
   }
-} catch {}
-try { writeFileSync(CRASH_SENTINEL, String(Date.now())); } catch {}
+} catch {
+  try { writeFileSync(CRASH_SENTINEL, String(Date.now())); } catch {}
+}
 
 // Database (importing triggers schema creation + migrations)
 import { db, updateMemoryEmbedding, writeVec, purgeExpiredScratchpad, getExpiredScratchSessions, insertMemory, updateMemoryVec, cleanupOldUsage, probeVectorHealth, rebuildVectorIndex, isRebuildInProgress } from "./src/db/index.ts";
@@ -377,7 +383,7 @@ server.listen(PORT, HOST, () => {
   log.info({ msg: "node_http_server_listening", host: HOST, port: PORT });
   // Clear crash sentinel after successful startup (proves we survived)
   setTimeout(() => {
-    try { unlinkSync(CRASH_SENTINEL); } catch {}
+    try { writeFileSync(CRASH_SENTINEL, ""); } catch {}
   }, 120000);
 });
 

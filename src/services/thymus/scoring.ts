@@ -104,7 +104,7 @@ export function evaluate(
   );
 
   const evaluation = getEvaluation(Number(info.lastInsertRowid))!;
-  publish("system", "thymus", "evaluation.completed", {
+  publish(1, "system", "thymus", "evaluation.completed", {
     evaluation_id: evaluation.id, agent, subject, overall_score, rubric: (rubric as any).name,
   });
   return evaluation;

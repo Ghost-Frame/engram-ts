@@ -80,26 +80,30 @@ migrate(`CREATE INDEX IF NOT EXISTS idx_loom_runs_status ON loom_runs(status)`);
 migrate(`CREATE INDEX IF NOT EXISTS idx_loom_steps_run ON loom_steps(run_id)`);
 migrate(`CREATE INDEX IF NOT EXISTS idx_loom_steps_status ON loom_steps(status)`);
 migrate(`CREATE INDEX IF NOT EXISTS idx_loom_run_logs_run ON loom_run_logs(run_id)`);
+migrate(`ALTER TABLE loom_workflows ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`);
+migrate(`ALTER TABLE loom_runs ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`);
+migrate(`CREATE INDEX IF NOT EXISTS idx_loom_workflows_user ON loom_workflows(user_id)`);
+migrate(`CREATE INDEX IF NOT EXISTS idx_loom_runs_user ON loom_runs(user_id)`);
 
 // - Prepared statements --
 
 export const insertWorkflow = db.prepare(
-  "INSERT INTO loom_workflows (name, description, steps) VALUES (?, ?, ?)"
+  "INSERT INTO loom_workflows (name, description, steps, user_id) VALUES (?, ?, ?, ?)"
 );
 
-export const getWorkflowById = db.prepare("SELECT * FROM loom_workflows WHERE id = ?");
+export const getWorkflowById = db.prepare("SELECT * FROM loom_workflows WHERE id = ? AND user_id = ?");
 
-export const getWorkflowByNameStmt = db.prepare("SELECT * FROM loom_workflows WHERE name = ?");
+export const getWorkflowByNameStmt = db.prepare("SELECT * FROM loom_workflows WHERE name = ? AND user_id = ?");
 
-export const listWorkflowsStmt = db.prepare("SELECT * FROM loom_workflows ORDER BY created_at DESC");
+export const listWorkflowsStmt = db.prepare("SELECT * FROM loom_workflows WHERE user_id = ? ORDER BY created_at DESC");
 
-export const deleteWorkflowStmt = db.prepare("DELETE FROM loom_workflows WHERE id = ?");
+export const deleteWorkflowStmt = db.prepare("DELETE FROM loom_workflows WHERE id = ? AND user_id = ?");
 
 export const insertRun = db.prepare(
-  "INSERT INTO loom_runs (workflow_id, status, input) VALUES (?, ?, ?)"
+  "INSERT INTO loom_runs (workflow_id, status, input, user_id) VALUES (?, ?, ?, ?)"
 );
 
-export const getRunById = db.prepare("SELECT * FROM loom_runs WHERE id = ?");
+export const getRunById = db.prepare("SELECT * FROM loom_runs WHERE id = ? AND user_id = ?");
 
 export const insertStep = db.prepare(
   `INSERT INTO loom_steps (run_id, name, type, config, depends_on, max_retries, timeout_ms)

@@ -41,9 +41,9 @@ export const VALID_STATUSES = new Set(["active", "paused", "blocked", "completed
 
 // - Tasks --
 
-export function listTasks(filters: TaskFilters = {}): Task[] {
-  let query = "SELECT * FROM chiasm_tasks WHERE 1=1";
-  const params: Array<string | number> = [];
+export function listTasks(userId: number, filters: TaskFilters = {}): Task[] {
+  let query = "SELECT * FROM chiasm_tasks WHERE user_id = ?";
+  const params: Array<string | number> = [userId];
 
   if (filters.agent) { query += " AND agent = ?"; params.push(filters.agent); }
   if (filters.project) { query += " AND project = ?"; params.push(filters.project); }
@@ -55,77 +55,78 @@ export function listTasks(filters: TaskFilters = {}): Task[] {
   return db.prepare(query).all(...params) as Task[];
 }
 
-export function getTask(id: number): Task | undefined {
-  return getTaskById.get(id) as Task | undefined;
+export function getTask(id: number, userId: number): Task | undefined {
+  return getTaskById.get(id, userId) as Task | undefined;
 }
 
 // Transaction-safe inserts (no RETURNING - avoids libsql "statements in progress" bug)
 const insertTaskTx = db.prepare(
-  "INSERT INTO chiasm_tasks (agent, project, title, summary) VALUES (?, ?, ?, ?)"
+  "INSERT INTO chiasm_tasks (agent, project, title, summary, user_id) VALUES (?, ?, ?, ?, ?)"
 );
 const insertTaskUpdateTx = db.prepare(
-  "INSERT INTO chiasm_task_updates (task_id, agent, status, summary) VALUES (?, ?, ?, ?)"
+  "INSERT INTO chiasm_task_updates (task_id, agent, status, summary, user_id) VALUES (?, ?, ?, ?, ?)"
 );
 const updateTaskTx = db.prepare(
-  "UPDATE chiasm_tasks SET status = ?, summary = ?, updated_at = datetime('now') WHERE id = ?"
+  "UPDATE chiasm_tasks SET status = ?, summary = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?"
 );
 const getLastRowId = db.prepare("SELECT last_insert_rowid() as id");
 
-export function createTask(data: { agent: string; project: string; title: string; summary?: string }): Task {
+export function createTask(userId: number, data: { agent: string; project: string; title: string; summary?: string }): Task {
   const run = db.transaction(() => {
-    insertTaskTx.run(data.agent, data.project, data.title, data.summary ?? null);
+    insertTaskTx.run(data.agent, data.project, data.title, data.summary ?? null, userId);
     const { id } = getLastRowId.get() as { id: number };
 
-    insertTaskUpdateTx.run(id, data.agent, "active", data.summary ?? null);
+    insertTaskUpdateTx.run(id, data.agent, "active", data.summary ?? null, userId);
 
     return id;
   });
 
   const id = run();
 
-  publish("system", "chiasm", "task.created", {
+  publish(1, "system", "chiasm", "task.created", {
     task_id: id, agent: data.agent, project: data.project, title: data.title,
   });
 
-  return getTask(id)!;
+  return getTask(id, userId)!;
 }
 
-export function updateTask(id: number, data: { status?: string; summary?: string }): Task | undefined {
-  const existing = getTask(id);
+export function updateTask(id: number, userId: number, data: { status?: string; summary?: string }): Task | undefined {
+  const existing = getTask(id, userId);
   if (!existing) return undefined;
 
   const status = data.status ?? existing.status;
   const summary = data.summary ?? existing.summary;
 
   const run = db.transaction(() => {
-    updateTaskTx.run(status, summary, id);
-    insertTaskUpdateTx.run(id, existing.agent, status, summary);
+    updateTaskTx.run(status, summary, id, userId);
+    insertTaskUpdateTx.run(id, existing.agent, status, summary, userId);
   });
 
   run();
 
-  publish("system", "chiasm", "task.updated", {
+  publish(1, "system", "chiasm", "task.updated", {
     task_id: id, agent: existing.agent, status, previous_status: existing.status,
   });
 
-  return getTask(id);
+  return getTask(id, userId);
 }
 
-export function deleteTask(id: number): boolean {
-  const info = deleteTaskStmt.run(id);
+export function deleteTask(id: number, userId: number): boolean {
+  const info = deleteTaskStmt.run(id, userId);
   return info.changes > 0;
 }
 
 // - Feed --
 
-export function getFeed(limit: number = 50, offset: number = 0): (TaskUpdate & { project: string; title: string })[] {
+export function getFeed(userId: number, limit: number = 50, offset: number = 0): (TaskUpdate & { project: string; title: string })[] {
   return db.prepare(`
     SELECT tu.*, COALESCE(t.project, 'deleted') as project, COALESCE(t.title, 'deleted') as title
     FROM chiasm_task_updates tu
     LEFT JOIN chiasm_tasks t ON tu.task_id = t.id
+    WHERE tu.user_id = ?
     ORDER BY tu.created_at DESC, tu.id DESC
     LIMIT ? OFFSET ?
-  `).all(limit, offset) as (TaskUpdate & { project: string; title: string })[];
+  `).all(userId, limit, offset) as (TaskUpdate & { project: string; title: string })[];
 }
 
 // - Pruning --

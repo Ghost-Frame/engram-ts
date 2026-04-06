@@ -30,27 +30,27 @@ interface StepDef {
 
 // ── Workflow CRUD ────────────────────────────────────────────────────
 
-export function createWorkflow(name: string, description: string | null | undefined, steps: StepDef[]) {
-  const info = insertWorkflow.run(name, description ?? null, JSON.stringify(steps));
-  return getWorkflow(Number(info.lastInsertRowid))!;
+export function createWorkflow(userId: number, name: string, description: string | null | undefined, steps: StepDef[]) {
+  const info = insertWorkflow.run(name, description ?? null, JSON.stringify(steps), userId);
+  return getWorkflow(Number(info.lastInsertRowid), userId)!;
 }
 
-export function getWorkflow(id: number) {
-  const row = getWorkflowById.get(id) as Record<string, unknown> | undefined;
+export function getWorkflow(id: number, userId: number) {
+  const row = getWorkflowById.get(id, userId) as Record<string, unknown> | undefined;
   return parseJsonFields(row, "steps");
 }
 
-export function getWorkflowByName(name: string) {
-  const row = getWorkflowByNameStmt.get(name) as Record<string, unknown> | undefined;
+export function getWorkflowByName(name: string, userId: number) {
+  const row = getWorkflowByNameStmt.get(name, userId) as Record<string, unknown> | undefined;
   return parseJsonFields(row, "steps");
 }
 
-export function listWorkflows() {
-  const rows = listWorkflowsStmt.all() as Record<string, unknown>[];
+export function listWorkflows(userId: number) {
+  const rows = listWorkflowsStmt.all(userId) as Record<string, unknown>[];
   return parseJsonFieldsAll(rows, "steps");
 }
 
-export function updateWorkflow(id: number, updates: { name?: string; description?: string | null; steps?: StepDef[] }) {
+export function updateWorkflow(id: number, userId: number, updates: { name?: string; description?: string | null; steps?: StepDef[] }) {
   const fields: string[] = [];
   const params: unknown[] = [];
 
@@ -58,30 +58,30 @@ export function updateWorkflow(id: number, updates: { name?: string; description
   if (updates.description !== undefined) { fields.push("description = ?"); params.push(updates.description); }
   if (updates.steps !== undefined) { fields.push("steps = ?"); params.push(JSON.stringify(updates.steps)); }
 
-  if (fields.length === 0) return getWorkflow(id);
+  if (fields.length === 0) return getWorkflow(id, userId);
 
   fields.push("updated_at = datetime('now')");
-  params.push(id);
+  params.push(id, userId);
 
-  db.prepare(`UPDATE loom_workflows SET ${fields.join(", ")} WHERE id = ?`).run(...params);
-  return getWorkflow(id);
+  db.prepare(`UPDATE loom_workflows SET ${fields.join(", ")} WHERE id = ? AND user_id = ?`).run(...params);
+  return getWorkflow(id, userId);
 }
 
-export function deleteWorkflow(id: number): boolean {
-  const info = deleteWorkflowStmt.run(id);
+export function deleteWorkflow(id: number, userId: number): boolean {
+  const info = deleteWorkflowStmt.run(id, userId);
   return info.changes > 0;
 }
 
 // ── Run management ───────────────────────────────────────────────────
 
-export function createRun(workflowId: number, input: Record<string, unknown>) {
-  const workflow = getWorkflow(workflowId);
+export function createRun(userId: number, workflowId: number, input: Record<string, unknown>) {
+  const workflow = getWorkflow(workflowId, userId);
   if (!workflow) throw new Error("Workflow not found");
 
   const steps = workflow.steps as StepDef[];
   if (!Array.isArray(steps) || steps.length === 0) throw new Error("Workflow has no steps");
 
-  const runInfo = insertRun.run(workflowId, "pending", JSON.stringify(input));
+  const runInfo = insertRun.run(workflowId, "pending", JSON.stringify(input), userId);
   const runId = Number(runInfo.lastInsertRowid);
 
   // Create step records from workflow definition
@@ -97,10 +97,10 @@ export function createRun(workflowId: number, input: Record<string, unknown>) {
     );
   }
 
-  const run = getRun(runId)!;
+  const run = getRun(runId, userId)!;
 
   // Publish event AFTER insert (outside any transaction)
-  publish("system", "loom", "workflow.run.created", {
+  publish(1, "system", "loom", "workflow.run.created", {
     run_id: runId,
     workflow_id: workflowId,
     workflow_name: (workflow as any).name,
@@ -114,14 +114,14 @@ export function createRun(workflowId: number, input: Record<string, unknown>) {
   return run;
 }
 
-export function getRun(id: number) {
-  const row = getRunById.get(id) as Record<string, unknown> | undefined;
+export function getRun(id: number, userId: number) {
+  const row = getRunById.get(id, userId) as Record<string, unknown> | undefined;
   return parseJsonFields(row, "input", "output");
 }
 
-export function listRuns(opts?: { workflow_id?: number; status?: string; limit?: number }) {
-  const clauses: string[] = [];
-  const params: unknown[] = [];
+export function listRuns(userId: number, opts?: { workflow_id?: number; status?: string; limit?: number }) {
+  const clauses: string[] = ["user_id = ?"];
+  const params: unknown[] = [userId];
 
   if (opts?.workflow_id) { clauses.push("workflow_id = ?"); params.push(opts.workflow_id); }
   if (opts?.status) { clauses.push("status = ?"); params.push(opts.status); }
@@ -134,8 +134,8 @@ export function listRuns(opts?: { workflow_id?: number; status?: string; limit?:
   return parseJsonFieldsAll(rows, "input", "output");
 }
 
-export function cancelRun(id: number): boolean {
-  const run = getRun(id);
+export function cancelRun(id: number, userId: number): boolean {
+  const run = getRun(id, userId);
   if (!run) return false;
   if (run.status === "completed" || run.status === "failed" || run.status === "cancelled") return false;
 
@@ -150,7 +150,7 @@ export function cancelRun(id: number): boolean {
 
   addLog(id, null, "info", "Run cancelled");
 
-  publish("system", "loom", "workflow.run.cancelled", { run_id: id });
+  publish(1, "system", "loom", "workflow.run.cancelled", { run_id: id });
 
   return true;
 }
@@ -216,7 +216,7 @@ export function failStep(stepId: number, error: string) {
 
     addLog(runId, stepId, "error", `Step "${step.name}" failed permanently`, { error, retries: retryCount });
 
-    publish("system", "loom", "workflow.run.failed", {
+    publish(1, "system", "loom", "workflow.run.failed", {
       run_id: runId,
       step_name: step.name,
       error,
@@ -227,7 +227,8 @@ export function failStep(stepId: number, error: string) {
 // ── Core advance logic ───────────────────────────────────────────────
 
 export function advanceRun(runId: number): void {
-  const run = getRun(runId);
+  const row = db.prepare("SELECT * FROM loom_runs WHERE id = ?").get(runId) as Record<string, unknown> | undefined;
+  const run = parseJsonFields(row, "input", "output");
   if (!run) return;
   if (run.status === "completed" || run.status === "failed" || run.status === "cancelled") return;
 
@@ -257,7 +258,7 @@ export function advanceRun(runId: number): void {
 
     addLog(runId, null, "info", "Run completed");
 
-    publish("system", "loom", "workflow.run.completed", {
+    publish(1, "system", "loom", "workflow.run.completed", {
       run_id: runId,
       output: lastOutput,
     });

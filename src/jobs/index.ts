@@ -113,7 +113,13 @@ export async function processNextJob(): Promise<boolean> {
 
   try {
     const payload = JSON.parse(job.payload);
-    await handler(payload);
+    const JOB_TIMEOUT_MS = 120_000;
+    await Promise.race([
+      handler(payload),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Job timed out after ${JOB_TIMEOUT_MS}ms`)), JOB_TIMEOUT_MS)
+      ),
+    ]);
     completeStmt.run(job.id);
     log.debug({ msg: "job_completed", job_id: job.id, type: job.type, attempt: job.attempts });
   } catch (e: any) {

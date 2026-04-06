@@ -60,6 +60,9 @@ async function ensureRerankerFiles(): Promise<void> {
   }
 }
 
+let rerankerRestartCount = 0;
+const MAX_RERANKER_RESTARTS = 5;
+
 function spawnRerankerWorker(): Promise<void> {
   return new Promise((resolveInit, rejectInit) => {
     const workerPath = resolve(dirname(fileURLToPath(import.meta.url)), "reranker-worker.ts");
@@ -110,6 +113,21 @@ function spawnRerankerWorker(): Promise<void> {
       for (const [id, p] of workerPending) {
         p.reject(new Error(`Reranker worker exited with code ${code}`));
         workerPending.delete(id);
+      }
+      if (rerankerRestartCount < MAX_RERANKER_RESTARTS) {
+        const delay = Math.min(1000 * Math.pow(2, rerankerRestartCount), 30000);
+        rerankerRestartCount++;
+        log.info({ msg: "reranker_worker_restarting", attempt: rerankerRestartCount, delay_ms: delay });
+        setTimeout(() => {
+          spawnRerankerWorker()
+            .then(() => {
+              log.info({ msg: "reranker_worker_restarted" });
+              setTimeout(() => { rerankerRestartCount = 0; }, 60000);
+            })
+            .catch((err) => log.error({ msg: "reranker_restart_failed", error: err.message }));
+        }, delay);
+      } else {
+        log.error({ msg: "reranker_worker_max_restarts", count: MAX_RERANKER_RESTARTS });
       }
     });
   });

@@ -49,7 +49,7 @@ export async function handleBrocaRoutes(
         "SELECT seq FROM sqlite_sequence WHERE name = 'axon_events'"
       ).get() as { seq: number } | undefined;
       const beforeSeq = eventInfo?.seq ?? 0;
-      publish("system", "broca", `broca.${action}`, { agent, service, ...payloadObj });
+      publish(1, "system", "broca", `broca.${action}`, { agent, service, ...payloadObj });
       const afterInfo = db.prepare(
         "SELECT seq FROM sqlite_sequence WHERE name = 'axon_events'"
       ).get() as { seq: number } | undefined;
@@ -193,14 +193,14 @@ export async function handleBrocaRoutes(
   // - POST /broca/ask - NL query --
 
   if (sub === "/ask" && method === "POST") {
-    const { body: rawBody } = getContext(req);
+    const { body: rawBody, auth } = getContext(req);
     const body = (rawBody || {}) as any;
     const question = body.question;
     if (!question || typeof question !== "string") return errorResponse("question required", 400, requestId);
     if (question.length > 2000) return errorResponse("question too long (max 2000 chars)", 400, requestId);
 
     try {
-      const result = await ask(question);
+      const result = await ask(auth.user_id, question);
       return json(result);
     } catch (e: any) {
       log.error({ msg: "broca_ask_failed", error: e.message });

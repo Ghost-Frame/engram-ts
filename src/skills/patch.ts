@@ -4,9 +4,18 @@
 // ============================================================================
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSync, cpSync } from "fs";
-import { join, relative, basename } from "path";
+import { join, relative, basename, resolve, dirname } from "path";
 import { log } from "../config/logger.ts";
 import type { SkillEditResult, PatchType } from "./types.ts";
+
+function sanitizePath(baseDir: string, untrustedPath: string): string {
+  const base = resolve(baseDir);
+  const resolved = resolve(base, untrustedPath);
+  if (!resolved.startsWith(base + "/") && !resolved.startsWith(base + "\\") && resolved !== base) {
+    throw new Error(`Path traversal blocked: ${untrustedPath}`);
+  }
+  return resolved;
+}
 
 // --- Snapshot: capture all files in a skill directory ---
 
@@ -194,8 +203,8 @@ export function createSkill(
     if (patchType === "full" && (content.includes("*** Begin Files") || content.includes("*** File:"))) {
       const files = parseMultiFile(content);
       for (const [path, body] of Object.entries(files)) {
-        const fullPath = join(targetDir, path);
-        mkdirSync(join(targetDir, path, ".."), { recursive: true });
+        const fullPath = sanitizePath(targetDir, path);
+        mkdirSync(dirname(fullPath), { recursive: true });
         writeFileSync(fullPath, body, "utf-8");
         snapshot[path] = body;
       }
@@ -229,8 +238,8 @@ export function fixSkillFiles(
     } else if (patchType === "full" && (newContent.includes("*** Begin Files") || newContent.includes("*** File:"))) {
       const files = parseMultiFile(newContent);
       for (const [path, body] of Object.entries(files)) {
-        const fullPath = join(skillDir, path);
-        mkdirSync(join(fullPath, ".."), { recursive: true });
+        const fullPath = sanitizePath(skillDir, path);
+        mkdirSync(dirname(fullPath), { recursive: true });
         writeFileSync(fullPath, body, "utf-8");
       }
     } else {
@@ -281,8 +290,8 @@ export function deriveSkill(
     if (patchType === "full" && (content.includes("*** Begin Files") || content.includes("*** File:"))) {
       const files = parseMultiFile(content);
       for (const [path, body] of Object.entries(files)) {
-        const fullPath = join(targetDir, path);
-        mkdirSync(join(fullPath, ".."), { recursive: true });
+        const fullPath = sanitizePath(targetDir, path);
+        mkdirSync(dirname(fullPath), { recursive: true });
         writeFileSync(fullPath, body, "utf-8");
       }
     } else {

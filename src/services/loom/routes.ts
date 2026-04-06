@@ -29,11 +29,12 @@ export async function handleLoomRoutes(
   // - Workflows --
 
   if (sub === "/workflows" && method === "GET") {
-    return json(listWorkflows());
+    const { auth } = getContext(req);
+    return json(listWorkflows(auth.user_id));
   }
 
   if (sub === "/workflows" && method === "POST") {
-    const { body: rawBody } = getContext(req);
+    const { body: rawBody, auth } = getContext(req);
     const body = (rawBody || {}) as any;
     const { name, description, steps } = body;
     if (!name || typeof name !== "string") return errorResponse("name required", 400, requestId);
@@ -59,7 +60,7 @@ export async function handleLoomRoutes(
     }
 
     try {
-      return json(createWorkflow(name, description, steps), 201);
+      return json(createWorkflow(auth.user_id, name, description, steps), 201);
     } catch (e: any) {
       if (e.message?.includes("UNIQUE")) return errorResponse("Workflow name already exists", 409, requestId);
       throw e;
@@ -68,17 +69,18 @@ export async function handleLoomRoutes(
 
   const workflowMatch = sub.match(/^\/workflows\/(\d+)$/);
   if (workflowMatch && method === "GET") {
-    const wf = getWorkflow(parseInt(workflowMatch[1], 10));
+    const { auth } = getContext(req);
+    const wf = getWorkflow(parseInt(workflowMatch[1], 10), auth.user_id);
     if (!wf) return errorResponse("Workflow not found", 404, requestId);
     return json(wf);
   }
 
   if (workflowMatch && method === "PATCH") {
     const id = parseInt(workflowMatch[1], 10);
-    const existing = getWorkflow(id);
+    const { body: rawBody, auth } = getContext(req);
+    const existing = getWorkflow(id, auth.user_id);
     if (!existing) return errorResponse("Workflow not found", 404, requestId);
 
-    const { body: rawBody } = getContext(req);
     const body = (rawBody || {}) as any;
     const updates: { name?: string; description?: string | null; steps?: any[] } = {};
     if (body.name !== undefined) updates.name = body.name;
@@ -86,7 +88,7 @@ export async function handleLoomRoutes(
     if (body.steps !== undefined) updates.steps = body.steps;
 
     try {
-      return json(updateWorkflow(id, updates));
+      return json(updateWorkflow(id, auth.user_id, updates));
     } catch (e: any) {
       if (e.message?.includes("UNIQUE")) return errorResponse("Workflow name already exists", 409, requestId);
       throw e;
@@ -94,7 +96,8 @@ export async function handleLoomRoutes(
   }
 
   if (workflowMatch && method === "DELETE") {
-    const ok = deleteWorkflow(parseInt(workflowMatch[1], 10));
+    const { auth } = getContext(req);
+    const ok = deleteWorkflow(parseInt(workflowMatch[1], 10), auth.user_id);
     if (!ok) return errorResponse("Workflow not found", 404, requestId);
     return json({ ok: true });
   }
@@ -102,7 +105,7 @@ export async function handleLoomRoutes(
   // - Runs --
 
   if (sub === "/runs" && method === "POST") {
-    const { body: rawBody } = getContext(req);
+    const { body: rawBody, auth } = getContext(req);
     const body = (rawBody || {}) as any;
     const { workflow_id, workflow_name, input } = body;
 
@@ -110,22 +113,23 @@ export async function handleLoomRoutes(
     if (workflow_id) {
       resolvedId = Number(workflow_id);
     } else if (workflow_name && typeof workflow_name === "string") {
-      const wf = getWorkflowByName(workflow_name);
+      const wf = getWorkflowByName(workflow_name, auth.user_id);
       if (!wf) return errorResponse(`Workflow "${workflow_name}" not found`, 404, requestId);
       resolvedId = wf.id as number;
     }
     if (!resolvedId) return errorResponse("workflow_id or workflow_name required", 400, requestId);
 
     try {
-      return json(createRun(resolvedId, input ?? {}), 201);
+      return json(createRun(auth.user_id, resolvedId, input ?? {}), 201);
     } catch (e: any) {
       return errorResponse(e.message ?? "Failed to create run", 400, requestId);
     }
   }
 
   if (sub === "/runs" && method === "GET") {
+    const { auth } = getContext(req);
     const workflowId = url.searchParams.has("workflow_id") ? parseInt(url.searchParams.get("workflow_id")!, 10) : undefined;
-    return json(listRuns({
+    return json(listRuns(auth.user_id, {
       workflow_id: workflowId !== undefined && Number.isFinite(workflowId) ? workflowId : undefined,
       status: url.searchParams.get("status") ?? undefined,
       limit: bounded(url.searchParams.get("limit"), 1, 1000, 100),
@@ -134,30 +138,34 @@ export async function handleLoomRoutes(
 
   const runMatch = sub.match(/^\/runs\/(\d+)$/);
   if (runMatch && method === "GET") {
-    const run = getRun(parseInt(runMatch[1], 10));
+    const { auth } = getContext(req);
+    const run = getRun(parseInt(runMatch[1], 10), auth.user_id);
     if (!run) return errorResponse("Run not found", 404, requestId);
     return json(run);
   }
 
   const runCancelMatch = sub.match(/^\/runs\/(\d+)\/cancel$/);
   if (runCancelMatch && method === "POST") {
-    const ok = cancelRun(parseInt(runCancelMatch[1], 10));
+    const { auth } = getContext(req);
+    const ok = cancelRun(parseInt(runCancelMatch[1], 10), auth.user_id);
     if (!ok) return errorResponse("Run not found or already terminal", 404, requestId);
     return json({ ok: true });
   }
 
   const runStepsMatch = sub.match(/^\/runs\/(\d+)\/steps$/);
   if (runStepsMatch && method === "GET") {
+    const { auth } = getContext(req);
     const runId = parseInt(runStepsMatch[1], 10);
-    const run = getRun(runId);
+    const run = getRun(runId, auth.user_id);
     if (!run) return errorResponse("Run not found", 404, requestId);
     return json(getSteps(runId));
   }
 
   const runLogsMatch = sub.match(/^\/runs\/(\d+)\/logs$/);
   if (runLogsMatch && method === "GET") {
+    const { auth } = getContext(req);
     const runId = parseInt(runLogsMatch[1], 10);
-    const run = getRun(runId);
+    const run = getRun(runId, auth.user_id);
     if (!run) return errorResponse("Run not found", 404, requestId);
     return json(getLogs({
       run_id: runId,
@@ -171,8 +179,11 @@ export async function handleLoomRoutes(
 
   const stepCompleteMatch = sub.match(/^\/steps\/(\d+)\/complete$/);
   if (stepCompleteMatch && method === "POST") {
-    const { body: rawBody } = getContext(req);
+    const { body: rawBody, auth } = getContext(req);
     const body = (rawBody || {}) as any;
+    const step = getStep(parseInt(stepCompleteMatch[1], 10));
+    if (!step) return errorResponse("Step not found", 404, requestId);
+    if (!getRun(step.run_id as number, auth.user_id)) return errorResponse("Step not found", 404, requestId);
     try {
       completeStep(parseInt(stepCompleteMatch[1], 10), body.output ?? {});
       return json({ ok: true });
@@ -183,9 +194,12 @@ export async function handleLoomRoutes(
 
   const stepFailMatch = sub.match(/^\/steps\/(\d+)\/fail$/);
   if (stepFailMatch && method === "POST") {
-    const { body: rawBody } = getContext(req);
+    const { body: rawBody, auth } = getContext(req);
     const body = (rawBody || {}) as any;
     if (!body.error || typeof body.error !== "string") return errorResponse("error string required", 400, requestId);
+    const step = getStep(parseInt(stepFailMatch[1], 10));
+    if (!step) return errorResponse("Step not found", 404, requestId);
+    if (!getRun(step.run_id as number, auth.user_id)) return errorResponse("Step not found", 404, requestId);
     try {
       failStep(parseInt(stepFailMatch[1], 10), body.error);
       return json({ ok: true });

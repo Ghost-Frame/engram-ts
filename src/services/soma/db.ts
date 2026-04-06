@@ -68,19 +68,24 @@ migrate(`CREATE INDEX IF NOT EXISTS idx_soma_agent_logs_agent_created ON soma_ag
 try { db.exec(`ALTER TABLE soma_agents ADD COLUMN quality_score REAL`); } catch {}
 try { db.exec(`ALTER TABLE soma_agents ADD COLUMN drift_flags TEXT DEFAULT '[]'`); } catch {}
 
+migrate(`ALTER TABLE soma_agents ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`);
+migrate(`ALTER TABLE soma_groups ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`);
+migrate(`CREATE INDEX IF NOT EXISTS idx_soma_agents_user ON soma_agents(user_id)`);
+migrate(`CREATE INDEX IF NOT EXISTS idx_soma_groups_user ON soma_groups(user_id)`);
+
 // - Prepared statements --
 
 export const insertAgent = db.prepare(
-  "INSERT INTO soma_agents (name, type, description, capabilities, config) VALUES (?, ?, ?, ?, ?)"
+  "INSERT INTO soma_agents (name, type, description, capabilities, config, user_id) VALUES (?, ?, ?, ?, ?, ?)"
 );
-export const getAgentById = db.prepare("SELECT * FROM soma_agents WHERE id = ?");
+export const getAgentById = db.prepare("SELECT * FROM soma_agents WHERE id = ? AND user_id = ?");
 export const getAgentByNameStmt = db.prepare("SELECT * FROM soma_agents WHERE name = ?");
-export const deleteAgentStmt = db.prepare("DELETE FROM soma_agents WHERE id = ?");
+export const deleteAgentStmt = db.prepare("DELETE FROM soma_agents WHERE id = ? AND user_id = ?");
 
-export const insertGroupStmt = db.prepare("INSERT INTO soma_groups (name, description) VALUES (?, ?)");
-export const getGroupById = db.prepare("SELECT * FROM soma_groups WHERE id = ?");
-export const listGroupsStmt = db.prepare("SELECT * FROM soma_groups ORDER BY id DESC");
-export const deleteGroupStmt = db.prepare("DELETE FROM soma_groups WHERE id = ?");
+export const insertGroupStmt = db.prepare("INSERT INTO soma_groups (name, description, user_id) VALUES (?, ?, ?)");
+export const getGroupById = db.prepare("SELECT * FROM soma_groups WHERE id = ? AND user_id = ?");
+export const listGroupsStmt = db.prepare("SELECT * FROM soma_groups WHERE user_id = ? ORDER BY id DESC");
+export const deleteGroupStmt = db.prepare("DELETE FROM soma_groups WHERE id = ? AND user_id = ?");
 
 export const addToGroupStmt = db.prepare(
   "INSERT OR IGNORE INTO soma_agent_groups (agent_id, group_id) VALUES (?, ?)"

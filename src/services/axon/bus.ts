@@ -8,7 +8,7 @@ import { log } from "../../config/logger.ts";
 import { validatePublicUrlWithDNS } from "../../helpers/index.ts";
 import { parseJsonFields, parseJsonFieldsAll } from "../helpers.ts";
 import {
-  insertEvent, getEventById,
+  insertEvent,
   upsertSubscription, deleteSubscription as deleteSubStmt,
   getSubsByAgent, getSubsByChannel, getSubsWithWebhook,
   upsertCursor, getCursor,
@@ -31,13 +31,13 @@ const encoder = new TextEncoder();
 
 // - Publish --
 
-export function publish(channel: string, source: string, type: string, payload: Record<string, unknown>): void {
+export function publish(userId: number, channel: string, source: string, type: string, payload: Record<string, unknown>): void {
   if (type.includes("\n")) {
     log.warn({ msg: "axon_publish_rejected", reason: "type contains newline", channel, source, type });
     return;
   }
 
-  const info = insertEvent.run(channel, source, type, JSON.stringify(payload));
+  const info = insertEvent.run(channel, source, type, JSON.stringify(payload), userId);
   const eventId = Number(info.lastInsertRowid);
 
   log.debug({ msg: "axon_publish", id: eventId, channel, source, type, payload_keys: Object.keys(payload) });
@@ -74,15 +74,15 @@ export function publish(channel: string, source: string, type: string, payload: 
 
 // - Query events --
 
-export function getEvents(opts: {
+export function getEvents(userId: number, opts: {
   channel?: string;
   type?: string;
   source?: string;
   since_id?: number;
   limit?: number;
 }) {
-  const clauses: string[] = [];
-  const params: unknown[] = [];
+  const clauses: string[] = ["user_id = ?"];
+  const params: unknown[] = [userId];
 
   if (opts.channel) { clauses.push("channel = ?"); params.push(opts.channel); }
   if (opts.type) { clauses.push("type = ?"); params.push(opts.type); }
@@ -98,8 +98,8 @@ export function getEvents(opts: {
   return parseJsonFieldsAll(rows, "payload");
 }
 
-export function getEvent(id: number) {
-  const row = getEventById.get(id) as Record<string, unknown> | undefined;
+export function getEvent(id: number, userId: number) {
+  const row = db.prepare("SELECT * FROM axon_events WHERE id = ? AND user_id = ?").get(id, userId) as Record<string, unknown> | undefined;
   return parseJsonFields(row, "payload");
 }
 
@@ -125,6 +125,7 @@ export function createChannel(name: string, description?: string, retainHours?: 
 // - Subscriptions --
 
 export async function subscribe(
+  userId: number,
   agent: string,
   channel: string,
   filterType?: string,
@@ -135,26 +136,26 @@ export async function subscribe(
     if (err) throw new Error(err);
   }
 
-  upsertSubscription.run(agent, channel, filterType ?? null, webhookUrl ?? null);
+  upsertSubscription.run(agent, channel, filterType ?? null, webhookUrl ?? null, userId);
   return { agent, channel, filter_type: filterType ?? null, webhook_url: webhookUrl ?? null };
 }
 
-export function unsubscribe(agent: string, channel: string): boolean {
-  const info = deleteSubStmt.run(agent, channel);
+export function unsubscribe(userId: number, agent: string, channel: string): boolean {
+  const info = deleteSubStmt.run(agent, channel, userId);
   return info.changes > 0;
 }
 
-export function getSubscriptions(agent?: string) {
+export function getSubscriptions(userId: number, agent?: string) {
   if (agent) {
-    return getSubsByAgent.all(agent);
+    return getSubsByAgent.all(agent, userId);
   }
-  return db.prepare("SELECT * FROM axon_subscriptions ORDER BY id").all();
+  return db.prepare("SELECT * FROM axon_subscriptions WHERE user_id = ? ORDER BY id").all(userId);
 }
 
 // - Cursor-based polling --
 
-export function poll(agent: string, channel: string, limit: number) {
-  const cursor = getCursor.get(agent, channel) as { last_event_id: number } | undefined;
+export function poll(userId: number, agent: string, channel: string, limit: number) {
+  const cursor = getCursor.get(agent, channel, userId) as { last_event_id: number } | undefined;
   const lastId = cursor?.last_event_id ?? 0;
 
   const rows = db.prepare(
@@ -165,7 +166,7 @@ export function poll(agent: string, channel: string, limit: number) {
 
   if (events.length > 0) {
     const maxId = (events[events.length - 1] as any).id as number;
-    upsertCursor.run(agent, channel, maxId);
+    upsertCursor.run(agent, channel, maxId, userId);
   }
 
   return { events, cursor: { agent, channel, last_event_id: events.length > 0 ? (events[events.length - 1] as any).id : lastId } };
@@ -174,6 +175,7 @@ export function poll(agent: string, channel: string, limit: number) {
 // - SSE streaming --
 
 export function startSSE(
+  userId: number,
   agent: string,
   channels: string[],
   filterType?: string,
@@ -198,8 +200,8 @@ export function startSSE(
       if (lastEventId !== undefined) {
         for (const ch of channels) {
           const missed = db.prepare(
-            "SELECT * FROM axon_events WHERE channel = ? AND id > ? ORDER BY id ASC LIMIT 1000"
-          ).all(ch, lastEventId) as Record<string, unknown>[];
+            "SELECT * FROM axon_events WHERE channel = ? AND id > ? AND user_id = ? ORDER BY id ASC LIMIT 1000"
+          ).all(ch, lastEventId, userId) as Record<string, unknown>[];
 
           for (const row of missed) {
             const parsed = parseJsonFields({ ...row }, "payload");

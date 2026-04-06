@@ -18,7 +18,7 @@ export { detectFormat, chunkDocument };
 async function tryCreateChiasmTask(jobId: string): Promise<number> {
   try {
     const { createTask } = await import("../services/chiasm/engine.ts");
-    const task = createTask({
+    const task = createTask(1, {
       agent: "ingestion",
       project: "engram",
       title: `Bulk ingest job ${jobId}`,
@@ -33,7 +33,7 @@ async function tryUpdateChiasmTask(taskId: number, status: string, summary: stri
   if (taskId < 0) return;
   try {
     const { updateTask } = await import("../services/chiasm/engine.ts");
-    updateTask(taskId, { status, summary });
+    updateTask(taskId, 1, { status, summary });
   } catch {}
 }
 
@@ -42,7 +42,7 @@ function tryPublishAxon(channel: string, source: string, type: string, payload: 
     // Dynamic import to avoid failing if DB is not initialized
     import("../services/axon/bus.ts").then(({ publish }) => {
       try {
-        publish(channel, source, type, payload);
+        publish(1, channel, source, type, payload);
       } catch {}
     }).catch(() => {});
   } catch {}

@@ -476,7 +476,7 @@ export function registerAdminRoutes(router: Router): void {
     if (!user) return errorResponse("User not found", 404, requestId);
     const memCount = countUserMemories.get(userId) as any;
     const convCount = countUserConversations.get(userId) as any;
-    const tables = [
+    const DEPROVISION_TABLES = new Set([
       "scratchpad", "personality_signals", "personality_profiles",
       "structured_facts", "memory_entities", "memory_links", "memory_projects",
       "consolidations", "reflections", "temporal_patterns", "reconsolidations",
@@ -484,9 +484,13 @@ export function registerAdminRoutes(router: Router): void {
       "webhooks", "digests", "episodes", "messages", "conversations",
       "entity_relationships", "entity_cooccurrences", "entities",
       "projects", "spaces", "api_keys", "agents",
-    ];
+      "soma_agents", "soma_groups", "soma_agent_logs",
+      "chiasm_tasks", "chiasm_task_updates",
+      "axon_events", "axon_subscriptions", "axon_cursors",
+      "loom_workflows", "loom_runs", "loom_run_logs",
+    ]);
     let totalDeleted = 0;
-    for (const table of tables) {
+    for (const table of DEPROVISION_TABLES) {
       try {
         const result = db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(userId);
         totalDeleted += (result as any).changes || 0;
@@ -715,10 +719,15 @@ export function registerAdminRoutes(router: Router): void {
         for (let i = 0; i < memIdSet.length; i += 500) {
           const chunk = memIdSet.slice(i, i + 500);
           const placeholders = chunk.map(() => "?").join(",");
-          const childTables = ["reconsolidations", "causal_links", "memory_entities", "memory_projects", "memory_links"];
-          for (const t of childTables) {
+          const CHILD_TABLE_COLS: Record<string, string> = {
+            reconsolidations: "memory_id",
+            causal_links: "memory_id",
+            memory_entities: "memory_id",
+            memory_projects: "memory_id",
+            memory_links: "source_id",
+          };
+          for (const [t, col] of Object.entries(CHILD_TABLE_COLS)) {
             try {
-              const col = t === "memory_links" ? "source_id" : "memory_id";
               db.prepare(`DELETE FROM ${t} WHERE ${col} IN (${placeholders})`).run(...chunk);
               if (t === "memory_links") {
                 db.prepare(`DELETE FROM memory_links WHERE target_id IN (${placeholders})`).run(...chunk);
@@ -745,12 +754,12 @@ export function registerAdminRoutes(router: Router): void {
     }
 
     // Full user reset
-    const userScopedTables = [
+    const userScopedTables = new Set([
       "causal_chains", "temporal_patterns", "scratchpad", "reflections",
       "digests", "webhooks", "structured_facts", "current_state",
       "user_preferences", "consolidations", "episodes", "entities",
       "projects", "conversations", "personality_signals", "personality_profiles",
-    ];
+    ]);
     let wiped = 0;
     const memIds = db.prepare("SELECT id FROM memories WHERE user_id = ?").all(userId) as { id: number }[];
     const memIdSet = memIds.map((r) => r.id);
@@ -758,10 +767,15 @@ export function registerAdminRoutes(router: Router): void {
       for (let i = 0; i < memIdSet.length; i += 500) {
         const chunk = memIdSet.slice(i, i + 500);
         const placeholders = chunk.map(() => "?").join(",");
-        const childTables = ["reconsolidations", "causal_links", "memory_entities", "memory_projects", "memory_links"];
-        for (const t of childTables) {
+        const CHILD_TABLE_COLS_RESET: Record<string, string> = {
+          reconsolidations: "memory_id",
+          causal_links: "memory_id",
+          memory_entities: "memory_id",
+          memory_projects: "memory_id",
+          memory_links: "source_id",
+        };
+        for (const [t, col] of Object.entries(CHILD_TABLE_COLS_RESET)) {
           try {
-            const col = t === "memory_links" ? "source_id" : "memory_id";
             db.prepare(`DELETE FROM ${t} WHERE ${col} IN (${placeholders})`).run(...chunk);
             if (t === "memory_links") {
               db.prepare(`DELETE FROM memory_links WHERE target_id IN (${placeholders})`).run(...chunk);

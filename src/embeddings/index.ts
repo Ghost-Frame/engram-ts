@@ -172,6 +172,9 @@ async function ensureModelFiles(): Promise<void> {
   }
 }
 
+let embeddingRestartCount = 0;
+const MAX_WORKER_RESTARTS = 5;
+
 function spawnEmbeddingWorker(): Promise<void> {
   return new Promise((resolveInit, rejectInit) => {
     // Worker file lives next to this module
@@ -223,10 +226,24 @@ function spawnEmbeddingWorker(): Promise<void> {
       log.warn({ msg: "embedding_worker_exited", code });
       workerReady = false;
       embeddingWorker = null;
-      // Reject all pending requests
       for (const [id, p] of workerPending) {
         p.reject(new Error(`Worker exited with code ${code}`));
         workerPending.delete(id);
+      }
+      if (embeddingRestartCount < MAX_WORKER_RESTARTS) {
+        const delay = Math.min(1000 * Math.pow(2, embeddingRestartCount), 30000);
+        embeddingRestartCount++;
+        log.info({ msg: "embedding_worker_restarting", attempt: embeddingRestartCount, delay_ms: delay });
+        setTimeout(() => {
+          spawnEmbeddingWorker()
+            .then(() => {
+              log.info({ msg: "embedding_worker_restarted" });
+              setTimeout(() => { embeddingRestartCount = 0; }, 60000);
+            })
+            .catch((err) => log.error({ msg: "embedding_restart_failed", error: err.message }));
+        }, delay);
+      } else {
+        log.error({ msg: "embedding_worker_max_restarts", count: MAX_WORKER_RESTARTS });
       }
     });
   });

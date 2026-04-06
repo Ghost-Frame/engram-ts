@@ -63,6 +63,11 @@ migrate(`CREATE INDEX IF NOT EXISTS idx_axon_events_channel ON axon_events(chann
 migrate(`CREATE INDEX IF NOT EXISTS idx_axon_events_type ON axon_events(type)`);
 migrate(`CREATE INDEX IF NOT EXISTS idx_axon_subs_channel ON axon_subscriptions(channel)`);
 
+migrate(`ALTER TABLE axon_events ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`);
+migrate(`ALTER TABLE axon_subscriptions ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`);
+migrate(`ALTER TABLE axon_cursors ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`);
+migrate(`CREATE INDEX IF NOT EXISTS idx_axon_events_user ON axon_events(user_id)`);
+
 // - Seed default channels --
 
 const seedChannel = db.prepare("INSERT OR IGNORE INTO axon_channels (name, description) VALUES (?, ?)");
@@ -75,23 +80,23 @@ seedChannel.run("alerts", "Alerts and notifications");
 // - Prepared statements --
 
 export const insertEvent = db.prepare(
-  "INSERT INTO axon_events (channel, source, type, payload) VALUES (?, ?, ?, ?)"
+  "INSERT INTO axon_events (channel, source, type, payload, user_id) VALUES (?, ?, ?, ?, ?)"
 );
 
 export const getEventById = db.prepare("SELECT * FROM axon_events WHERE id = ?");
 
 export const upsertSubscription = db.prepare(
-  `INSERT INTO axon_subscriptions (agent, channel, filter_type, webhook_url)
-   VALUES (?, ?, ?, ?)
+  `INSERT INTO axon_subscriptions (agent, channel, filter_type, webhook_url, user_id)
+   VALUES (?, ?, ?, ?, ?)
    ON CONFLICT(agent, channel) DO UPDATE SET filter_type = excluded.filter_type, webhook_url = excluded.webhook_url`
 );
 
 export const deleteSubscription = db.prepare(
-  "DELETE FROM axon_subscriptions WHERE agent = ? AND channel = ?"
+  "DELETE FROM axon_subscriptions WHERE agent = ? AND channel = ? AND user_id = ?"
 );
 
 export const getSubsByAgent = db.prepare(
-  "SELECT * FROM axon_subscriptions WHERE agent = ? ORDER BY id"
+  "SELECT * FROM axon_subscriptions WHERE agent = ? AND user_id = ? ORDER BY id"
 );
 
 export const getSubsByChannel = db.prepare(
@@ -103,13 +108,13 @@ export const getSubsWithWebhook = db.prepare(
 );
 
 export const upsertCursor = db.prepare(
-  `INSERT INTO axon_cursors (agent, channel, last_event_id, updated_at)
-   VALUES (?, ?, ?, datetime('now'))
+  `INSERT INTO axon_cursors (agent, channel, last_event_id, updated_at, user_id)
+   VALUES (?, ?, ?, datetime('now'), ?)
    ON CONFLICT(agent, channel) DO UPDATE SET last_event_id = excluded.last_event_id, updated_at = datetime('now')`
 );
 
 export const getCursor = db.prepare(
-  "SELECT * FROM axon_cursors WHERE agent = ? AND channel = ?"
+  "SELECT * FROM axon_cursors WHERE agent = ? AND channel = ? AND user_id = ?"
 );
 
 export const channelCount = db.prepare("SELECT COUNT(*) as count FROM axon_channels");

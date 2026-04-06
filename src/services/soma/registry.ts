@@ -7,7 +7,7 @@ import { db } from "../../db/index.ts";
 import { parseJsonFields, parseJsonFieldsAll } from "../helpers.ts";
 import { publish } from "../axon/bus.ts";
 import {
-  insertAgent, getAgentById, getAgentByNameStmt, deleteAgentStmt,
+  insertAgent, getAgentById, deleteAgentStmt,
   insertGroupStmt, getGroupById, listGroupsStmt, deleteGroupStmt,
   addToGroupStmt, removeFromGroupStmt, deleteGroupMemberships, deleteAgentMemberships, deleteAgentLogs,
   insertLog, getLogById,
@@ -17,7 +17,7 @@ import {
 
 // - Agents --
 
-export function registerAgent(data: {
+export function registerAgent(userId: number, data: {
   name: string; type: string; description?: string | null;
   capabilities?: unknown[]; config?: Record<string, unknown>;
 }) {
@@ -25,25 +25,26 @@ export function registerAgent(data: {
     data.name, data.type, data.description ?? null,
     JSON.stringify(data.capabilities ?? []),
     JSON.stringify(data.config ?? {}),
+    userId,
   );
-  const agent = getAgent(Number(info.lastInsertRowid))!;
-  publish("system", "soma", "agent.registered", { agent_id: agent.id, name: data.name, type: data.type });
+  const agent = getAgent(Number(info.lastInsertRowid), userId)!;
+  publish(1, "system", "soma", "agent.registered", { agent_id: agent.id, name: data.name, type: data.type });
   return agent;
 }
 
-export function getAgent(id: number) {
-  const row = getAgentById.get(id) as Record<string, unknown> | undefined;
+export function getAgent(id: number, userId: number) {
+  const row = getAgentById.get(id, userId) as Record<string, unknown> | undefined;
   return parseJsonFields(row, "capabilities", "config");
 }
 
-export function getAgentByName(name: string) {
-  const row = getAgentByNameStmt.get(name) as Record<string, unknown> | undefined;
+export function getAgentByName(name: string, userId: number) {
+  const row = db.prepare("SELECT * FROM soma_agents WHERE name = ? AND user_id = ?").get(name, userId) as Record<string, unknown> | undefined;
   return parseJsonFields(row, "capabilities", "config");
 }
 
-export function listAgents(opts?: { type?: string; status?: string; capability?: string; limit?: number }) {
-  const clauses: string[] = [];
-  const params: unknown[] = [];
+export function listAgents(userId: number, opts?: { type?: string; status?: string; capability?: string; limit?: number }) {
+  const clauses: string[] = ["user_id = ?"];
+  const params: unknown[] = [userId];
 
   if (opts?.type) { clauses.push("type = ?"); params.push(opts.type); }
   if (opts?.status) { clauses.push("status = ?"); params.push(opts.status); }
@@ -66,6 +67,7 @@ export function listAgents(opts?: { type?: string; status?: string; capability?:
 
 export function updateAgent(
   id: number,
+  userId: number,
   data: { name?: string; type?: string; description?: string | null; capabilities?: unknown[]; config?: Record<string, unknown>; status?: string },
 ) {
   const fields: string[] = [];
@@ -78,32 +80,32 @@ export function updateAgent(
   if (data.config !== undefined) { fields.push("config = ?"); params.push(JSON.stringify(data.config)); }
   if (data.status !== undefined) { fields.push("status = ?"); params.push(data.status); }
 
-  if (fields.length === 0) return getAgent(id);
+  if (fields.length === 0) return getAgent(id, userId);
 
   fields.push("updated_at = datetime('now')");
-  params.push(id);
+  params.push(id, userId);
 
-  db.prepare(`UPDATE soma_agents SET ${fields.join(", ")} WHERE id = ?`).run(...params);
-  return getAgent(id);
+  db.prepare(`UPDATE soma_agents SET ${fields.join(", ")} WHERE id = ? AND user_id = ?`).run(...params);
+  return getAgent(id, userId);
 }
 
-export function deregisterAgent(id: number): boolean {
-  const agent = getAgent(id);
+export function deregisterAgent(id: number, userId: number): boolean {
+  const agent = getAgent(id, userId);
   const runDelete = db.transaction(() => {
     deleteAgentLogs.run(id);
     deleteAgentMemberships.run(id);
-    return deleteAgentStmt.run(id);
+    return deleteAgentStmt.run(id, userId);
   });
   const info = runDelete();
   if (info.changes > 0 && agent) {
-    publish("system", "soma", "agent.deregistered", { agent_id: id, name: (agent as any).name });
+    publish(1, "system", "soma", "agent.deregistered", { agent_id: id, name: (agent as any).name });
   }
   return info.changes > 0;
 }
 
 // - Heartbeat --
 
-export function heartbeat(agentId: number, status?: string) {
+export function heartbeat(agentId: number, userId: number, status?: string) {
   const fields = ["heartbeat_at = datetime('now')", "updated_at = datetime('now')"];
   const params: unknown[] = [];
   if (status) {
@@ -112,37 +114,37 @@ export function heartbeat(agentId: number, status?: string) {
   } else {
     fields.push("status = 'online'");
   }
-  params.push(agentId);
-  const info = db.prepare(`UPDATE soma_agents SET ${fields.join(", ")} WHERE id = ?`).run(...params);
+  params.push(agentId, userId);
+  const info = db.prepare(`UPDATE soma_agents SET ${fields.join(", ")} WHERE id = ? AND user_id = ?`).run(...params);
   if (info.changes === 0) return undefined;
-  return getAgent(agentId);
+  return getAgent(agentId, userId);
 }
 
-export function getStaleAgents(minutes: number) {
+export function getStaleAgents(userId: number, minutes: number) {
   const rows = db.prepare(
-    `SELECT * FROM soma_agents WHERE heartbeat_at < datetime('now', '-' || ? || ' minutes') AND status = 'online'`,
-  ).all(minutes) as Record<string, unknown>[];
+    `SELECT * FROM soma_agents WHERE user_id = ? AND heartbeat_at < datetime('now', '-' || ? || ' minutes') AND status = 'online'`,
+  ).all(userId, minutes) as Record<string, unknown>[];
   return parseJsonFieldsAll(rows, "capabilities", "config");
 }
 
 // - Groups --
 
-export function createGroup(data: { name: string; description?: string | null }) {
-  const info = insertGroupStmt.run(data.name, data.description ?? null);
-  return getGroupFn(Number(info.lastInsertRowid))!;
+export function createGroup(userId: number, data: { name: string; description?: string | null }) {
+  const info = insertGroupStmt.run(data.name, data.description ?? null, userId);
+  return getGroupFn(Number(info.lastInsertRowid), userId)!;
 }
 
-export function listGroups() {
-  return listGroupsStmt.all();
+export function listGroups(userId: number) {
+  return listGroupsStmt.all(userId);
 }
 
-export function getGroupFn(id: number) {
-  return getGroupById.get(id);
+export function getGroupFn(id: number, userId: number) {
+  return getGroupById.get(id, userId);
 }
 
-export function deleteGroup(id: number): boolean {
+export function deleteGroup(id: number, userId: number): boolean {
   deleteGroupMemberships.run(id);
-  const info = deleteGroupStmt.run(id);
+  const info = deleteGroupStmt.run(id, userId);
   return info.changes > 0;
 }
 
@@ -158,19 +160,19 @@ export function removeFromGroup(agentId: number, groupId: number): boolean {
   return info.changes > 0;
 }
 
-export function getGroupMembers(groupId: number) {
+export function getGroupMembers(groupId: number, userId: number) {
   const rows = db.prepare(
-    `SELECT a.* FROM soma_agents a JOIN soma_agent_groups ag ON a.id = ag.agent_id WHERE ag.group_id = ? ORDER BY a.name`,
-  ).all(groupId) as Record<string, unknown>[];
+    `SELECT a.* FROM soma_agents a JOIN soma_agent_groups ag ON a.id = ag.agent_id WHERE ag.group_id = ? AND a.user_id = ? ORDER BY a.name`,
+  ).all(groupId, userId) as Record<string, unknown>[];
   return parseJsonFieldsAll(rows, "capabilities", "config");
 }
 
 // - Capability search --
 
-export function findByCapability(cap: string) {
+export function findByCapability(userId: number, cap: string) {
   const rows = db.prepare(
-    "SELECT * FROM soma_agents WHERE capabilities LIKE ?"
-  ).all(`%${cap}%`) as Record<string, unknown>[];
+    "SELECT * FROM soma_agents WHERE user_id = ? AND capabilities LIKE ?"
+  ).all(userId, `%${cap}%`) as Record<string, unknown>[];
   const parsed = parseJsonFieldsAll(rows, "capabilities", "config");
   return parsed.filter((r: any) => Array.isArray(r.capabilities) && r.capabilities.includes(cap));
 }

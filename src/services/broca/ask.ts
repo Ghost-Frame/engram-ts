@@ -58,20 +58,20 @@ interface QueryPlan {
 
 // - Function dispatcher --
 
-function dispatch(plan: QueryPlan): unknown {
+function dispatch(userId: number, plan: QueryPlan): unknown {
   const { service, params } = plan;
   const fn = plan.function;
 
   switch (service) {
     case "soma":
-      if (fn === "listAgents") return listAgents(params as any);
-      if (fn === "getAgent") return getAgent(Number(params.id));
+      if (fn === "listAgents") return listAgents(userId, params as any);
+      if (fn === "getAgent") return getAgent(Number(params.id), userId);
       if (fn === "getSomaStats") return getSomaStats();
       break;
 
     case "chiasm":
-      if (fn === "listTasks") return listTasks(params as any);
-      if (fn === "getTask") return getTask(Number(params.id));
+      if (fn === "listTasks") return listTasks(userId, params as any);
+      if (fn === "getTask") return getTask(Number(params.id), userId);
       if (fn === "getChiasmStats") return getChiasmStats();
       break;
 
@@ -84,14 +84,14 @@ function dispatch(plan: QueryPlan): unknown {
 
     case "axon":
       if (fn === "listChannels") return listChannels();
-      if (fn === "getEvents") return getEvents(params as any);
+      if (fn === "getEvents") return getEvents(userId, params as any);
       if (fn === "getAxonStats") return getAxonStats();
       break;
 
     case "loom":
-      if (fn === "listWorkflows") return listWorkflows();
-      if (fn === "listRuns") return listRuns(params as any);
-      if (fn === "getRun") return getRun(Number(params.id));
+      if (fn === "listWorkflows") return listWorkflows(userId);
+      if (fn === "listRuns") return listRuns(userId, params as any);
+      if (fn === "getRun") return getRun(Number(params.id), userId);
       if (fn === "getLoomStats") return getLoomStats();
       break;
   }
@@ -101,7 +101,7 @@ function dispatch(plan: QueryPlan): unknown {
 
 // - Main ask() function --
 
-export async function ask(question: string): Promise<{ answer: string; plan: QueryPlan | null; raw: unknown }> {
+export async function ask(userId: number, question: string): Promise<{ answer: string; plan: QueryPlan | null; raw: unknown }> {
   if (!isLocalModelAvailable()) {
     return { answer: "No LLM provider is available to process natural language queries.", plan: null, raw: null };
   }
@@ -145,7 +145,7 @@ If the question cannot be answered by any available function, respond with:
 
   // Step 2: Execute the plan
   try {
-    raw = dispatch(plan);
+    raw = dispatch(userId, plan);
   } catch (e: any) {
     log.warn({ msg: "broca_ask_dispatch_failed", plan, error: e.message });
     return { answer: `Failed to execute query: ${e.message}`, plan, raw: null };
