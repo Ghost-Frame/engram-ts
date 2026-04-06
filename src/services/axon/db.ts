@@ -67,6 +67,7 @@ migrate(`ALTER TABLE axon_events ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`)
 migrate(`ALTER TABLE axon_subscriptions ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`);
 migrate(`ALTER TABLE axon_cursors ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`);
 migrate(`CREATE INDEX IF NOT EXISTS idx_axon_events_user ON axon_events(user_id)`);
+migrate(`CREATE UNIQUE INDEX IF NOT EXISTS idx_axon_subs_user_agent_channel ON axon_subscriptions(user_id, agent, channel)`);
 
 // - Seed default channels --
 
@@ -88,7 +89,7 @@ export const getEventById = db.prepare("SELECT * FROM axon_events WHERE id = ?")
 export const upsertSubscription = db.prepare(
   `INSERT INTO axon_subscriptions (agent, channel, filter_type, webhook_url, user_id)
    VALUES (?, ?, ?, ?, ?)
-   ON CONFLICT(agent, channel) DO UPDATE SET filter_type = excluded.filter_type, webhook_url = excluded.webhook_url`
+   ON CONFLICT(user_id, agent, channel) DO UPDATE SET filter_type = excluded.filter_type, webhook_url = excluded.webhook_url`
 );
 
 export const deleteSubscription = db.prepare(
@@ -104,7 +105,7 @@ export const getSubsByChannel = db.prepare(
 );
 
 export const getSubsWithWebhook = db.prepare(
-  "SELECT * FROM axon_subscriptions WHERE channel = ? AND webhook_url IS NOT NULL"
+  "SELECT * FROM axon_subscriptions WHERE channel = ? AND user_id = ? AND webhook_url IS NOT NULL"
 );
 
 export const upsertCursor = db.prepare(

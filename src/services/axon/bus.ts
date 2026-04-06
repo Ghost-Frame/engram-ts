@@ -56,19 +56,28 @@ export function publish(userId: number, channel: string, source: string, type: s
     }
   }
 
-  // Fan out to webhook subscribers (fire-and-forget)
-  const webhookSubs = getSubsWithWebhook.all(channel) as Array<{ webhook_url: string; filter_type: string | null }>;
+  // Fan out to webhook subscribers (fire-and-forget, tenant-scoped)
+  const webhookSubs = getSubsWithWebhook.all(channel, userId) as Array<{ webhook_url: string; filter_type: string | null }>;
   for (const sub of webhookSubs) {
     if (sub.filter_type && sub.filter_type !== type) continue;
     if (!sub.webhook_url) continue;
-    fetch(sub.webhook_url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: eventId, channel, source, type, payload }),
-      signal: AbortSignal.timeout(5000),
-    }).catch((err) => {
-      log.warn({ msg: "axon_webhook_error", url: sub.webhook_url, error: String(err) });
-    });
+    (async () => {
+      try {
+        const urlErr = await validatePublicUrlWithDNS(sub.webhook_url, "webhook_url");
+        if (urlErr) {
+          log.warn({ msg: "axon_webhook_ssrf_blocked", url: sub.webhook_url, error: urlErr });
+          return;
+        }
+        await fetch(sub.webhook_url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: eventId, channel, source, type, payload }),
+          signal: AbortSignal.timeout(5000),
+        });
+      } catch (err) {
+        log.warn({ msg: "axon_webhook_error", url: sub.webhook_url, error: String(err) });
+      }
+    })();
   }
 }
 
