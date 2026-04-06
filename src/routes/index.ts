@@ -22,7 +22,7 @@ import {
   ANN_PREFILTER_THRESHOLD, ANN_CANDIDATE_MULTIPLIER,
   maintenanceMode, maintenanceReason, setMaintenanceMode,
   AUTO_ARCHIVE_ENABLED, AUTO_ARCHIVE_RETRIEVABILITY, AUTO_ARCHIVE_MIN_AGE_DAYS, AUTO_ARCHIVE_MAX_ACCESS,
-  ENGRAM_SKILL_DIRS, OPENSPACE_API_KEY,
+  ENGRAM_SKILL_DIRS, OPENSPACE_API_KEY, TRUSTED_PROXIES,
 } from "../config/index.ts";
 import { log, opsCounters } from "../config/logger.ts";
 import { handleThymusRoutes, handleSomaRoutes, handleChiasmRoutes, handleAxonRoutes, handleLoomRoutes, handleBrocaRoutes, handleBrainRoutes } from "../services/index.ts";
@@ -127,7 +127,7 @@ import { getOpenAPISpec } from "../openapi.ts";
 
 // Agent signing
 import { signExecution, verifyExecution, createPassport, verifyPassport, computeTrustScore, generateSigningSecret, signMessage, verifyMessage, NonceTracker, verifyToolManifest } from "../../sign/index.ts";
-import { SIGNING_SECRET_FILE } from "../config/index.ts";
+import { SIGNING_SECRET_FILE, INBOX_MODE, setInboxMode } from "../config/index.ts";
 
 // Auth
 import {
@@ -448,7 +448,13 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
     // ========================================================================
     opsCounters.request_count++;
     const requestId = req.headers.get("X-Request-Id") || randomUUID().slice(0, 8);
-    const clientIp = socketIp || req.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() || "unknown";
+    const clientIp = (() => {
+      if (TRUSTED_PROXIES.length > 0 && TRUSTED_PROXIES.includes(socketIp)) {
+        const forwarded = req.headers.get("X-Forwarded-For");
+        if (forwarded) return forwarded.split(",")[0].trim();
+      }
+      return socketIp || "unknown";
+    })();
     const requestStart = performance.now();
 
     // IP allowlist check
@@ -581,7 +587,8 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
       }
 
       // Require localhost or valid bootstrap token
-      const isLocal = clientIp === "127.0.0.1" || clientIp === "::1" || clientIp === "localhost";
+      // Bootstrap locality uses socket IP directly -- X-Forwarded-For can be spoofed
+      const isLocal = socketIp === "127.0.0.1" || socketIp === "::1" || socketIp === "localhost";
       const tokenFile = resolve(DATA_DIR, ".bootstrap_token");
       let bootstrapToken: string | null = null;
       try { bootstrapToken = readFileSync(tokenFile, "utf-8").trim(); } catch {}
@@ -6940,6 +6947,24 @@ If no meaningful inferences, return {"derived": []}`;
       const purged = purgeFailedJobs(days);
       audit(auth.user_id, "job.purge", null, null, `purged=${purged} older_than=${days}d`, clientIp, requestId);
       return json({ purged, older_than_days: days });
+    }
+
+    // ========================================================================
+    // SETTINGS - runtime config (inbox mode toggle)
+    // ========================================================================
+    if (url.pathname === "/admin/settings" && method === "GET") {
+      if (!guiAuthed(req) && !hasScope(auth, "admin")) return errorResponse("Auth required", 401);
+      return json({ inbox_mode: INBOX_MODE });
+    }
+    if (url.pathname === "/admin/settings" && method === "PUT") {
+      if (!guiAuthed(req) && !hasScope(auth, "admin")) return errorResponse("Auth required", 401);
+      const sb = body as any;
+      if (sb?.inbox_mode === "auto" || sb?.inbox_mode === "review") {
+        setInboxMode(sb.inbox_mode);
+        audit(auth.user_id, "settings.update", "inbox_mode", null, sb.inbox_mode, clientIp, requestId);
+        return json({ ok: true, inbox_mode: INBOX_MODE });
+      }
+      return errorResponse("Invalid inbox_mode (must be 'auto' or 'review')", 400);
     }
 
     // ========================================================================

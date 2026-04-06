@@ -10,7 +10,7 @@ import { readFileSync, writeFileSync, unlinkSync } from "fs";
 import { resolve } from "path";
 import { randomUUID } from "crypto";
 import type { Router } from "../router/types.ts";
-import { getContext, hasScope } from "../middleware/auth.ts";
+import { getContext, hasScope, getClientIp } from "../middleware/auth.ts";
 import { json, errorResponse, safeError, securityHeaders } from "../helpers/index.ts";
 import { auditLog } from "../middleware/audit.ts";
 import { generateApiKey } from "../auth/index.ts";
@@ -108,8 +108,11 @@ export function registerAuthKeysRoutes(router: Router): void {
     if (keyCount > 0) {
       return json({ error: "Bootstrap unavailable. API keys already exist." }, 403);
     }
-    const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "127.0.0.1";
-    const isLocal = clientIp === "127.0.0.1" || clientIp === "::1" || clientIp === "localhost";
+    // For logging/audit, use the proxy-aware IP
+    const clientIp = getClientIp(req);
+    // Bootstrap locality MUST use socket IP only -- X-Forwarded-For can be spoofed
+    const socketIp = req.headers.get("x-socket-ip") || "";
+    const isLocal = socketIp === "127.0.0.1" || socketIp === "::1" || socketIp === "localhost";
     const tokenFile = resolve(DATA_DIR, ".bootstrap_token");
     let bootstrapToken: string | null = null;
     try { bootstrapToken = readFileSync(tokenFile, "utf-8").trim(); } catch {}
