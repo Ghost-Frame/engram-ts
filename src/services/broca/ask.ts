@@ -76,14 +76,14 @@ function dispatch(userId: number, plan: QueryPlan): unknown {
       break;
 
     case "thymus":
-      if (fn === "listRubrics") return listRubrics();
-      if (fn === "listEvaluations") return listEvaluations(params as any);
-      if (fn === "getAgentScores") return getAgentScores(String(params.agent), params as any);
+      if (fn === "listRubrics") return listRubrics(userId);
+      if (fn === "listEvaluations") return listEvaluations(userId, params as any);
+      if (fn === "getAgentScores") return getAgentScores(userId, String(params.agent), params as any);
       if (fn === "getThymusStats") return getThymusStats();
       break;
 
     case "axon":
-      if (fn === "listChannels") return listChannels();
+      if (fn === "listChannels") return listChannels(userId);
       if (fn === "getEvents") return getEvents(userId, params as any);
       if (fn === "getAxonStats") return getAxonStats();
       break;

@@ -78,7 +78,7 @@ export async function safeFetch(url: string, options: RequestInit = {}): Promise
       redirect: "manual",
       signal: options.signal || AbortSignal.timeout(15000),
       headers: {
-        ...Object.fromEntries(new Headers(options.headers as HeadersInit).entries()),
+        ...Object.fromEntries(new Headers(options.headers as Record<string, string>).entries()),
         Host: parsed.host,
       },
     });

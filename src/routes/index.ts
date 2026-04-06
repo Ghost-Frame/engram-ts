@@ -452,7 +452,7 @@ async function fetchHandler(req: Request, socketIp?: string): Promise<Response> 
     opsCounters.request_count++;
     const requestId = req.headers.get("X-Request-Id") || randomUUID().slice(0, 8);
     const clientIp = (() => {
-      if (TRUSTED_PROXIES.length > 0 && TRUSTED_PROXIES.includes(socketIp)) {
+      if (TRUSTED_PROXIES.length > 0 && socketIp && TRUSTED_PROXIES.includes(socketIp)) {
         const forwarded = req.headers.get("X-Forwarded-For");
         if (forwarded) return forwarded.split(",")[0].trim();
       }
@@ -6961,7 +6961,7 @@ If no meaningful inferences, return {"derived": []}`;
     }
     if (url.pathname === "/admin/settings" && method === "PUT") {
       if (!guiAuthed(req) && !hasScope(auth, "admin")) return errorResponse("Auth required", 401);
-      const sb = body as any;
+      const sb = (await req.json().catch(() => ({}))) as any;
       if (sb?.inbox_mode === "auto" || sb?.inbox_mode === "review") {
         setInboxMode(sb.inbox_mode);
         audit(auth.user_id, "settings.update", "inbox_mode", null, sb.inbox_mode, clientIp, requestId);
