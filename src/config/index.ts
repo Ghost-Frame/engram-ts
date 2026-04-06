@@ -102,6 +102,8 @@ export const RATE_WINDOW_MS = 60_000;
 
 // Security config
 export const OPEN_ACCESS = process.env.ENGRAM_OPEN_ACCESS === "1";
+export let INBOX_MODE: "auto" | "review" = (process.env.ENGRAM_INBOX_MODE || "auto") as "auto" | "review";
+export function setInboxMode(mode: "auto" | "review") { INBOX_MODE = mode; }
 export const CORS_ORIGIN = process.env.ENGRAM_CORS_ORIGIN?.trim() || "";
 export const MAX_BODY_SIZE = Number(process.env.ENGRAM_MAX_BODY_SIZE || 1_048_576);
 export const MAX_CONTENT_SIZE = Number(process.env.ENGRAM_MAX_CONTENT_SIZE || 102_400);
@@ -116,6 +118,9 @@ export const GUI_AUTH_WINDOW_MS = 60_000;
 export const GUI_AUTH_LOCKOUT_MS = 600_000;
 export const OPEN_ACCESS_RATE_LIMIT = Number(process.env.ENGRAM_OPEN_RATE_LIMIT || 120);
 export const OPEN_ACCESS_SCOPES = (process.env.ENGRAM_OPEN_ACCESS_SCOPES || "read").split(",").map(s => s.trim()).filter(Boolean);
+
+// Ingestion limits
+export const MAX_ZIP_ENTRY_SIZE = Number(process.env.ENGRAM_MAX_ZIP_ENTRY_SIZE || 104_857_600); // 100MB per entry
 
 // Artifact storage
 export const ARTIFACT_SIZE_THRESHOLD = Number(process.env.ENGRAM_ARTIFACT_SIZE_THRESHOLD || 1_048_576); // 1MB
