@@ -7510,7 +7510,6 @@ If no meaningful inferences, return {"derived": []}`;
       const stats = localModelStats();
       const llm = {
         provider: "ollama",
-        available: isLocalModelAvailable(),
         ...stats,
       };
       return json({

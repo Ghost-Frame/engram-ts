@@ -9,3 +9,4 @@ export { handleChiasmRoutes } from "./chiasm/routes.ts";
 export { handleAxonRoutes } from "./axon/routes.ts";
 export { handleLoomRoutes } from "./loom/routes.ts";
 export { handleBrocaRoutes } from "./broca/routes.ts";
+export { handleBrainRoutes } from "./brain/routes.ts";

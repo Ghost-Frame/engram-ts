@@ -19,7 +19,7 @@ import {
 } from "../config/index.ts";
 import { decomposeAndStore } from "../intelligence/decomposition.ts";
 import { generateApiKey } from "../auth/index.ts";
-import { isLocalModelAvailable, localModelStats } from "../llm/local.ts";
+import { localModelStats } from "../llm/local.ts";
 import { EMBEDDING_PROVIDER, EMBEDDING_MODEL, EMBEDDING_DIM, RERANKER_ENABLED, RERANKER_TOP_K } from "../config/index.ts";
 import { isRerankerReady } from "../reranker/index.ts";
 import { refreshEmbeddingCache, getEmbeddingCacheStats, invalidateEmbeddingCache } from "../embeddings/index.ts";
@@ -422,7 +422,6 @@ export function registerAdminRoutes(router: Router): void {
     const stats = localModelStats();
     const llm = {
       provider: "ollama",
-      available: isLocalModelAvailable(),
       ...stats,
     };
     return json({

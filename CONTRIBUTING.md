@@ -134,10 +134,13 @@ We always need more coverage:
 
 **Syntheos consolidation** -- Seven standalone microservices absorbed into Engram as native modules under `src/services/`. Thymus (quality eval), Soma (agent registry), Chiasm (task tracking), Axon (event bus), Loom (workflows), Broca (action log), OpenSpace (structural analysis).
 
+**Growth system** -- Self-improving observation loop for agents. `POST /reflect` accepts a service name and a context array, calls the LLM with a domain-specific prompt, validates the response (10-500 chars, not "NOTHING"), runs a cosine similarity dedup check (> 0.85 against the 20 most recent growth memories for that service), then stores the observation as a `category=growth` memory AND in the `reflections` table. An hourly internal cron runs `selfReflect()` against Engram's own memory stats (requires >= 50 new memories in the last hour AND 15% probability gate). See `src/intelligence/growth.ts`.
+
 Areas that benefit from test coverage:
 
 | Feature | Location |
 |---------|----------|
+| Growth system (reflect, dedup, self-reflect cron) | `src/intelligence/growth.ts` |
 | Atomic fact decomposition | `src/intelligence/decomposition.ts` |
 | Fact-aware search filtering | `src/search/routes.ts` |
 | Context fact grouping | `src/context/index.ts` |

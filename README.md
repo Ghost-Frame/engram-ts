@@ -12,7 +12,7 @@ Memory, personality, reasoning, and trust in a single self-hosted system that le
 
 <div align="center">
 
-[Quick Start](#quick-start) · [Features](#what-engram-does) · [Architecture](#architecture) · [API](#api-reference) · [CLI](#cli) · [SDK](#typescript-sdk) · [MCP](#mcp-server) · [Deploy](#deployment)
+[Quick Start](#quick-start) · [Features](#what-engram-does) · [Architecture](#architecture) · [API](#api-reference) · [Growth](#growth-system) · [CLI](#cli) · [SDK](#typescript-sdk) · [MCP](#mcp-server) · [Deploy](#deployment)
 
 </div>
 
@@ -486,6 +486,86 @@ Use `X-Space: space-name` (or `X-Engram-Space`) to scope operations to a named m
 | `POST` | `/broca/narrate` | Bulk narrate actions |
 | `POST` | `/broca/ask` | Natural language query |
 | `GET` | `/broca/stats` | Action statistics |
+
+</details>
+
+<a id="growth-system"></a>
+<details>
+<summary><strong>Growth System</strong></summary>
+
+The growth system lets agents generate self-improving observations about their own behavior and store them as persistent memories. It runs via the `/reflect` API and an internal self-reflection cron.
+
+### `/reflect` Endpoint
+
+`POST /reflect` -- Generate a growth observation from recent activity.
+
+**Request body:**
+
+```json
+{
+  "service": "engram",
+  "context": [
+    "Memory stats: 1200 total, 340 never accessed",
+    "Top categories (24h): reference(42), state(28), decision(14)",
+    "Recent contradictions: 2"
+  ],
+  "existing_growth": "- Users tend to store most memories in reference category\n- ...",
+  "prompt_override": "Optional custom system prompt to override the service default"
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `service` | yes | Service identifier -- selects domain-specific prompt |
+| `context` | yes | Non-empty array of strings describing recent activity |
+| `existing_growth` | no | Text of prior growth observations -- used to avoid repetition |
+| `prompt_override` | no | Custom system prompt, overrides the built-in service prompt |
+
+**Response:**
+
+```json
+{
+  "observation": "Search hit rate dropped 12% this hour -- 40% of queries returned zero results, suggesting a knowledge gap in infrastructure topics.",
+  "stored_memory_id": 1042,
+  "reflection_id": 88
+}
+```
+
+Returns `{ "observation": null }` when the LLM is unavailable, nothing interesting was observed, or the observation was a duplicate of an existing growth memory.
+
+### Storage -- Dual Write
+
+Each accepted observation is written to two places:
+
+1. **`memories` table** -- `category = "growth"`, `source = "<service>-growth"`, `importance = 7`, `is_static = 1`. Fully searchable via all standard endpoints.
+2. **`reflections` table** -- also inserted via `insertReflection`, making it visible at `GET /reflections`.
+
+### Self-Reflection Cron
+
+Engram runs a built-in self-reflection cron every hour (lease-protected to prevent duplicate runs in multi-process deployments). Each run applies two gates before calling the LLM:
+
+1. **Activity threshold** -- requires >= 50 new memories in the past hour. Skips if the system is idle.
+2. **Probability gate** -- 15% chance of firing even when the threshold is met. Keeps the signal sparse and meaningful.
+
+When both gates pass, Engram assembles context from live memory stats (totals, access rates, top categories, recent contradictions) and calls the growth engine with `service = "engram"`.
+
+### Domain-Specific Prompts
+
+Each service has a built-in reflection prompt focused on what matters for that service. Unrecognized services fall back to a generic prompt.
+
+| Service | Focus |
+|---------|-------|
+| `engram` | Memory access patterns, knowledge gaps, category growth, quality trends |
+| `claude-code` | Session approaches, corrections from Master, codebase learnings, communication style |
+| `eidolon` | Dream cycle results, over-correlated patterns, substrate quality |
+| `chiasm` | Task patterns, estimate accuracy, agent reliability, recurring blockers |
+| `thymus` | Compliance drift, agent improvement trends, quality signal predictiveness |
+
+### Anti-Duplicate Check
+
+Before storing an observation, the engine embeds it and compares it via cosine similarity against the 20 most recent growth memories for that service. If any existing memory scores > 0.85 similarity, the observation is discarded. This prevents the growth log from accumulating minor restatements of the same insight.
+
+Source: `src/intelligence/growth.ts`
 
 </details>
 

@@ -10,13 +10,32 @@ import {
   getPeriodMemories, getKnownContradictions, listConsolidations, db
 } from "./db.ts";
 import { runConsolidationSweep, consolidateCluster } from "./consolidation.ts";
+import { reflect } from "./growth.ts";
 
 export function registerIntelligenceRoutes(router: Router): void {
 
-  // POST /reflect - Generate reflection
-  // TODO: LLM integration needed - callLLM not yet extracted
+  // POST /reflect - Generate growth reflection
   router.post("/reflect", async (req) => {
-    return errorResponse("LLM not configured - /reflect requires inference", 400);
+    const { auth, body } = getContext(req);
+    if (!hasScope(auth, "write")) return errorResponse("Write scope required", 403);
+    const b = body as any;
+    if (!b?.service || typeof b.service !== "string") {
+      return errorResponse("service is required (string)", 400);
+    }
+    if (!Array.isArray(b?.context) || b.context.length === 0) {
+      return errorResponse("context is required (non-empty string array)", 400);
+    }
+    try {
+      const result = await reflect({
+        service: b.service,
+        context: b.context,
+        existing_growth: b.existing_growth,
+        prompt_override: b.prompt_override,
+      }, auth.user_id);
+      return json(result);
+    } catch (e: any) {
+      return safeError("reflect", e);
+    }
   });
 
   // GET /reflections - List reflections
