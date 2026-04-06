@@ -97,7 +97,7 @@ import { withLease, releaseAllLeases, INSTANCE_ID } from "./src/jobs/scheduler.t
 import { extractFacts, processExtractionResult } from "./src/llm/index.ts";
 import { extractPersonalitySignals, synthesizePersonalityProfile } from "./src/intelligence/personality.ts";
 import { cosineSimilarity, getCachedEmbeddings } from "./src/embeddings/index.ts";
-import { LLM_API_KEY } from "./src/config/index.ts";
+
 import { detectCausalLinks } from "./src/tier4/causal.ts";
 import { storeValence } from "./src/tier4/valence.ts";
 import { runReconsolidationSweep } from "./src/tier4/reconsolidation.ts";
@@ -223,7 +223,7 @@ registerJobHandler("post_store_enrich_facts", async (payload) => {
   const embArray = new Float32Array(Buffer.from(embeddingBase64, "base64").buffer);
 
   // Fact extraction
-  if (LLM_API_KEY || isLLMAvailable()) {
+  if (isLLMAvailable()) {
     const allMems = getCachedEmbeddings(true, userId);
     const similarities: Array<{ id: number; content: string; category: string; score: number }> = [];
     for (let i = 0; i < allMems.length; i++) {
