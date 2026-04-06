@@ -87,7 +87,7 @@ jobs:
           readme-filepath: ./README.md
 
   # ==========================================================================
-  # npm → npm.pkg.github.com/@ghost-frame/engram
+  # npm → npmjs.com/@ghost_frame/engram
   # ==========================================================================
   npm:
     needs: ci
@@ -102,7 +102,7 @@ jobs:
         with:
           node-version: "22"
           registry-url: "https://npm.pkg.github.com"
-          scope: "@ghost-frame"
+          scope: "@ghost_frame"
 
       - run: npm install
 
