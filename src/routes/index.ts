@@ -25,7 +25,8 @@ import {
   ENGRAM_SKILL_DIRS, OPENSPACE_API_KEY,
 } from "../config/index.ts";
 import { log, opsCounters } from "../config/logger.ts";
-import { handleThymusRoutes, handleSomaRoutes, handleChiasmRoutes, handleAxonRoutes, handleLoomRoutes, handleBrocaRoutes } from "../services/index.ts";
+import { handleThymusRoutes, handleSomaRoutes, handleChiasmRoutes, handleAxonRoutes, handleLoomRoutes, handleBrocaRoutes, handleBrainRoutes } from "../services/index.ts";
+import { touchQueryTime } from "../services/brain/state.ts";
 
 // Database + prepared statements
 import {
@@ -113,6 +114,10 @@ import { buildDigestPayload, sendDigestWebhook, calculateNextSend, processSchedu
 
 // Ingestion
 import { chunkDocument } from "../ingestion/chunker.ts";
+
+// Brain / oracle
+import { queryBrain, isBrainReady } from "../services/brain/manager.ts";
+import { queryOracle } from "../services/brain/oracle.ts";
 
 // Helpers
 import { securityHeaders, json, errorResponse, safeError, sanitizeFTS, isPrivateHostname } from "../helpers/index.ts";
@@ -208,28 +213,7 @@ import { syncSkills, searchSkillsLocal, fixSkill, uploadSkillToCloud, searchSkil
 
 // --- Functions used by routes but not in a module yet ---
 
-// Per-IP rate limiting for OPEN_ACCESS mode
-const ipRateLimits = new Map<string, { count: number; reset: number }>();
-function checkIpRateLimit(ip: string): { allowed: boolean; retryAfter?: number } {
-  if (!OPEN_ACCESS) return { allowed: true };
-  const now = Date.now();
-  let rl = ipRateLimits.get(ip);
-  if (!rl || now > rl.reset) {
-    rl = { count: 0, reset: now + RATE_WINDOW_MS };
-    ipRateLimits.set(ip, rl);
-  }
-  rl.count++;
-  if (rl.count > OPEN_ACCESS_RATE_LIMIT) {
-    return { allowed: false, retryAfter: Math.ceil((rl.reset - now) / 1000) };
-  }
-  return { allowed: true };
-}
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, rl] of ipRateLimits) {
-    if (now > rl.reset) ipRateLimits.delete(ip);
-  }
-}, 5 * 60 * 1000);
+import { checkIpRateLimit } from "./types.ts";
 
 const OPEN_ACCESS_BLOCKED_PATHS = new Set([
   "/reset", "/bootstrap", "/admin/reembed", "/admin/rebuild-cooccurrences",
@@ -4036,12 +4020,28 @@ Return JSON:
           })) : [];
         }
 
+        touchQueryTime();
+
+        // Brain oracle augmentation (when brain ready and results found)
+        let oracle: any = undefined;
+        if (isBrainReady() && !abstained && results.length > 0) {
+          try {
+            const brainResult = await queryBrain(query);
+            if (brainResult.activated.length > 0) {
+              oracle = await queryOracle(query, brainResult);
+            }
+          } catch (e: any) {
+            log.warn({ msg: "brain_search_augment_failed", error: e.message });
+          }
+        }
+
         return json({
           results: explainResults,
           abstained,
           top_score: Math.round(topScore * 1000) / 1000,
           ...(episodeContext.length > 0 ? { episodes: episodeContext } : {}),
           ...(body.mode ? { mode: body.mode } : {}),
+          ...(oracle ? { oracle } : {}),
         });
       } catch (e: any) {
         opsCounters.sla_errors_5xx++;
@@ -7544,7 +7544,23 @@ If no meaningful inferences, return {"derived": []}`;
             m.importance || DEFAULT_IMPORTANCE, tags, m.confidence || 1.0, m.is_static ? 1 : 0,
             auth.user_id, m.created_at || new Date().toISOString(), m.updated_at || new Date().toISOString()
           ) as any;
-          enqueueJob("post_store", { memory_id: result.id, user_id: auth.user_id }, 3);
+          // Compute embedding for post_store pipeline
+          let embArray: Float32Array | null = null;
+          let embBase64: string | null = null;
+          try {
+            embArray = await embed(m.content);
+            embBase64 = Buffer.from(embArray.buffer, embArray.byteOffset, embArray.byteLength).toString("base64");
+          } catch {}
+          if (embBase64) {
+            enqueueJob("post_store", {
+              memoryId: result.id,
+              content: m.content,
+              category: m.category || "general",
+              userId: auth.user_id,
+              importance: m.importance || DEFAULT_IMPORTANCE,
+              embeddingBase64: embBase64,
+            }, 3);
+          }
           imported.memories++;
         } catch (e: any) {
           log.warn({ msg: "import_memory_failed", error: e.message });
@@ -8403,7 +8419,8 @@ If no meaningful inferences, return {"derived": []}`;
         await handleChiasmRoutes(method, url, req, requestId) ??
         await handleAxonRoutes(method, url, req, requestId) ??
         await handleLoomRoutes(method, url, req, requestId) ??
-        await handleBrocaRoutes(method, url, req, requestId);
+        await handleBrocaRoutes(method, url, req, requestId) ??
+        await handleBrainRoutes(method, url, req, requestId);
       if (serviceRes) {
         const elapsed = (performance.now() - requestStart).toFixed(1);
         log.info({ msg: "req", method, path: url.pathname, status: serviceRes.status, ms: elapsed, ip: clientIp, user: auth.user_id, rid: requestId });

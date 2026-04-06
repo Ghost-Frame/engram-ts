@@ -9,7 +9,7 @@ import {
   EMBEDDING_DIM, DEFAULT_IMPORTANCE,
 } from "../config/index.ts";
 import {
-  db, updateMemoryVec, getEntityForUser, getProjectForUser,
+  db, updateMemoryVec, getEntityForUser, getProjectForUser, upsertRateLimit,
 } from "../db/index.ts";
 import { embeddingToVectorJSON } from "../embeddings/index.ts";
 import { isPrivateHostname, json, errorResponse, safeError, securityHeaders, sanitizeFTS } from "../helpers/index.ts";
@@ -50,27 +50,18 @@ export type { AuthContext };
 // ── Cross-cutting helper functions ─────────────────────────────────────────
 
 /** Per-IP rate limiting for OPEN_ACCESS mode */
-const ipRateLimits = new Map<string, { count: number; reset: number }>();
 export function checkIpRateLimit(ip: string): { allowed: boolean; retryAfter?: number } {
   if (!OPEN_ACCESS) return { allowed: true };
-  const now = Date.now();
-  let rl = ipRateLimits.get(ip);
-  if (!rl || now > rl.reset) {
-    rl = { count: 0, reset: now + RATE_WINDOW_MS };
-    ipRateLimits.set(ip, rl);
-  }
-  rl.count++;
-  if (rl.count > OPEN_ACCESS_RATE_LIMIT) {
-    return { allowed: false, retryAfter: Math.ceil((rl.reset - now) / 1000) };
+  const windowSeconds = Math.ceil(RATE_WINDOW_MS / 1000);
+  const row = upsertRateLimit.get(`ip:${ip}`, windowSeconds) as { count: number; window_start: string; window_seconds: number } | undefined;
+  if (!row) return { allowed: true };
+  if (row.count > OPEN_ACCESS_RATE_LIMIT) {
+    const windowEndMs = new Date(row.window_start + "Z").getTime() + row.window_seconds * 1000;
+    const retryAfter = Math.max(1, Math.ceil((windowEndMs - Date.now()) / 1000));
+    return { allowed: false, retryAfter };
   }
   return { allowed: true };
 }
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, rl] of ipRateLimits) {
-    if (now > rl.reset) ipRateLimits.delete(ip);
-  }
-}, 5 * 60 * 1000);
 
 /** Rough token estimator (~4 chars/token) */
 export function estimateTokens(text: string): number {

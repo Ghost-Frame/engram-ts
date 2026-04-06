@@ -15,7 +15,6 @@ import type { GcResult } from "./types.ts";
 /**
  * Triggers a full re-embed sweep using the current embedding provider.
  * Heavy operation - may take minutes on large corpora.
- * TODO: Move progress tracking to a background job for async reporting.
  */
 export async function runReembed(triggeredBy: number): Promise<Record<string, unknown>> {
   const { reembedAll, getEmbeddingProviderInfo } = await import("../embeddings/index.ts");
@@ -31,7 +30,6 @@ export async function runReembed(triggeredBy: number): Promise<Record<string, un
 
 /**
  * Populates valid_at for existing facts that are missing it.
- * TODO: Consider batching for large databases.
  */
 export async function runBackfillFacts(userId: number): Promise<{ backfilled: number }> {
   const { backfillFactValidity } = await import("../intelligence/temporal.ts");
@@ -43,7 +41,6 @@ export async function runBackfillFacts(userId: number): Promise<{ backfilled: nu
 
 /**
  * Rebuilds the entity co-occurrence graph from scratch for a given user.
- * TODO: Support global rebuild (all users) via admin flag.
  */
 export async function runRebuildCooccurrences(userId: number): Promise<{ rebuilt_pairs: number }> {
   const { rebuildCooccurrences } = await import("../graph/cooccurrence.ts");

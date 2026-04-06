@@ -152,7 +152,6 @@ If no meaningful facts, return {"facts": []}`;
           await autoLink(result.id, embArray, auth.user_id);
         }
 
-        // TODO: async fact extraction for relationship detection
         if (isLocalModelAvailable()) {
           (async () => {
             try {
@@ -366,7 +365,6 @@ Return JSON:
             await autoLink(result.id, embArray, auth.user_id);
           }
 
-          // TODO: async fact extraction for relationship detection
           if (isLocalModelAvailable()) {
             (async () => {
               try {
@@ -765,7 +763,23 @@ If no meaningful inferences, return {"derived": []}`;
           m.importance || DEFAULT_IMPORTANCE, tags, m.confidence || 1.0, m.is_static ? 1 : 0,
           auth.user_id, m.created_at || new Date().toISOString(), m.updated_at || new Date().toISOString()
         ) as any;
-        enqueueJob("post_store", { memory_id: result.id, user_id: auth.user_id }, 3);
+        // Compute embedding for post_store pipeline
+        let embArray: Float32Array | null = null;
+        let embBase64: string | null = null;
+        try {
+          embArray = await embedWithChunking(m.content);
+          embBase64 = Buffer.from(embArray.buffer, embArray.byteOffset, embArray.byteLength).toString("base64");
+        } catch {}
+        if (embBase64) {
+          enqueueJob("post_store", {
+            memoryId: result.id,
+            content: m.content,
+            category: m.category || "general",
+            userId: auth.user_id,
+            importance: m.importance || DEFAULT_IMPORTANCE,
+            embeddingBase64: embBase64,
+          }, 3);
+        }
         imported.memories++;
       } catch (e: any) {
         log.warn({ msg: "import_memory_failed", error: e.message });
