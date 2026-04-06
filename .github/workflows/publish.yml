@@ -16,7 +16,7 @@ on:
 
 env:
   GHCR_REGISTRY: ghcr.io
-  DOCKERHUB_IMAGE: zanfiel/engram
+  DOCKERHUB_IMAGE: ghostframe/engram
   IMAGE_NAME: ${{ github.repository }}
 
 permissions:
@@ -31,7 +31,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
 
   # ==========================================================================
-  # Docker → ghcr.io/zanfiel/engram
+  # Docker → ghcr.io/ghostframe/engram
   # ==========================================================================
   docker:
     needs: ci
@@ -52,7 +52,7 @@ jobs:
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: zanfiel
+          username: ghostframe
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
       - name: Extract metadata
@@ -80,14 +80,14 @@ jobs:
       - name: Update Docker Hub description
         uses: peter-evans/dockerhub-description@v4
         with:
-          username: zanfiel
+          username: ghostframe
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
-          repository: zanfiel/engram
+          repository: ghostframe/engram
           short-description: ${{ github.event.repository.description }}
           readme-filepath: ./README.md
 
   # ==========================================================================
-  # npm → npm.pkg.github.com/@zanfiel/engram
+  # npm → npm.pkg.github.com/@ghost-frame/engram
   # ==========================================================================
   npm:
     needs: ci
@@ -102,7 +102,7 @@ jobs:
         with:
           node-version: "22"
           registry-url: "https://npm.pkg.github.com"
-          scope: "@zanfiel"
+          scope: "@ghost-frame"
 
       - run: npm install
 
