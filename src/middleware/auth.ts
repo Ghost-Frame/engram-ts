@@ -25,6 +25,10 @@ export function getContext(req: Request): RequestContext {
   return ctx;
 }
 
+export function setContext(req: Request, ctx: RequestContext): void {
+  contextMap.set(req, ctx);
+}
+
 export function getClientIp(req: Request): string {
   const socketIp = req.headers.get("x-socket-ip") || "";
   // Only trust proxy headers if the direct connection is from a trusted proxy

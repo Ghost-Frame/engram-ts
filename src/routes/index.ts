@@ -142,6 +142,9 @@ import {
   serveGuiAsset, GUI_SPA_ROUTES,
 } from "../gui/index.ts";
 
+// Context bridge: monolithic handler -> service routes that use getContext()
+import { setContext } from "../middleware/auth.ts";
+
 // Bind guiAuthed into getAuthOrDefault so routes can call it with just (req)
 function getAuthOrDefault(req: Request): AuthContext | AuthError | null {
   return _getAuthOrDefault(req, guiAuthed);
@@ -8437,6 +8440,12 @@ If no meaningful inferences, return {"derived": []}`;
     // CONSOLIDATED SERVICE ROUTES (Thymus, Soma, Chiasm, Axon)
     // ========================================================================
     {
+      // Bridge monolithic auth into middleware contextMap so service routes can use getContext(req)
+      let serviceBody: unknown = {};
+      if (method === "POST" || method === "PATCH" || method === "PUT") {
+        try { serviceBody = await req.json(); } catch { serviceBody = {}; }
+      }
+      setContext(req, { auth, body: serviceBody, url, method, clientIp, requestId, requestStart });
       const serviceRes =
         await handleThymusRoutes(method, url, req, requestId) ??
         await handleSomaRoutes(method, url, req, requestId) ??
