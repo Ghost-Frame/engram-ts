@@ -115,11 +115,11 @@ export async function handleSomaRoutes(
   // PATCH /soma/agents/:id/quality
   const qualityMatch = sub.match(/^\/agents\/([^/]+)\/quality$/);
   if (qualityMatch && method === "PATCH") {
-    const { body: rawBody } = getContext(req);
+    const { body: rawBody, auth } = getContext(req);
     const body = (rawBody || {}) as any;
     if (body.quality_score === undefined) return errorResponse("quality_score is required", 400, requestId);
     try {
-      const result = updateAgentQuality(qualityMatch[1], body.quality_score, body.drift_flags ?? []);
+      const result = updateAgentQuality(qualityMatch[1], auth.user_id, body.quality_score, body.drift_flags ?? []);
       return json(result);
     } catch (e: any) {
       return errorResponse(e.message, e.message.includes("not found") ? 404 : 400, requestId);
@@ -214,7 +214,8 @@ export async function handleSomaRoutes(
   // - Stats --
 
   if (sub === "/stats" && method === "GET") {
-    return json(getStats());
+    const { auth } = getContext(req);
+    return json(getStats(auth.is_admin ? undefined : auth.user_id));
   }
 
   return null; // Not a soma route match

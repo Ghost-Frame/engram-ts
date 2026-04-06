@@ -65,16 +65,17 @@ export async function handleAxonRoutes(
   // - Channels --
 
   if (sub === "/channels" && method === "GET") {
-    return json(listChannels());
+    const { auth } = getContext(req);
+    return json(listChannels(auth.user_id));
   }
 
   if (sub === "/channels" && method === "POST") {
-    const { body: rawBody } = getContext(req);
+    const { body: rawBody, auth } = getContext(req);
     const body = (rawBody || {}) as any;
     const { name, description, retain_hours } = body;
     if (!name || typeof name !== "string") return errorResponse("name required", 400, requestId);
     try {
-      return json(createChannel(name, description, retain_hours), 201);
+      return json(createChannel(auth.user_id, name, description, retain_hours), 201);
     } catch (e: any) {
       if (e.message?.includes("UNIQUE")) return errorResponse("Channel already exists", 409, requestId);
       throw e;
@@ -143,7 +144,8 @@ export async function handleAxonRoutes(
   // - Stats --
 
   if (sub === "/stats" && method === "GET") {
-    return json(getStats());
+    const { auth } = getContext(req);
+    return json(getStats(auth.is_admin ? undefined : auth.user_id));
   }
 
   return null; // Not an axon route match

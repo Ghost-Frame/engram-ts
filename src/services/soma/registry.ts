@@ -28,7 +28,7 @@ export function registerAgent(userId: number, data: {
     userId,
   );
   const agent = getAgent(Number(info.lastInsertRowid), userId)!;
-  publish(1, "system", "soma", "agent.registered", { agent_id: agent.id, name: data.name, type: data.type });
+  publish(userId, "system", "soma", "agent.registered", { agent_id: agent.id, name: data.name, type: data.type });
   return agent;
 }
 
@@ -98,7 +98,7 @@ export function deregisterAgent(id: number, userId: number): boolean {
   });
   const info = runDelete();
   if (info.changes > 0 && agent) {
-    publish(1, "system", "soma", "agent.deregistered", { agent_id: id, name: (agent as any).name });
+    publish(userId, "system", "soma", "agent.deregistered", { agent_id: id, name: (agent as any).name });
   }
   return info.changes > 0;
 }
@@ -200,8 +200,8 @@ export function getLogs(agentId: number, opts?: { level?: string; limit?: number
 
 // - Quality / Drift --
 
-export function updateAgentQuality(agentId: string, qualityScore: number, driftFlags: string[]): any {
-  const result = updateAgentQualityStmt.run(qualityScore, JSON.stringify(driftFlags), agentId);
+export function updateAgentQuality(agentId: string, userId: number, qualityScore: number, driftFlags: string[]): any {
+  const result = updateAgentQualityStmt.run(qualityScore, JSON.stringify(driftFlags), agentId, userId);
   if (result.changes === 0) {
     throw new Error(`Agent not found: ${agentId}`);
   }
@@ -210,7 +210,15 @@ export function updateAgentQuality(agentId: string, qualityScore: number, driftF
 
 // - Stats --
 
-export function getStats() {
+export function getStats(userId?: number) {
+  if (userId !== undefined) {
+    const agents = (db.prepare("SELECT COUNT(*) as count FROM soma_agents WHERE user_id = ?").get(userId) as any).count;
+    const online = (db.prepare("SELECT COUNT(*) as count FROM soma_agents WHERE status = 'online' AND user_id = ?").get(userId) as any).count;
+    const groups = (db.prepare("SELECT COUNT(*) as count FROM soma_groups WHERE user_id = ?").get(userId) as any).count;
+    const by_type = db.prepare("SELECT type, COUNT(*) as count FROM soma_agents WHERE user_id = ? GROUP BY type ORDER BY count DESC").all(userId);
+    const by_status = db.prepare("SELECT status, COUNT(*) as count FROM soma_agents WHERE user_id = ? GROUP BY status ORDER BY count DESC").all(userId);
+    return { agents, online, groups, by_type, by_status };
+  }
   const agents = (agentCount.get() as any).count;
   const online = (onlineCount.get() as any).count;
   const groups = (groupCount.get() as any).count;

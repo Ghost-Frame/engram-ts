@@ -100,7 +100,7 @@ export function createRun(userId: number, workflowId: number, input: Record<stri
   const run = getRun(runId, userId)!;
 
   // Publish event AFTER insert (outside any transaction)
-  publish(1, "system", "loom", "workflow.run.created", {
+  publish(userId, "system", "loom", "workflow.run.created", {
     run_id: runId,
     workflow_id: workflowId,
     workflow_name: (workflow as any).name,
@@ -150,7 +150,7 @@ export function cancelRun(id: number, userId: number): boolean {
 
   addLog(id, null, "info", "Run cancelled");
 
-  publish(1, "system", "loom", "workflow.run.cancelled", { run_id: id });
+  publish(userId, "system", "loom", "workflow.run.cancelled", { run_id: id });
 
   return true;
 }
@@ -193,6 +193,7 @@ export function failStep(stepId: number, error: string) {
   const retryCount = (step.retry_count as number) + 1;
   const maxRetries = step.max_retries as number;
   const runId = step.run_id as number;
+  const userId = (db.prepare("SELECT user_id FROM loom_runs WHERE id = ?").get(runId) as { user_id: number })?.user_id ?? 1;
 
   if (retryCount < maxRetries) {
     // Retry: reset to pending with incremented retry count
@@ -216,7 +217,7 @@ export function failStep(stepId: number, error: string) {
 
     addLog(runId, stepId, "error", `Step "${step.name}" failed permanently`, { error, retries: retryCount });
 
-    publish(1, "system", "loom", "workflow.run.failed", {
+    publish(userId, "system", "loom", "workflow.run.failed", {
       run_id: runId,
       step_name: step.name,
       error,
@@ -231,6 +232,7 @@ export function advanceRun(runId: number): void {
   const run = parseJsonFields(row, "input", "output");
   if (!run) return;
   if (run.status === "completed" || run.status === "failed" || run.status === "cancelled") return;
+  const userId = (run.user_id as number) ?? 1;
 
   // Mark run as running if still pending
   if (run.status === "pending") {
@@ -258,7 +260,7 @@ export function advanceRun(runId: number): void {
 
     addLog(runId, null, "info", "Run completed");
 
-    publish(1, "system", "loom", "workflow.run.completed", {
+    publish(userId, "system", "loom", "workflow.run.completed", {
       run_id: runId,
       output: lastOutput,
     });
@@ -456,7 +458,14 @@ export function getLogs(opts: { run_id: number; step_id?: number; level?: string
 
 // ── Stats ────────────────────────────────────────────────────────────
 
-export function getStats() {
+export function getStats(userId?: number) {
+  if (userId !== undefined) {
+    const workflows = (db.prepare("SELECT COUNT(*) as count FROM loom_workflows WHERE user_id = ?").get(userId) as any).count;
+    const runs = (db.prepare("SELECT COUNT(*) as count FROM loom_runs WHERE user_id = ?").get(userId) as any).count;
+    const active_runs = (db.prepare("SELECT COUNT(*) as count FROM loom_runs WHERE status = 'running' AND user_id = ?").get(userId) as any).count;
+    const steps = (db.prepare("SELECT COUNT(*) as count FROM loom_steps WHERE run_id IN (SELECT id FROM loom_runs WHERE user_id = ?)").get(userId) as any).count;
+    return { workflows, runs, active_runs, steps };
+  }
   const workflows = (workflowCount.get() as any).count;
   const runs = (runCount.get() as any).count;
   const active_runs = (activeRunCount.get() as any).count;

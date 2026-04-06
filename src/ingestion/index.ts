@@ -29,20 +29,20 @@ async function tryCreateChiasmTask(jobId: string): Promise<number> {
   }
 }
 
-async function tryUpdateChiasmTask(taskId: number, status: string, summary: string): Promise<void> {
+async function tryUpdateChiasmTask(taskId: number, userId: number, status: string, summary: string): Promise<void> {
   if (taskId < 0) return;
   try {
     const { updateTask } = await import("../services/chiasm/engine.ts");
-    updateTask(taskId, 1, { status, summary });
+    updateTask(taskId, userId, { status, summary });
   } catch {}
 }
 
-function tryPublishAxon(channel: string, source: string, type: string, payload: Record<string, unknown>): void {
+function tryPublishAxon(userId: number, channel: string, source: string, type: string, payload: Record<string, unknown>): void {
   try {
     // Dynamic import to avoid failing if DB is not initialized
     import("../services/axon/bus.ts").then(({ publish }) => {
       try {
-        publish(1, channel, source, type, payload);
+        publish(userId, channel, source, type, payload);
       } catch {}
     }).catch(() => {});
   } catch {}
@@ -71,8 +71,8 @@ async function runPipeline(
   const parser = getParser(format);
   if (!parser) {
     const msg = `Unsupported format: ${format}`;
-    tryPublishAxon("ingestion", "ingestion", "ingest.error", { job_id: jobId, error: msg });
-    await tryUpdateChiasmTask(chiasmTaskId, "completed", `Failed: ${msg}`);
+    tryPublishAxon(options.userId, "ingestion", "ingestion", "ingest.error", { job_id: jobId, error: msg });
+    await tryUpdateChiasmTask(chiasmTaskId, options.userId, "completed", `Failed: ${msg}`);
     return {
       job_id: jobId,
       chiasm_task_id: chiasmTaskId,
@@ -96,8 +96,8 @@ async function runPipeline(
     }
   } catch (err: any) {
     const msg = `Parser error: ${err.message}`;
-    tryPublishAxon("ingestion", "ingestion", "ingest.error", { job_id: jobId, error: msg });
-    await tryUpdateChiasmTask(chiasmTaskId, "completed", `Failed: ${msg}`);
+    tryPublishAxon(options.userId, "ingestion", "ingestion", "ingest.error", { job_id: jobId, error: msg });
+    await tryUpdateChiasmTask(chiasmTaskId, options.userId, "completed", `Failed: ${msg}`);
     return {
       job_id: jobId,
       chiasm_task_id: chiasmTaskId,
@@ -125,7 +125,7 @@ async function runPipeline(
       continue;
     }
 
-    tryPublishAxon("ingestion", "ingestion", "ingest.parsed", {
+    tryPublishAxon(options.userId, "ingestion", "ingestion", "ingest.parsed", {
       job_id: jobId,
       document_title: doc.title,
       chunk_count: docChunks.length,
@@ -158,7 +158,7 @@ async function runPipeline(
       chunksProcessedSoFar++;
 
       if (chunksProcessedSoFar % 10 === 0) {
-        tryPublishAxon("ingestion", "ingestion", "ingest.progress", {
+        tryPublishAxon(options.userId, "ingestion", "ingestion", "ingest.progress", {
           job_id: jobId,
           chunks_done: chunksProcessedSoFar,
           chunks_total: total_chunks,
@@ -171,7 +171,7 @@ async function runPipeline(
   const duration_ms = Date.now() - startMs;
   const summary = `Ingested ${total_documents} docs, ${total_chunks} chunks, ${total_memories} memories in ${duration_ms}ms`;
 
-  tryPublishAxon("ingestion", "ingestion", "ingest.completed", {
+  tryPublishAxon(options.userId, "ingestion", "ingestion", "ingest.completed", {
     job_id: jobId,
     total_documents,
     total_chunks,
@@ -180,7 +180,7 @@ async function runPipeline(
     duration_ms,
   });
 
-  await tryUpdateChiasmTask(chiasmTaskId, "completed", summary);
+  await tryUpdateChiasmTask(chiasmTaskId, options.userId, "completed", summary);
 
   return {
     job_id: jobId,
@@ -217,7 +217,7 @@ export function ingestAsync(
     // Try to create Chiasm task (non-fatal)
     chiasm_task_id = await tryCreateChiasmTask(job_id);
 
-    tryPublishAxon("ingestion", "ingestion", "ingest.started", {
+    tryPublishAxon(options.userId, "ingestion", "ingestion", "ingest.started", {
       job_id,
       chiasm_task_id,
       source: options.source,

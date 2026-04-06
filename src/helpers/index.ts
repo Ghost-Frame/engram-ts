@@ -51,6 +51,18 @@ export function isPrivateHostname(hostname: string): boolean {
   // IPv6 link-local
   if (h.startsWith("fe80")) return true;
 
+  // IPv4-mapped IPv6 addresses
+  if (h.startsWith("::ffff:")) {
+    const mapped = h.slice(7);
+    if (mapped === "127.0.0.1" || mapped === "0.0.0.0" ||
+        mapped.startsWith("10.") || mapped.startsWith("192.168.") ||
+        mapped.startsWith("169.254.") || mapped.startsWith("100.64.")) return true;
+    if (mapped.startsWith("172.")) {
+      const second = parseInt(mapped.split(".")[1], 10);
+      if (second >= 16 && second <= 31) return true;
+    }
+  }
+
   // Local domain suffixes
   if (h.endsWith(".local") || h.endsWith(".internal")) return true;
 

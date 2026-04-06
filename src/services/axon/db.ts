@@ -19,7 +19,7 @@ function migrate(sql: string) {
 migrate(`
   CREATE TABLE IF NOT EXISTS axon_channels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
     description TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     retain_hours INTEGER NOT NULL DEFAULT 168
@@ -67,6 +67,35 @@ migrate(`ALTER TABLE axon_events ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`)
 migrate(`ALTER TABLE axon_subscriptions ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`);
 migrate(`ALTER TABLE axon_cursors ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`);
 migrate(`CREATE INDEX IF NOT EXISTS idx_axon_events_user ON axon_events(user_id)`);
+migrate(`CREATE UNIQUE INDEX IF NOT EXISTS idx_axon_subs_user_agent_channel ON axon_subscriptions(user_id, agent, channel)`);
+
+migrate(`ALTER TABLE axon_channels ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`);
+// Recreate axon_channels to drop the global UNIQUE(name) constraint -- now (user_id, name) is unique
+try {
+  const hasGlobalUnique = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='axon_channels'"
+  ).get() as { sql: string } | undefined;
+  if (hasGlobalUnique?.sql?.includes("name TEXT NOT NULL UNIQUE")) {
+    db.exec(`
+      CREATE TABLE axon_channels_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        retain_hours INTEGER NOT NULL DEFAULT 168,
+        user_id INTEGER NOT NULL DEFAULT 1
+      );
+      INSERT INTO axon_channels_new SELECT id, name, description, created_at, retain_hours, user_id FROM axon_channels;
+      DROP TABLE axon_channels;
+      ALTER TABLE axon_channels_new RENAME TO axon_channels;
+    `);
+    log.info({ msg: "axon_channels_recreated", reason: "dropped global UNIQUE(name), now per-tenant" });
+  }
+} catch (e: any) {
+  log.warn({ msg: "axon_channels_recreate_error", error: String(e) });
+}
+migrate(`CREATE UNIQUE INDEX IF NOT EXISTS idx_axon_channels_user_name ON axon_channels(user_id, name)`);
+migrate(`CREATE INDEX IF NOT EXISTS idx_axon_channels_user ON axon_channels(user_id)`);
 
 // - Seed default channels --
 
@@ -88,7 +117,7 @@ export const getEventById = db.prepare("SELECT * FROM axon_events WHERE id = ?")
 export const upsertSubscription = db.prepare(
   `INSERT INTO axon_subscriptions (agent, channel, filter_type, webhook_url, user_id)
    VALUES (?, ?, ?, ?, ?)
-   ON CONFLICT(agent, channel) DO UPDATE SET filter_type = excluded.filter_type, webhook_url = excluded.webhook_url`
+   ON CONFLICT(user_id, agent, channel) DO UPDATE SET filter_type = excluded.filter_type, webhook_url = excluded.webhook_url`
 );
 
 export const deleteSubscription = db.prepare(
@@ -104,7 +133,7 @@ export const getSubsByChannel = db.prepare(
 );
 
 export const getSubsWithWebhook = db.prepare(
-  "SELECT * FROM axon_subscriptions WHERE channel = ? AND webhook_url IS NOT NULL"
+  "SELECT * FROM axon_subscriptions WHERE channel = ? AND user_id = ? AND webhook_url IS NOT NULL"
 );
 
 export const upsertCursor = db.prepare(

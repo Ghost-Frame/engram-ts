@@ -56,19 +56,28 @@ export function publish(userId: number, channel: string, source: string, type: s
     }
   }
 
-  // Fan out to webhook subscribers (fire-and-forget)
-  const webhookSubs = getSubsWithWebhook.all(channel) as Array<{ webhook_url: string; filter_type: string | null }>;
+  // Fan out to webhook subscribers (fire-and-forget, tenant-scoped)
+  const webhookSubs = getSubsWithWebhook.all(channel, userId) as Array<{ webhook_url: string; filter_type: string | null }>;
   for (const sub of webhookSubs) {
     if (sub.filter_type && sub.filter_type !== type) continue;
     if (!sub.webhook_url) continue;
-    fetch(sub.webhook_url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: eventId, channel, source, type, payload }),
-      signal: AbortSignal.timeout(5000),
-    }).catch((err) => {
-      log.warn({ msg: "axon_webhook_error", url: sub.webhook_url, error: String(err) });
-    });
+    (async () => {
+      try {
+        const urlErr = await validatePublicUrlWithDNS(sub.webhook_url, "webhook_url");
+        if (urlErr) {
+          log.warn({ msg: "axon_webhook_ssrf_blocked", url: sub.webhook_url, error: urlErr });
+          return;
+        }
+        await fetch(sub.webhook_url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: eventId, channel, source, type, payload }),
+          signal: AbortSignal.timeout(5000),
+        });
+      } catch (err) {
+        log.warn({ msg: "axon_webhook_error", url: sub.webhook_url, error: String(err) });
+      }
+    })();
   }
 }
 
@@ -105,21 +114,21 @@ export function getEvent(id: number, userId: number) {
 
 // - Channels --
 
-export function listChannels() {
+export function listChannels(userId: number) {
   return db.prepare(`
     SELECT c.*,
-      (SELECT COUNT(*) FROM axon_events WHERE channel = c.name) as event_count,
-      (SELECT COUNT(*) FROM axon_subscriptions WHERE channel = c.name) as subscriber_count
-    FROM axon_channels c ORDER BY c.name
-  `).all();
+      (SELECT COUNT(*) FROM axon_events WHERE channel = c.name AND user_id = ?) as event_count,
+      (SELECT COUNT(*) FROM axon_subscriptions WHERE channel = c.name AND user_id = ?) as subscriber_count
+    FROM axon_channels c WHERE c.user_id = ? ORDER BY c.name
+  `).all(userId, userId, userId);
 }
 
-export function createChannel(name: string, description?: string, retainHours?: number) {
+export function createChannel(userId: number, name: string, description?: string, retainHours?: number) {
   const retain = retainHours ?? 168;
   db.prepare(
-    "INSERT INTO axon_channels (name, description, retain_hours) VALUES (?, ?, ?)"
-  ).run(name, description ?? null, retain);
-  return db.prepare("SELECT * FROM axon_channels WHERE name = ?").get(name);
+    "INSERT INTO axon_channels (name, description, retain_hours, user_id) VALUES (?, ?, ?, ?)"
+  ).run(name, description ?? null, retain, userId);
+  return db.prepare("SELECT * FROM axon_channels WHERE name = ? AND user_id = ?").get(name, userId);
 }
 
 // - Subscriptions --
@@ -265,11 +274,15 @@ export function pruneEvents() {
 
 // - Stats --
 
-export function getStats() {
+export function getStats(userId?: number) {
   const channels = (channelCount.get() as any).count;
+  const sse_clients = sseClients.size;
+  if (userId !== undefined) {
+    const events = (db.prepare("SELECT COUNT(*) as count FROM axon_events WHERE user_id = ?").get(userId) as any).count;
+    const subscriptions = (db.prepare("SELECT COUNT(*) as count FROM axon_subscriptions WHERE user_id = ?").get(userId) as any).count;
+    return { channels, events, subscriptions, sse_clients };
+  }
   const events = (eventCount.get() as any).count;
   const subscriptions = (subscriptionCount.get() as any).count;
-  const sse_clients = sseClients.size;
-
   return { channels, events, subscriptions, sse_clients };
 }

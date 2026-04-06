@@ -52,7 +52,8 @@ export async function handleChiasmRoutes(
 
   // /tasks/stats must come before /tasks/:id
   if (path === "/tasks/stats" && method === "GET") {
-    return json(getChiasmStats());
+    const { auth } = getContext(req);
+    return json(getChiasmStats(auth.is_admin ? undefined : auth.user_id));
   }
 
   const taskMatch = path.match(/^\/tasks\/(\d+)$/);

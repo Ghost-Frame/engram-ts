@@ -19,7 +19,7 @@ function migrate(sql: string) {
 migrate(`
   CREATE TABLE IF NOT EXISTS rubrics (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
     description TEXT,
     criteria TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -58,6 +58,39 @@ migrate(`CREATE INDEX IF NOT EXISTS idx_evaluations_agent_created ON evaluations
 migrate(`CREATE INDEX IF NOT EXISTS idx_evaluations_rubric_created ON evaluations(rubric_id, created_at DESC)`);
 migrate(`CREATE INDEX IF NOT EXISTS idx_quality_metrics_agent_metric ON quality_metrics(agent, metric, recorded_at DESC)`);
 
+migrate(`ALTER TABLE rubrics ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`);
+migrate(`ALTER TABLE evaluations ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`);
+migrate(`ALTER TABLE quality_metrics ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`);
+// Recreate rubrics to drop global UNIQUE(name) -- now (user_id, name) is unique
+try {
+  const hasGlobalUnique = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='rubrics'"
+  ).get() as { sql: string } | undefined;
+  if (hasGlobalUnique?.sql?.includes("name TEXT NOT NULL UNIQUE")) {
+    db.exec(`
+      CREATE TABLE rubrics_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        criteria TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        user_id INTEGER NOT NULL DEFAULT 1
+      );
+      INSERT INTO rubrics_new SELECT id, name, description, criteria, created_at, updated_at, user_id FROM rubrics;
+      DROP TABLE rubrics;
+      ALTER TABLE rubrics_new RENAME TO rubrics;
+    `);
+    log.info({ msg: "rubrics_recreated", reason: "dropped global UNIQUE(name), now per-tenant" });
+  }
+} catch (e: any) {
+  log.warn({ msg: "rubrics_recreate_error", error: String(e) });
+}
+migrate(`CREATE INDEX IF NOT EXISTS idx_rubrics_user ON rubrics(user_id)`);
+migrate(`CREATE INDEX IF NOT EXISTS idx_evaluations_user ON evaluations(user_id)`);
+migrate(`CREATE INDEX IF NOT EXISTS idx_quality_metrics_user ON quality_metrics(user_id)`);
+migrate(`CREATE UNIQUE INDEX IF NOT EXISTS idx_rubrics_user_name ON rubrics(user_id, name)`);
+
 // Session quality snapshots
 migrate(`CREATE TABLE IF NOT EXISTS session_quality (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,23 +118,23 @@ migrate(`CREATE TABLE IF NOT EXISTS behavioral_drift_events (
 // - Prepared statements --
 
 export const insertRubric = db.prepare(
-  "INSERT INTO rubrics (name, description, criteria) VALUES (?, ?, ?)"
+  "INSERT INTO rubrics (name, description, criteria, user_id) VALUES (?, ?, ?, ?)"
 );
 
 export const getRubricById = db.prepare("SELECT * FROM rubrics WHERE id = ?");
 export const getRubricByName = db.prepare("SELECT * FROM rubrics WHERE name = ?");
-export const listRubricsStmt = db.prepare("SELECT * FROM rubrics ORDER BY id DESC");
+export const listRubricsStmt = db.prepare("SELECT * FROM rubrics WHERE user_id = ? ORDER BY id DESC");
 
-export const deleteRubricStmt = db.prepare("DELETE FROM rubrics WHERE id = ?");
+export const deleteRubricStmt = db.prepare("DELETE FROM rubrics WHERE id = ? AND user_id = ?");
 
 export const insertEvaluation = db.prepare(
-  "INSERT INTO evaluations (rubric_id, agent, subject, input, output, scores, overall_score, notes, evaluator) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  "INSERT INTO evaluations (rubric_id, agent, subject, input, output, scores, overall_score, notes, evaluator, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 );
 
 export const getEvaluationById = db.prepare("SELECT * FROM evaluations WHERE id = ?");
 
 export const insertMetric = db.prepare(
-  "INSERT INTO quality_metrics (agent, metric, value, tags) VALUES (?, ?, ?, ?)"
+  "INSERT INTO quality_metrics (agent, metric, value, tags, user_id) VALUES (?, ?, ?, ?, ?)"
 );
 
 export const getMetricById = db.prepare("SELECT * FROM quality_metrics WHERE id = ?");

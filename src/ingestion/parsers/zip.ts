@@ -3,6 +3,7 @@ import { extname } from "node:path";
 import type { Parser, ParsedDocument } from "../types.ts";
 import { detectFormat } from "../detect.ts";
 import { SupportedFormat } from "../types.ts";
+import { MAX_ZIP_ENTRY_SIZE } from "../../config/index.ts";
 
 // Sub-parsers imported directly to avoid circular dependency via registry
 import { markdownParser } from "./markdown.ts";
@@ -60,10 +61,22 @@ function readEntryToBuffer(
   entry: yauzl.Entry,
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
+    // Reject entries that declare an uncompressed size exceeding the limit
+    if (entry.uncompressedSize > MAX_ZIP_ENTRY_SIZE) {
+      return reject(new Error(`ZIP entry ${entry.fileName} exceeds size limit (${entry.uncompressedSize} > ${MAX_ZIP_ENTRY_SIZE})`));
+    }
     zipfile.openReadStream(entry, (err, stream) => {
       if (err || !stream) return reject(err ?? new Error("no stream"));
       const chunks: Buffer[] = [];
-      stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+      let totalSize = 0;
+      stream.on("data", (chunk: Buffer) => {
+        totalSize += chunk.length;
+        if (totalSize > MAX_ZIP_ENTRY_SIZE) {
+          stream.destroy();
+          return reject(new Error(`ZIP entry ${entry.fileName} actual size exceeds limit (>${MAX_ZIP_ENTRY_SIZE})`));
+        }
+        chunks.push(chunk);
+      });
       stream.on("end", () => resolve(Buffer.concat(chunks)));
       stream.on("error", reject);
     });

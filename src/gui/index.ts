@@ -2,7 +2,7 @@
 // GUI - Web GUI authentication, cookie signing, HTML serving
 // ============================================================================
 
-import { createHash, randomUUID, timingSafeEqual } from "crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "crypto";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { resolve, dirname, extname } from "path";
 import { fileURLToPath } from "url";
@@ -52,9 +52,9 @@ const GUI_HMAC_SECRET = await (async () => {
 export const GUI_COOKIE_MAX_AGE = 7 * 24 * 60 * 60;
 
 export function guiSignCookie(ts: number): string {
-  const h = createHash("sha256");
-  h.update(GUI_HMAC_SECRET + ":" + String(ts));
-  return ts + "." + h.digest("hex");
+  const mac = createHmac("sha256", GUI_HMAC_SECRET);
+  mac.update(String(ts));
+  return ts + "." + mac.digest("hex");
 }
 
 export function guiVerifyCookie(cookie: string): boolean {
@@ -63,9 +63,9 @@ export function guiVerifyCookie(cookie: string): boolean {
   const ts = cookie.substring(0, dot), sig = cookie.substring(dot + 1);
   const t = parseInt(ts);
   if (isNaN(t) || Date.now() / 1000 - t > GUI_COOKIE_MAX_AGE) return false;
-  const h = createHash("sha256");
-  h.update(GUI_HMAC_SECRET + ":" + ts);
-  const expected = h.digest("hex");
+  const mac = createHmac("sha256", GUI_HMAC_SECRET);
+  mac.update(ts);
+  const expected = mac.digest("hex");
   if (expected.length !== sig.length) return false;
   return timingSafeEqual(Buffer.from(expected), Buffer.from(sig));
 }

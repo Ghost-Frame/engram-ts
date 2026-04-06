@@ -22,12 +22,18 @@ export function enrichWithArtifacts<T extends { id: number }>(results: T[]): (T 
 export function registerArtifactRoutes(router: Router): void {
 
   // GET /artifacts/stats - storage usage stats
-  router.get("/artifacts/stats", async (_req) => {
-    const stats = getArtifactStats.get() as {
-      total_count: number; total_bytes: number;
-      inline_bytes: number; disk_bytes: number;
-      inline_count: number; disk_count: number;
-    };
+  router.get("/artifacts/stats", async (req) => {
+    const { auth } = getContext(req);
+    const stats = auth.is_admin
+      ? getArtifactStats.get() as any
+      : db.prepare(
+          `SELECT COUNT(*) as total_count, COALESCE(SUM(a.size_bytes),0) as total_bytes,
+           COALESCE(SUM(CASE WHEN a.storage_mode = 'inline' THEN a.size_bytes ELSE 0 END),0) as inline_bytes,
+           COALESCE(SUM(CASE WHEN a.storage_mode = 'disk' THEN a.size_bytes ELSE 0 END),0) as disk_bytes,
+           SUM(CASE WHEN a.storage_mode = 'inline' THEN 1 ELSE 0 END) as inline_count,
+           SUM(CASE WHEN a.storage_mode = 'disk' THEN 1 ELSE 0 END) as disk_count
+           FROM artifacts a JOIN memories m ON a.memory_id = m.id WHERE m.user_id = ?`
+        ).get(auth.user_id) as any;
     return json({
       total_count: stats.total_count || 0,
       total_bytes: stats.total_bytes || 0,

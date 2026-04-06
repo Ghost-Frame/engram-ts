@@ -17,8 +17,8 @@ import {
 
 // - Rubrics --
 
-export function createRubric(name: string, description: string | null | undefined, criteria: unknown[]) {
-  const info = insertRubric.run(name, description ?? null, JSON.stringify(criteria));
+export function createRubric(userId: number, name: string, description: string | null | undefined, criteria: unknown[]) {
+  const info = insertRubric.run(name, description ?? null, JSON.stringify(criteria), userId);
   return getRubric(Number(info.lastInsertRowid))!;
 }
 
@@ -32,8 +32,8 @@ export function getRubricName(name: string) {
   return parseJsonFields(row, "criteria");
 }
 
-export function listRubrics() {
-  const rows = listRubricsStmt.all() as Record<string, unknown>[];
+export function listRubrics(userId: number) {
+  const rows = listRubricsStmt.all(userId) as Record<string, unknown>[];
   return parseJsonFieldsAll(rows, "criteria");
 }
 
@@ -54,14 +54,15 @@ export function updateRubric(id: number, updates: { name?: string; description?:
   return getRubric(id);
 }
 
-export function deleteRubric(id: number): boolean {
-  const info = deleteRubricStmt.run(id);
+export function deleteRubric(userId: number, id: number): boolean {
+  const info = deleteRubricStmt.run(id, userId);
   return info.changes > 0;
 }
 
 // - Evaluations --
 
 export function evaluate(
+  userId: number,
   rubricId: number,
   agent: string,
   subject: string,
@@ -100,11 +101,11 @@ export function evaluate(
     rubricId, agent, subject,
     JSON.stringify(input ?? {}), JSON.stringify(output ?? {}),
     JSON.stringify(scores), overall_score,
-    notes ?? null, evaluator,
+    notes ?? null, evaluator, userId,
   );
 
   const evaluation = getEvaluation(Number(info.lastInsertRowid))!;
-  publish(1, "system", "thymus", "evaluation.completed", {
+  publish(userId, "system", "thymus", "evaluation.completed", {
     evaluation_id: evaluation.id, agent, subject, overall_score, rubric: (rubric as any).name,
   });
   return evaluation;
@@ -115,14 +116,14 @@ export function getEvaluation(id: number) {
   return parseJsonFields(row, "input", "output", "scores");
 }
 
-export function listEvaluations(opts?: { agent?: string; rubric_id?: number; limit?: number }) {
-  const clauses: string[] = [];
-  const params: unknown[] = [];
+export function listEvaluations(userId: number, opts?: { agent?: string; rubric_id?: number; limit?: number }) {
+  const clauses: string[] = ["user_id = ?"];
+  const params: unknown[] = [userId];
 
   if (opts?.agent) { clauses.push("agent = ?"); params.push(opts.agent); }
   if (opts?.rubric_id) { clauses.push("rubric_id = ?"); params.push(opts.rubric_id); }
 
-  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const where = `WHERE ${clauses.join(" AND ")}`;
   const limit = opts?.limit ?? 100;
   const rows = db.prepare(
     `SELECT * FROM evaluations ${where} ORDER BY created_at DESC LIMIT ?`
@@ -130,9 +131,9 @@ export function listEvaluations(opts?: { agent?: string; rubric_id?: number; lim
   return parseJsonFieldsAll(rows, "input", "output", "scores");
 }
 
-export function getAgentScores(agent: string, opts?: { rubric_id?: number; since?: string }) {
-  const clauses = ["agent = ?"];
-  const params: unknown[] = [agent];
+export function getAgentScores(userId: number, agent: string, opts?: { rubric_id?: number; since?: string }) {
+  const clauses = ["user_id = ?", "agent = ?"];
+  const params: unknown[] = [userId, agent];
 
   if (opts?.rubric_id) { clauses.push("rubric_id = ?"); params.push(opts.rubric_id); }
   if (opts?.since) { clauses.push("created_at >= ?"); params.push(opts.since); }
@@ -173,21 +174,21 @@ export function getAgentScores(agent: string, opts?: { rubric_id?: number; since
 
 // - Metrics --
 
-export function recordMetric(agent: string, metric: string, value: number, tags?: Record<string, unknown>) {
-  const info = insertMetric.run(agent, metric, value, JSON.stringify(tags ?? {}));
+export function recordMetric(userId: number, agent: string, metric: string, value: number, tags?: Record<string, unknown>) {
+  const info = insertMetric.run(agent, metric, value, JSON.stringify(tags ?? {}), userId);
   const row = getMetricById.get(Number(info.lastInsertRowid)) as Record<string, unknown> | undefined;
   return parseJsonFields(row, "tags");
 }
 
-export function getMetrics(opts?: { agent?: string; metric?: string; since?: string; limit?: number }) {
-  const clauses: string[] = [];
-  const params: unknown[] = [];
+export function getMetrics(userId: number, opts?: { agent?: string; metric?: string; since?: string; limit?: number }) {
+  const clauses: string[] = ["user_id = ?"];
+  const params: unknown[] = [userId];
 
   if (opts?.agent) { clauses.push("agent = ?"); params.push(opts.agent); }
   if (opts?.metric) { clauses.push("metric = ?"); params.push(opts.metric); }
   if (opts?.since) { clauses.push("recorded_at >= ?"); params.push(opts.since); }
 
-  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const where = `WHERE ${clauses.join(" AND ")}`;
   const limit = opts?.limit ?? 100;
   const rows = db.prepare(
     `SELECT * FROM quality_metrics ${where} ORDER BY recorded_at DESC LIMIT ?`
@@ -195,9 +196,9 @@ export function getMetrics(opts?: { agent?: string; metric?: string; since?: str
   return parseJsonFieldsAll(rows, "tags");
 }
 
-export function getMetricSummary(agent: string, metric: string, since?: string) {
-  const clauses = ["agent = ?", "metric = ?"];
-  const params: unknown[] = [agent, metric];
+export function getMetricSummary(userId: number, agent: string, metric: string, since?: string) {
+  const clauses = ["user_id = ?", "agent = ?", "metric = ?"];
+  const params: unknown[] = [userId, agent, metric];
 
   if (since) { clauses.push("recorded_at >= ?"); params.push(since); }
 
@@ -278,7 +279,7 @@ export function getDriftSummary(agent: string): any[] {
 
 // - Stats --
 
-export function getStats() {
+export function getStats(_userId?: number) {
   const rubrics = (rubricCount.get() as any).count;
   const evaluations = (evaluationCount.get() as any).count;
   const metrics = (metricCount.get() as any).count;
