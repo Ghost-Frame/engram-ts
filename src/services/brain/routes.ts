@@ -65,7 +65,7 @@ export async function handleBrainRoutes(
 
   if (sub === "/absorb" && method === "POST") {
     if (!isBrainReady()) return json({ ok: false, error: "brain not ready" }, 503);
-    const { body: rawBody } = getContext(req);
+    const { body: rawBody, auth } = getContext(req);
     const body = (rawBody || {}) as any;
     const id = body.id;
     if (!id || typeof id !== "number") {
@@ -73,8 +73,8 @@ export async function handleBrainRoutes(
     }
     try {
       const row = db.prepare(
-        "SELECT id, content, category, source, importance, created_at, tags FROM memories WHERE id = ?"
-      ).get(id) as {
+        "SELECT id, content, category, source, importance, created_at, tags FROM memories WHERE id = ? AND user_id = ?"
+      ).get(id, auth.user_id) as {
         id: number;
         content: string;
         category: string;
@@ -122,7 +122,7 @@ export async function handleBrainRoutes(
 
   if (sub === "/feedback" && method === "POST") {
     if (!isBrainReady()) return json({ ok: false, error: "brain not ready" }, 503);
-    const { body: rawBody } = getContext(req);
+    const { body: rawBody, auth } = getContext(req);
     const body = (rawBody || {}) as any;
     if (!Array.isArray(body.memory_ids)) {
       return errorResponse("memory_ids array required", 400, requestId);
@@ -132,6 +132,16 @@ export async function handleBrainRoutes(
     }
     if (typeof body.useful !== "boolean") {
       return errorResponse("useful (boolean) required", 400, requestId);
+    }
+    // Verify all memory_ids belong to the authenticated user
+    if (body.memory_ids.length > 0) {
+      const placeholders = body.memory_ids.map(() => "?").join(",");
+      const owned = db.prepare(
+        `SELECT COUNT(*) as c FROM memories WHERE id IN (${placeholders}) AND user_id = ?`
+      ).get(...body.memory_ids, auth.user_id) as { c: number };
+      if (owned.c !== body.memory_ids.length) {
+        return errorResponse("One or more memory_ids not found or not owned by you", 403, requestId);
+      }
     }
     try {
       const result = await brainFeedbackSignal(body.memory_ids, body.edge_pairs, body.useful);
