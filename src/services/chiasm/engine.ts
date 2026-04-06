@@ -83,7 +83,7 @@ export function createTask(userId: number, data: { agent: string; project: strin
 
   const id = run();
 
-  publish(1, "system", "chiasm", "task.created", {
+  publish(userId, "system", "chiasm", "task.created", {
     task_id: id, agent: data.agent, project: data.project, title: data.title,
   });
 
@@ -104,7 +104,7 @@ export function updateTask(id: number, userId: number, data: { status?: string; 
 
   run();
 
-  publish(1, "system", "chiasm", "task.updated", {
+  publish(userId, "system", "chiasm", "task.updated", {
     task_id: id, agent: existing.agent, status, previous_status: existing.status,
   });
 

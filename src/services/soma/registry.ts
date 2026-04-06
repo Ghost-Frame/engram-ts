@@ -28,7 +28,7 @@ export function registerAgent(userId: number, data: {
     userId,
   );
   const agent = getAgent(Number(info.lastInsertRowid), userId)!;
-  publish(1, "system", "soma", "agent.registered", { agent_id: agent.id, name: data.name, type: data.type });
+  publish(userId, "system", "soma", "agent.registered", { agent_id: agent.id, name: data.name, type: data.type });
   return agent;
 }
 
@@ -98,7 +98,7 @@ export function deregisterAgent(id: number, userId: number): boolean {
   });
   const info = runDelete();
   if (info.changes > 0 && agent) {
-    publish(1, "system", "soma", "agent.deregistered", { agent_id: id, name: (agent as any).name });
+    publish(userId, "system", "soma", "agent.deregistered", { agent_id: id, name: (agent as any).name });
   }
   return info.changes > 0;
 }
