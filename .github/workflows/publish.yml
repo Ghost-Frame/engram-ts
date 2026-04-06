@@ -87,7 +87,7 @@ jobs:
           readme-filepath: ./README.md
 
   # ==========================================================================
-  # npm → npmjs.com/@ghost_frame/engram
+  # npm → npmjs.com/@ghost_frame/engram (public registry)
   # ==========================================================================
   npm:
     needs: ci
@@ -101,12 +101,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          registry-url: "https://npm.pkg.github.com"
-          scope: "@ghost_frame"
+          registry-url: "https://registry.npmjs.org"
 
       - run: npm install
 
-      - name: Publish to GitHub Packages
-        run: npm publish || true
+      - name: Publish to npm
+        run: npm publish --access public || true
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
