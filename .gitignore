@@ -1,28 +1,43 @@
+# Runtime data
 data/
-node_modules/
 *.db
 *.db-wal
 *.db-shm
 *.db-journal
-.env
-.hmac_secret
-dist/
-*.bak
-*.backup
-server.ts.pre-audit-backup
-server.ts.bun-backup
+engram*.log
+watchdog.log
 sync.log
+
+# Dependencies
+node_modules/
+bun.lock
+tools/node_modules/
+
+# Build output
+dist/
+
+# Environment / secrets
+.env
+.env.local
+.hmac_secret
+cookies.txt
+
+# OS junk
 .DS_Store
 Thumbs.db
 
-# Old/backup code
+# Backups (all patterns)
+*.bak
+*.bak*
+*.backup
+backups/
+server.ts.*-backup
+server.ts.*-bak
+
+# Old/dead code
 archive/
-backup-debug-*/
-backup-auditfix-*/
-server.ts.pre-multitenant-backup
 src.old/
 server.ts.monolith
-server.ts.pre-intelligence-bak
 server.new.ts
 split.ts
 split-routes.ts
@@ -30,7 +45,7 @@ query.js
 query.mjs
 query.ts
 
-# One-time migration/patch scripts
+# One-off scripts
 patch-*.py
 sync.py
 promote.sh
@@ -38,70 +53,46 @@ seed-demo.sh
 deploy.sh
 start-staging.sh
 stop-staging.sh
-
-# Local scripts
+sync-to-fallback.sh
+import-opencode.py
 *.bat
 *.ps1
 *.vbs
 *.cmd
-sync-to-fallback.sh
-import-opencode.py
 
 # Debug utilities
 check-*.ts
 check-*.cjs
 check-*.mjs
 
-# Runtime logs
-engram*.log
-
-# Never commit
-evaluation/
-cookies.txt
-backups/
-SPRINT-SESSION-*.md
-COMMIT_INSTRUCTIONS.txt
-UsersZan*
-*.bak*
-AGENTS.md
-bun.lock
-watchdog.log
-
-# Dead HTML (gui.html and login.html are still served)
+# Dead HTML
 engram-gui-new.html
 engram-gui-prev.html
 landing.html
 
-# Internal ops (hardening plans, n8n workflows, agent planning docs)
+# Internal ops / planning
 audit/
 docs/plans/
 docs/superpowers/
-
-# Grafana dashboards (exported JSON, not app code)
+evaluation/
 grafana/
-
-# Worktrees
-.worktrees/
-
-# Local overrides
-.env.local
-docker-compose.local.yml
-
-# Local hook blocklist (private patterns)
-.githooks/.blocklist
+SPRINT-SESSION-*.md
+COMMIT_INSTRUCTIONS.txt
+AGENTS.md
 
 # Tool/plugin state
 .claire/
 .playwright-mcp/
 .superpowers/
+.worktrees/
+.githooks/.blocklist
+docker-compose.local.yml
 
-# Bolt graph subproject (unused)
+# Subprojects
 bolt-graph/
 
-# Generated memory scripts
+# Generated
 src/memory/_gen*
-
-# Tools artifacts
-tools/node_modules/
 tools/*.png
 tools/*.gif
+UsersZan*
