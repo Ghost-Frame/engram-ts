@@ -62,11 +62,11 @@ The `/ingest` endpoint accepts large document uploads and processes them through
 
 ### Recent Changes
 
-**Atomic fact decomposition** -- Long memories are broken into self-contained atomic facts, each independently searchable and linked to its source via `has_fact` edges. Search supports `facts_only` and `exclude_facts` filters. Context assembly groups facts under parents. Admin endpoints provide retroactive sweep and status monitoring.
+**Atomic fact decomposition** - Long memories are broken into self-contained atomic facts, each independently searchable and linked to its source via `has_fact` edges. Search supports `facts_only` and `exclude_facts` filters. Context assembly groups facts under parents. Admin endpoints provide retroactive sweep and status monitoring.
 
-**Job queue hardening** -- The durable job queue now uses two-step transactional claiming (SELECT then UPDATE inside `db.transaction()`) instead of the subquery-UPDATE pattern that caused recurring SQLite B-tree corruption. WAL mode runs with `synchronous=FULL` for fsync protection. Cleanup is batched in small deletes with post-delete WAL checkpoints.
+**Job queue hardening** - The durable job queue now uses two-step transactional claiming (SELECT then UPDATE inside `db.transaction()`) instead of the subquery-UPDATE pattern that caused recurring SQLite B-tree corruption. WAL mode runs with `synchronous=FULL` for fsync protection. Cleanup is batched in small deletes with post-delete WAL checkpoints.
 
-**Non-destructive consolidation** -- Consolidation no longer archives source memories. Originals stay searchable. The consolidation summary links back to its sources but does not replace them.
+**Non-destructive consolidation** - Consolidation no longer archives source memories. Originals stay searchable. The consolidation summary links back to its sources but does not replace them.
 
 ---
 
@@ -516,9 +516,9 @@ The growth system lets agents generate self-improving observations about their o
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `service` | yes | Service identifier -- selects domain-specific prompt |
+| `service` | yes | Service identifier - selects domain-specific prompt |
 | `context` | yes | Non-empty array of strings describing recent activity |
-| `existing_growth` | no | Text of prior growth observations -- used to avoid repetition |
+| `existing_growth` | no | Text of prior growth observations - used to avoid repetition |
 | `prompt_override` | no | Custom system prompt, overrides the built-in service prompt |
 
 **Response:**
@@ -544,8 +544,8 @@ Each accepted observation is written to two places:
 
 Engram runs a built-in self-reflection cron every hour (lease-protected to prevent duplicate runs in multi-process deployments). Each run applies two gates before calling the LLM:
 
-1. **Activity threshold** -- requires >= 50 new memories in the past hour. Skips if the system is idle.
-2. **Probability gate** -- 15% chance of firing even when the threshold is met. Keeps the signal sparse and meaningful.
+1. **Activity threshold** - requires >= 50 new memories in the past hour. Skips if the system is idle.
+2. **Probability gate** - 15% chance of firing even when the threshold is met. Keeps the signal sparse and meaningful.
 
 When both gates pass, Engram assembles context from live memory stats (totals, access rates, top categories, recent contradictions) and calls the growth engine with `service = "engram"`.
 
