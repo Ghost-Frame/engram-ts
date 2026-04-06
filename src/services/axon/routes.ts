@@ -143,7 +143,8 @@ export async function handleAxonRoutes(
   // - Stats --
 
   if (sub === "/stats" && method === "GET") {
-    return json(getStats());
+    const { auth } = getContext(req);
+    return json(getStats(auth.is_admin ? undefined : auth.user_id));
   }
 
   return null; // Not an axon route match

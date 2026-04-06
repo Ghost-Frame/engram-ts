@@ -274,11 +274,15 @@ export function pruneEvents() {
 
 // - Stats --
 
-export function getStats() {
+export function getStats(userId?: number) {
   const channels = (channelCount.get() as any).count;
+  const sse_clients = sseClients.size;
+  if (userId !== undefined) {
+    const events = (db.prepare("SELECT COUNT(*) as count FROM axon_events WHERE user_id = ?").get(userId) as any).count;
+    const subscriptions = (db.prepare("SELECT COUNT(*) as count FROM axon_subscriptions WHERE user_id = ?").get(userId) as any).count;
+    return { channels, events, subscriptions, sse_clients };
+  }
   const events = (eventCount.get() as any).count;
   const subscriptions = (subscriptionCount.get() as any).count;
-  const sse_clients = sseClients.size;
-
   return { channels, events, subscriptions, sse_clients };
 }

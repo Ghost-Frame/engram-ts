@@ -278,7 +278,7 @@ export function getDriftSummary(agent: string): any[] {
 
 // - Stats --
 
-export function getStats() {
+export function getStats(_userId?: number) {
   const rubrics = (rubricCount.get() as any).count;
   const evaluations = (evaluationCount.get() as any).count;
   const metrics = (metricCount.get() as any).count;

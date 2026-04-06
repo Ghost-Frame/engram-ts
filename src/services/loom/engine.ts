@@ -456,7 +456,14 @@ export function getLogs(opts: { run_id: number; step_id?: number; level?: string
 
 // ── Stats ────────────────────────────────────────────────────────────
 
-export function getStats() {
+export function getStats(userId?: number) {
+  if (userId !== undefined) {
+    const workflows = (db.prepare("SELECT COUNT(*) as count FROM loom_workflows WHERE user_id = ?").get(userId) as any).count;
+    const runs = (db.prepare("SELECT COUNT(*) as count FROM loom_runs WHERE user_id = ?").get(userId) as any).count;
+    const active_runs = (db.prepare("SELECT COUNT(*) as count FROM loom_runs WHERE status = 'running' AND user_id = ?").get(userId) as any).count;
+    const steps = (db.prepare("SELECT COUNT(*) as count FROM loom_steps WHERE run_id IN (SELECT id FROM loom_runs WHERE user_id = ?)").get(userId) as any).count;
+    return { workflows, runs, active_runs, steps };
+  }
   const workflows = (workflowCount.get() as any).count;
   const runs = (runCount.get() as any).count;
   const active_runs = (activeRunCount.get() as any).count;

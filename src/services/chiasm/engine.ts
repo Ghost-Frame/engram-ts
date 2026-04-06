@@ -152,7 +152,18 @@ export function pruneTaskUpdates(maxRows: number, maxAgeDays: number) {
 
 // - Stats --
 
-export function getChiasmStats() {
+export function getChiasmStats(userId?: number) {
+  if (userId !== undefined) {
+    const total = (db.prepare("SELECT COUNT(*) as count FROM chiasm_tasks WHERE user_id = ?").get(userId) as any).count;
+    const active = (db.prepare("SELECT COUNT(*) as count FROM chiasm_tasks WHERE status = 'active' AND user_id = ?").get(userId) as any).count;
+    const by_agent = db.prepare(
+      "SELECT agent, COUNT(*) as count FROM chiasm_tasks WHERE status = 'active' AND user_id = ? GROUP BY agent ORDER BY count DESC"
+    ).all(userId);
+    const by_project = db.prepare(
+      "SELECT project, COUNT(*) as count FROM chiasm_tasks WHERE status = 'active' AND user_id = ? GROUP BY project ORDER BY count DESC"
+    ).all(userId);
+    return { total, active, by_agent, by_project };
+  }
   const total = (db.prepare("SELECT COUNT(*) as count FROM chiasm_tasks").get() as any).count;
   const active = (db.prepare("SELECT COUNT(*) as count FROM chiasm_tasks WHERE status = 'active'").get() as any).count;
   const by_agent = db.prepare(

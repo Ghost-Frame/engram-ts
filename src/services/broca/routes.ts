@@ -211,20 +211,28 @@ export async function handleBrocaRoutes(
   // - GET /broca/stats - Action counts --
 
   if (sub === "/stats" && method === "GET") {
-    const total = (actionCount.get() as any).count;
-    const narrated = (narratedCount.get() as any).count;
+    const { auth } = getContext(req);
+    const userId = auth.is_admin ? undefined : auth.user_id;
 
-    const by_service = db.prepare(
-      "SELECT service, COUNT(*) as count FROM broca_actions GROUP BY service ORDER BY count DESC"
-    ).all();
+    const total = userId !== undefined
+      ? (db.prepare("SELECT COUNT(*) as count FROM broca_actions WHERE user_id = ?").get(userId) as any).count
+      : (actionCount.get() as any).count;
 
-    const by_agent = db.prepare(
-      "SELECT agent, COUNT(*) as count FROM broca_actions GROUP BY agent ORDER BY count DESC"
-    ).all();
+    const narrated = userId !== undefined
+      ? (db.prepare("SELECT COUNT(*) as count FROM broca_actions WHERE narrative IS NOT NULL AND user_id = ?").get(userId) as any).count
+      : (narratedCount.get() as any).count;
 
-    const by_action = db.prepare(
-      "SELECT action, COUNT(*) as count FROM broca_actions GROUP BY action ORDER BY count DESC LIMIT 20"
-    ).all();
+    const by_service = userId !== undefined
+      ? db.prepare("SELECT service, COUNT(*) as count FROM broca_actions WHERE user_id = ? GROUP BY service ORDER BY count DESC").all(userId)
+      : db.prepare("SELECT service, COUNT(*) as count FROM broca_actions GROUP BY service ORDER BY count DESC").all();
+
+    const by_agent = userId !== undefined
+      ? db.prepare("SELECT agent, COUNT(*) as count FROM broca_actions WHERE user_id = ? GROUP BY agent ORDER BY count DESC").all(userId)
+      : db.prepare("SELECT agent, COUNT(*) as count FROM broca_actions GROUP BY agent ORDER BY count DESC").all();
+
+    const by_action = userId !== undefined
+      ? db.prepare("SELECT action, COUNT(*) as count FROM broca_actions WHERE user_id = ? GROUP BY action ORDER BY count DESC LIMIT 20").all(userId)
+      : db.prepare("SELECT action, COUNT(*) as count FROM broca_actions GROUP BY action ORDER BY count DESC LIMIT 20").all();
 
     return json({ total, narrated, by_service, by_agent, by_action });
   }

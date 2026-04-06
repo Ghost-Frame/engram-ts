@@ -210,7 +210,15 @@ export function updateAgentQuality(agentId: string, userId: number, qualityScore
 
 // - Stats --
 
-export function getStats() {
+export function getStats(userId?: number) {
+  if (userId !== undefined) {
+    const agents = (db.prepare("SELECT COUNT(*) as count FROM soma_agents WHERE user_id = ?").get(userId) as any).count;
+    const online = (db.prepare("SELECT COUNT(*) as count FROM soma_agents WHERE status = 'online' AND user_id = ?").get(userId) as any).count;
+    const groups = (db.prepare("SELECT COUNT(*) as count FROM soma_groups WHERE user_id = ?").get(userId) as any).count;
+    const by_type = db.prepare("SELECT type, COUNT(*) as count FROM soma_agents WHERE user_id = ? GROUP BY type ORDER BY count DESC").all(userId);
+    const by_status = db.prepare("SELECT status, COUNT(*) as count FROM soma_agents WHERE user_id = ? GROUP BY status ORDER BY count DESC").all(userId);
+    return { agents, online, groups, by_type, by_status };
+  }
   const agents = (agentCount.get() as any).count;
   const online = (onlineCount.get() as any).count;
   const groups = (groupCount.get() as any).count;
