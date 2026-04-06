@@ -56,7 +56,7 @@ The `/ingest` endpoint accepts large document uploads and processes them through
 
 ### Eidolon (Companion Intelligence Layer)
 
-[Eidolon](https://codeberg.org/GhostFrame/eidolon) pairs with Engram to add proactive agent awareness. Action gating blocks dangerous operations before they execute. A living prompt injects relevant memory context into every agent session. Credential scrubbing prevents secrets from leaking into prompts. Engram is the memory. Eidolon is the guardian that acts on it.
+[Eidolon](https://github/Ghost-Frame/eidolon) pairs with Engram to add proactive agent awareness. Action gating blocks dangerous operations before they execute. A living prompt injects relevant memory context into every agent session. Credential scrubbing prevents secrets from leaking into prompts. Engram is the memory. Eidolon is the guardian that acts on it.
 
 ---
 
