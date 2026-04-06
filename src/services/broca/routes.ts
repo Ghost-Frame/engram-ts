@@ -29,7 +29,7 @@ export async function handleBrocaRoutes(
   // - POST /broca/actions - Log an action --
 
   if (sub === "/actions" && method === "POST") {
-    const { body: rawBody } = getContext(req);
+    const { body: rawBody, auth } = getContext(req);
     const body = (rawBody || {}) as any;
     const { agent, service, action, payload } = body;
     if (!agent || typeof agent !== "string") return errorResponse("agent required", 400, requestId);
@@ -49,7 +49,7 @@ export async function handleBrocaRoutes(
         "SELECT seq FROM sqlite_sequence WHERE name = 'axon_events'"
       ).get() as { seq: number } | undefined;
       const beforeSeq = eventInfo?.seq ?? 0;
-      publish(1, "system", "broca", `broca.${action}`, { agent, service, ...payloadObj });
+      publish(auth.user_id, "system", "broca", `broca.${action}`, { agent, service, ...payloadObj });
       const afterInfo = db.prepare(
         "SELECT seq FROM sqlite_sequence WHERE name = 'axon_events'"
       ).get() as { seq: number } | undefined;

@@ -100,7 +100,7 @@ export function createRun(userId: number, workflowId: number, input: Record<stri
   const run = getRun(runId, userId)!;
 
   // Publish event AFTER insert (outside any transaction)
-  publish(1, "system", "loom", "workflow.run.created", {
+  publish(userId, "system", "loom", "workflow.run.created", {
     run_id: runId,
     workflow_id: workflowId,
     workflow_name: (workflow as any).name,
@@ -150,7 +150,7 @@ export function cancelRun(id: number, userId: number): boolean {
 
   addLog(id, null, "info", "Run cancelled");
 
-  publish(1, "system", "loom", "workflow.run.cancelled", { run_id: id });
+  publish(userId, "system", "loom", "workflow.run.cancelled", { run_id: id });
 
   return true;
 }
@@ -193,6 +193,7 @@ export function failStep(stepId: number, error: string) {
   const retryCount = (step.retry_count as number) + 1;
   const maxRetries = step.max_retries as number;
   const runId = step.run_id as number;
+  const userId = (db.prepare("SELECT user_id FROM loom_runs WHERE id = ?").get(runId) as { user_id: number })?.user_id ?? 1;
 
   if (retryCount < maxRetries) {
     // Retry: reset to pending with incremented retry count
@@ -216,7 +217,7 @@ export function failStep(stepId: number, error: string) {
 
     addLog(runId, stepId, "error", `Step "${step.name}" failed permanently`, { error, retries: retryCount });
 
-    publish(1, "system", "loom", "workflow.run.failed", {
+    publish(userId, "system", "loom", "workflow.run.failed", {
       run_id: runId,
       step_name: step.name,
       error,
@@ -231,6 +232,7 @@ export function advanceRun(runId: number): void {
   const run = parseJsonFields(row, "input", "output");
   if (!run) return;
   if (run.status === "completed" || run.status === "failed" || run.status === "cancelled") return;
+  const userId = (run.user_id as number) ?? 1;
 
   // Mark run as running if still pending
   if (run.status === "pending") {
@@ -258,7 +260,7 @@ export function advanceRun(runId: number): void {
 
     addLog(runId, null, "info", "Run completed");
 
-    publish(1, "system", "loom", "workflow.run.completed", {
+    publish(userId, "system", "loom", "workflow.run.completed", {
       run_id: runId,
       output: lastOutput,
     });
