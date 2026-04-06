@@ -79,7 +79,7 @@ import { decomposeAndStore } from "./src/intelligence/decomposition.ts";
 import { selfReflect } from "./src/intelligence/growth.ts";
 
 // LLM
-import { callLLM, isLLMAvailable } from "./src/llm/index.ts";
+import { callLocalModel, isLocalModelAvailable } from "./src/llm/local.ts";
 
 // Search (autoLink)
 import { autoLink } from "./src/memory/search.ts";
@@ -223,7 +223,7 @@ registerJobHandler("post_store_enrich_facts", async (payload) => {
   const embArray = new Float32Array(Buffer.from(embeddingBase64, "base64").buffer);
 
   // Fact extraction
-  if (isLLMAvailable()) {
+  if (isLocalModelAvailable()) {
     const allMems = getCachedEmbeddings(true, userId);
     const similarities: Array<{ id: number; content: string; category: string; score: number }> = [];
     for (let i = 0; i < allMems.length; i++) {
@@ -521,7 +521,7 @@ setInterval(withLease("scratchpad_ttl", async () => {
     let summarized = 0;
     for (const [_key, rows] of sessions) {
       // Only summarize multi-entry sessions �?" single entries aren't worth an LLM call
-      if (rows.length >= 2 && isLLMAvailable()) {
+      if (rows.length >= 2 && isLocalModelAvailable()) {
         const userId = rows[0].user_id;
         const session = rows[0].session;
         try {
@@ -531,7 +531,7 @@ setInterval(withLease("scratchpad_ttl", async () => {
             `[${r.entry_key}] ${r.value || "(empty)"}`
           ).join("\n");
 
-          const summary = await callLLM(
+          const summary = await callLocalModel(
             `You extract lasting knowledge from agent work sessions. Given an agent's scratchpad entries, identify facts worth remembering long-term (infrastructure details, endpoints, architectural decisions, bugs found, solutions). Ignore transient state. If nothing is worth keeping, say "nothing". Be concise.`,
             `Agent: ${agent}\nModel: ${model}\n\nEntries:\n${entriesText}`
           );
@@ -577,12 +577,10 @@ setInterval(withLease("decay_refresh", () => {
   }
 }, 1200), 15 * 60 * 1000);
 
-// Probe LLM reachability (sets cached flag for isLLMAvailable)
-import { probeLLM } from "./src/llm/index.ts";
-await probeLLM();
+// Local model availability is checked on-demand by isLocalModelAvailable()
 
 // Auto-consolidation sweep (if LLM configured, lease-protected)
-if (isLLMAvailable()) {
+if (isLocalModelAvailable()) {
   setInterval(withLease("consolidation", async () => {
     try {
       const consolidated = await runConsolidationSweep();
