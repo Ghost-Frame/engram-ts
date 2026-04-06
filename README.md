@@ -884,7 +884,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 <div align="center">
 
-[engram.lol](https://engram.lol) · [Codeberg](https://codeberg.org/GhostFrame/engram) · [Eidolon](https://codeberg.org/GhostFrame/eidolon) · [Issues](https://codeberg.org/GhostFrame/engram/issues) · [Changelog](CHANGELOG.md) · [Security](SECURITY.md)
+[engram.lol](https://engram.lol) · · [Eidolon](https://github.com/Ghost-Frame/eidolon) · [Issues](https://github.com/Ghost-Frame/engram/issues) · [Changelog](CHANGELOG.md) · [Security](SECURITY.md)
 
 Support: **support@syntheos.dev**
 
