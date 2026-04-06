@@ -200,8 +200,8 @@ export function getLogs(agentId: number, opts?: { level?: string; limit?: number
 
 // - Quality / Drift --
 
-export function updateAgentQuality(agentId: string, qualityScore: number, driftFlags: string[]): any {
-  const result = updateAgentQualityStmt.run(qualityScore, JSON.stringify(driftFlags), agentId);
+export function updateAgentQuality(agentId: string, userId: number, qualityScore: number, driftFlags: string[]): any {
+  const result = updateAgentQualityStmt.run(qualityScore, JSON.stringify(driftFlags), agentId, userId);
   if (result.changes === 0) {
     throw new Error(`Agent not found: ${agentId}`);
   }

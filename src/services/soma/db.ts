@@ -72,6 +72,7 @@ migrate(`ALTER TABLE soma_agents ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`)
 migrate(`ALTER TABLE soma_groups ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1`);
 migrate(`CREATE INDEX IF NOT EXISTS idx_soma_agents_user ON soma_agents(user_id)`);
 migrate(`CREATE INDEX IF NOT EXISTS idx_soma_groups_user ON soma_groups(user_id)`);
+migrate(`CREATE UNIQUE INDEX IF NOT EXISTS idx_soma_agents_user_name ON soma_agents(user_id, name)`);
 
 // - Prepared statements --
 
@@ -79,7 +80,7 @@ export const insertAgent = db.prepare(
   "INSERT INTO soma_agents (name, type, description, capabilities, config, user_id) VALUES (?, ?, ?, ?, ?, ?)"
 );
 export const getAgentById = db.prepare("SELECT * FROM soma_agents WHERE id = ? AND user_id = ?");
-export const getAgentByNameStmt = db.prepare("SELECT * FROM soma_agents WHERE name = ?");
+export const getAgentByNameStmt = db.prepare("SELECT * FROM soma_agents WHERE name = ? AND user_id = ?");
 export const deleteAgentStmt = db.prepare("DELETE FROM soma_agents WHERE id = ? AND user_id = ?");
 
 export const insertGroupStmt = db.prepare("INSERT INTO soma_groups (name, description, user_id) VALUES (?, ?, ?)");
@@ -107,5 +108,5 @@ export const onlineCount = db.prepare("SELECT COUNT(*) as count FROM soma_agents
 export const groupCount = db.prepare("SELECT COUNT(*) as count FROM soma_groups");
 
 export const updateAgentQuality = db.prepare(`
-  UPDATE soma_agents SET quality_score = ?, drift_flags = ? WHERE id = ?
+  UPDATE soma_agents SET quality_score = ?, drift_flags = ? WHERE id = ? AND user_id = ?
 `);
