@@ -4,69 +4,25 @@
 
 **The cognitive layer for AI agents.**
 
-Memory, personality, reasoning, and trust in a single self-hosted system that learns, forgets, and grows.
-
 [![Version](https://img.shields.io/badge/version-6.5.3-gold.svg)](CHANGELOG.md) [![License](https://img.shields.io/badge/License-Elastic--2.0-blue.svg)](LICENSE) [![Node](https://img.shields.io/badge/node-%3E%3D22-green.svg)](https://nodejs.org) [![Docker](https://img.shields.io/badge/docker-compose-blue.svg)](docker-compose.yml)
 
 </div>
 
 <div align="center">
 
-[Quick Start](#quick-start) · [Features](#what-engram-does) · [Architecture](#architecture) · [API](#api-reference) · [Growth](#growth-system) · [CLI](#cli) · [SDK](#typescript-sdk) · [MCP](#mcp-server) · [Deploy](#deployment)
+[Why Engram?](#why-engram) · [Quick Start](#quick-start) · [Features](#features) · [Eidolon](#eidolon) · [Architecture](#architecture) · [API](#api-reference) · [CLI](#cli) · [SDK](#typescript-sdk) · [MCP](#mcp-server) · [Deploy](#deployment)
 
 </div>
 
 ---
 
-![Engram CLI demo](tools/cli-demo.gif)
+## Why Engram?
 
-![Engram memory graph visualization](tools/gui-demo-v3.gif)
+AI agents forget everything between sessions. Context windows aren't memory -- they're short-term buffers that vanish the moment the conversation ends. Markdown files and vector dumps don't forget, prioritize, or connect. They can't tell important memories from noise.
 
----
+Engram is a cognitive memory system built on real neuroscience. It uses FSRS-6 spaced repetition to strengthen memories that matter and let irrelevant ones fade. It builds a knowledge graph that discovers connections on its own. It shapes every recall around who your agent is talking to.
 
-## What Engram Does
-
-### Memory
-
-FSRS-6 spaced repetition with power-law forgetting. Hybrid search fuses vector similarity, full-text matching, personality signals, and graph traversal into a single ranked result. Memories strengthen when accessed and fade when ignored.
-
-### Atomic Fact Decomposition
-
-Long memories are automatically broken into self-contained atomic facts. Each fact is independently searchable and linked back to its source. Search and recall can filter to facts only (`facts_only`) or exclude them (`exclude_facts`). Context assembly groups child facts under their parent for coherent presentation. Decomposition runs on store and can sweep existing memories retroactively via the admin API.
-
-### Personality
-
-Extracts preferences, values, motivations, decisions, emotions, and identity markers from conversations. Synthesized personality profiles are automatically injected into `/recall` and `/context` responses, so every agent interaction is personality-aware without configuration.
-
-### Reasoning
-
-Detects contradictions between stored facts. Generates reflections. Derives new knowledge from existing records. Time-travel queries let you ask "what did I know on March 1st?" Smart context assembles the right information for the right moment.
-
-### Trust
-
-Execution signing, guardrails, trust scoring, and full audit trails. Every record has provenance. Every action can be verified.
-
-### Orchestration (v6.0.0 - Syntheos)
-
-Seven standalone microservices absorbed into Engram as native modules. Agent registry (Soma), task tracking (Chiasm), event bus (Axon), workflow orchestration (Loom), quality evaluation (Thymus), action logging (Broca), and structural analysis (OpenSpace). Same database, same auth, zero new dependencies.
-
-### Bulk Ingestion
-
-The `/ingest` endpoint accepts large document uploads and processes them through a full pipeline: format detection, parsing, chunking, and memory creation. Supports markdown, HTML, PDF, DOCX, CSV, JSONL, ZIP archives, and conversation exports from Claude and ChatGPT. Two modes: `raw` stores chunks directly, `extract` runs LLM fact extraction on each chunk. Progress is streamed via Axon events and tracked as a Chiasm task.
-
-### Eidolon (Companion Intelligence Layer)
-
-[Eidolon](https://github.com/Ghost-Frame/eidolon) pairs with Engram to add proactive agent awareness. Action gating blocks dangerous operations before they execute. A living prompt injects relevant memory context into every agent session. Credential scrubbing prevents secrets from leaking into prompts. Engram is the memory. Eidolon is the guardian that acts on it.
-
----
-
-### Recent Changes
-
-**Atomic fact decomposition** - Long memories are broken into self-contained atomic facts, each independently searchable and linked to its source via `has_fact` edges. Search supports `facts_only` and `exclude_facts` filters. Context assembly groups facts under parents. Admin endpoints provide retroactive sweep and status monitoring.
-
-**Job queue hardening** - The durable job queue now uses two-step transactional claiming (SELECT then UPDATE inside `db.transaction()`) instead of the subquery-UPDATE pattern that caused recurring SQLite B-tree corruption. WAL mode runs with `synchronous=FULL` for fsync protection. Cleanup is batched in small deletes with post-delete WAL checkpoints.
-
-**Non-destructive consolidation** - Consolidation no longer archives source memories. Originals stay searchable. The consolidation summary links back to its sources but does not replace them.
+One Node.js process. One SQLite database. Local embeddings. No OpenAI key. No cloud bills. Your hardware, your data.
 
 ---
 
@@ -107,20 +63,89 @@ curl -X POST http://localhost:4200/search \
 
 ---
 
+![Engram CLI demo](tools/cli-demo.gif)
+
+![Engram memory graph visualization](tools/gui-demo-v3.gif)
+
+---
+
 ## Features
 
-- **[4-channel hybrid search](#architecture):** Reciprocal Rank Fusion across vector, full-text, personality, and graph signals
-- **[Knowledge graph](#architecture):** Auto-linking, community detection, PageRank, 2-hop traversal
-- **[Atomic fact decomposition](#architecture):** Long memories split into independently searchable atomic facts
-- **[Spaced repetition](#architecture):** FSRS-6 with power-law forgetting and dual-strength memory model
-- **[Personality engine](#architecture):** Preferences, values, motivations, decisions, emotions, identity
-- **[Guardrails](#api-reference):** Pre-action safety checks against stored rules (allow, warn, block)
-- **[MCP server](#mcp-server):** 25+ tools for Claude Desktop, Cursor, Windsurf, and other MCP clients
-- **[TypeScript SDK](#typescript-sdk):** First-class client with store, search, context, guard, inbox
-- **[CLI](#cli):** Zero-dependency command-line interface for scripting and shell use
-- **[Graph visualization](#deployment):** WebGL force graph for exploring memory space
-- **[Multi-tenant](#configuration):** Isolated memory per user with API key auth
-- **[One-command deploy](#deployment):** docker compose up -d
+- **FSRS-6 Spaced Repetition** -- Memories strengthen with use and fade when ignored. Based on the algorithm behind 100M+ Anki reviews.
+- **4-Channel Hybrid Search** -- Vector similarity, full-text, personality signals, and graph traversal fused via Reciprocal Rank Fusion.
+- **Knowledge Graph** -- Auto-linking, community detection, PageRank. Memories are a connected web, not flat files.
+- **Personality Engine** -- Preferences, values, motivations, identity. Every recall shaped by who your agent is talking to.
+- **Self-Hosted, Zero Dependencies** -- One Node.js process. One SQLite database. Local embeddings. No OpenAI key. No cloud bills.
+- **Not Another MCP Server** -- A real server with a REST API, TypeScript SDK, and CLI. Also available via MCP for Claude Desktop and Cursor.
+- **Atomic Fact Decomposition** -- Long memories broken into self-contained facts. Each independently searchable, all linked to source.
+- **Contradiction Detection** -- When your agent learns conflicting information, Engram catches it and surfaces the conflict.
+- **Guardrails** -- Agents check before they act. Stored rules return allow/warn/block before destructive operations.
+- **Episodic Memory** -- Full conversation episodes as searchable narratives. Ask "what happened last Tuesday?" and get a real answer.
+- **Time-Travel Queries** -- Query what your agent knew at any past moment. Debug decisions, audit context drift.
+- **Bulk Ingestion** -- Markdown, PDFs, chat exports, ZIP archives. Full pipeline from raw documents to searchable memory.
+
+<details>
+<summary><strong>Full Capabilities</strong></summary>
+
+### Smart Memory
+- **Dual-Strength Model** -- Bjork & Bjork: storage strength never decays, retrieval strength resets on access
+- **Versioning** -- Update memories without losing history. Full version chain preserved
+- **Auto-Deduplication** -- SimHash 64-bit locality-sensitive hashing detects near-identical memories
+- **Auto-Forget / TTL** -- Set memories to expire. Background sweep every 5 minutes
+
+### Intelligence Layer
+- **Fact Extraction & Auto-Tagging** -- Structured facts with temporal validity windows
+- **Conversation Extraction** -- Feed raw chat logs, get structured memories
+- **Reflections & Consolidation** -- Meta-analysis and cluster compression
+- **Abstention** -- Search returns `abstained: true` when confidence is below threshold
+- **Assistant Recall** -- Captures what the AI said, recommended, and produced
+
+### Developer Platform
+- **MCP Server** -- 25+ tools for Claude Desktop, Cursor, Windsurf, and other MCP clients
+- **TypeScript SDK** -- First-class client with store, search, context, guard, inbox
+- **CLI** -- Full access to every feature from your terminal
+- **REST API** -- 80+ endpoints with OpenAPI 3.1 spec
+- **Multi-Tenant + RBAC** -- Isolated memory per user with role-based access
+- **Webhooks & Digests** -- Event hooks with HMAC signing and scheduled digests
+- **Cross-Instance Sync** -- Keep multiple deployments in sync
+- **Audit Trail** -- Every mutation logged with who, what, when, from where
+- **Scratchpad** -- Ephemeral working memory with TTL auto-purge
+
+### Visualization & Organization
+- **WebGL Galaxy Graph** -- Interactive memory space visualization at /gui
+- **Episodic Memory** -- Conversation episodes as embedded, searchable narratives
+- **Entities & Projects** -- First-class people, servers, tools, and projects
+- **Review Queue / Inbox** -- Approve, reject, or edit before memories enter recall
+- **Community Detection** -- Label propagation surfaces memory clusters
+- **PageRank** -- Structural importance scoring boosts search results
+- **Graph Timeline** -- Weekly knowledge graph growth tracking
+
+</details>
+
+---
+
+## Eidolon
+
+[Eidolon](https://github.com/Ghost-Frame/eidolon) is the guardian that pairs with Engram. Engram remembers. Eidolon protects.
+
+- **Action Gating** -- Blocks dangerous operations before they execute. Your agent checks with Eidolon before doing anything destructive.
+- **Living Prompt Injection** -- Relevant memory context injected into every agent session automatically. No manual retrieval needed.
+- **Credential Scrubbing** -- Secrets never leak into prompts. Eidolon intercepts and sanitizes before your agent sees them.
+
+Eidolon runs as an optional companion service. Same deployment, same auth, zero extra setup.
+
+---
+
+<details>
+<summary><strong>Recent Changes</strong></summary>
+
+**Atomic fact decomposition** - Long memories are broken into self-contained atomic facts, each independently searchable and linked to its source via `has_fact` edges. Search supports `facts_only` and `exclude_facts` filters. Context assembly groups facts under parents. Admin endpoints provide retroactive sweep and status monitoring.
+
+**Job queue hardening** - The durable job queue now uses two-step transactional claiming (SELECT then UPDATE inside `db.transaction()`) instead of the subquery-UPDATE pattern that caused recurring SQLite B-tree corruption. WAL mode runs with `synchronous=FULL` for fsync protection. Cleanup is batched in small deletes with post-delete WAL checkpoints.
+
+**Non-destructive consolidation** - Consolidation no longer archives source memories. Originals stay searchable. The consolidation summary links back to its sources but does not replace them.
+
+</details>
 
 ---
 
@@ -891,4 +916,3 @@ Support: **support@syntheos.dev**
 Elastic License 2.0
 
 </div>
-
