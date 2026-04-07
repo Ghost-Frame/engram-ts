@@ -1,13 +1,14 @@
 <script lang="ts">
   import '../app.css';
   import { page } from '$app/stores';
-  import { apiKey, isAuthed, getHealth } from '$lib/stores/engram';
+  import { apiKey, isAuthed, getHealth, getSettings, setSettings } from '$lib/stores/engram';
   import { onMount } from 'svelte';
 
   let { children } = $props();
   let health: any = $state(null);
   let keyInput = $state('');
   let showKeyModal = $state(false);
+  let inboxMode = $state('auto');
 
   const nav = [
     { path: '/', label: 'Dashboard', icon: '⊞' },
@@ -21,6 +22,7 @@
 
   onMount(async () => {
     try { health = await getHealth(); } catch {}
+    try { const s = await getSettings(); inboxMode = s.inbox_mode; } catch {}
   });
 
   function saveKey() {
@@ -56,7 +58,20 @@
       {/each}
     </div>
 
-    <div class="p-3 border-t border-gray-800">
+    <div class="p-3 border-t border-gray-800 space-y-2">
+      <button
+        onclick={async () => {
+          const next = inboxMode === 'review' ? 'auto' : 'review';
+          try { await setSettings({ inbox_mode: next }); inboxMode = next; } catch {}
+        }}
+        class="w-full px-3 py-2 text-xs rounded-lg transition-colors flex items-center justify-between
+          {inboxMode === 'review'
+            ? 'bg-orange-500/15 border border-orange-500/30 text-orange-400 hover:bg-orange-500/25'
+            : 'bg-gray-800/50 hover:bg-gray-800 text-gray-400 hover:text-gray-200'}"
+      >
+        <span>Inbox Review</span>
+        <span class="text-[10px] font-mono">{inboxMode === 'review' ? 'ON' : 'OFF'}</span>
+      </button>
       <button
         onclick={() => showKeyModal = true}
         class="w-full px-3 py-2 text-xs rounded-lg bg-gray-800/50 hover:bg-gray-800 text-gray-400 hover:text-gray-200 transition-colors"

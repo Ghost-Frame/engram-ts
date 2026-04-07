@@ -1,10 +1,6 @@
 import { writable, derived } from 'svelte/store';
 
-const BASE_URL = typeof window !== 'undefined'
-  ? (window.location.port === '4200'
-    ? ''
-    : '/api')
-  : 'http://127.0.0.1:4200';
+const BASE_URL = '';
 
 export const apiKey = writable<string>(
   typeof window !== 'undefined' ? localStorage.getItem('engram_api_key') || '' : ''
@@ -111,6 +107,14 @@ export async function getProjects(status?: string): Promise<any[]> {
 
 export async function getHealth(): Promise<any> {
   return api('/health');
+}
+
+export async function getSettings(): Promise<{ inbox_mode: string }> {
+  return api('/admin/settings');
+}
+
+export async function setSettings(settings: { inbox_mode: string }): Promise<any> {
+  return api('/admin/settings', 'PUT', settings);
 }
 
 export async function getGraph(depth = 3, max = 1500): Promise<any> {

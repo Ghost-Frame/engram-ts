@@ -70,6 +70,9 @@ engram-gui-new.html
 engram-gui-prev.html
 landing.html
 
+# Security audit
+SECURITY_AUDIT_PROMPT.md
+
 # Internal ops / planning
 audit/
 docs/plans/

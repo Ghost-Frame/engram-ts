@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getInbox, approveMemory, rejectMemory, type Memory } from '$lib/stores/engram';
+  import { getInbox, approveMemory, rejectMemory, deleteMemory, type Memory } from '$lib/stores/engram';
 
   let pending: Memory[] = $state([]);
   let loading = $state(true);
@@ -41,6 +41,15 @@
   async function handleReject(id: number) {
     try {
       await rejectMemory(id);
+      pending = pending.filter((m) => m.id !== id);
+    } catch (e: any) {
+      error = e.message;
+    }
+  }
+
+  async function handleDelete(id: number) {
+    try {
+      await deleteMemory(id);
       pending = pending.filter((m) => m.id !== id);
     } catch (e: any) {
       error = e.message;
@@ -92,9 +101,15 @@
             </button>
             <button
               onclick={() => handleReject(mem.id)}
-              class="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/30 transition-colors"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-600/30 transition-colors"
             >
               Reject
+            </button>
+            <button
+              onclick={() => handleDelete(mem.id)}
+              class="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/30 transition-colors"
+            >
+              Delete
             </button>
           </div>
         </div>

@@ -29,7 +29,7 @@ import type { FeedbackItem } from "./types.ts";
 import { MAX_CONTENT_SIZE, DEFAULT_IMPORTANCE } from "./types.ts";
 import { embed, embeddingToBuffer, addToEmbeddingCache, invalidateEmbeddingCache, getCachedEmbeddings, cosineSimilarity, embedWithChunking, demoteFromLatestCache } from "../embeddings/index.ts";
 import { db, insertMemory, linkMemoryEntity, linkMemoryProject, recordUsage, markSuperseded, insertLink, getLinksForUser, writeVec } from "../db/index.ts";
-import { DB_PATH, MAX_ARTIFACT_SIZE, MAX_ARTIFACTS_PER_MEMORY } from "../config/index.ts";
+import { DB_PATH, MAX_ARTIFACT_SIZE, MAX_ARTIFACTS_PER_MEMORY, INBOX_MODE } from "../config/index.ts";
 import { statSync } from "node:fs";
 import { processArtifact } from "../artifacts/storage.ts";
 import type { ArtifactInput } from "../artifacts/storage.ts";
@@ -131,7 +131,9 @@ export function registerMemoryRoutes(router: Router): void {
       ) as { id: number; created_at: string };
 
       const syncId = randomUUID();
-      const memStatus = b?.status === "pending" ? "pending" : "approved";
+      const memStatus = b?.status === "pending" ? "pending"
+        : b?.status === "approved" ? "approved"
+        : INBOX_MODE === "review" ? "pending" : "approved";
       db.prepare("UPDATE memories SET tags = ?, episode_id = ?, sync_id = ?, confidence = 1.0, status = ? WHERE id = ?")
         .run(tagsJson, episodeId, syncId, memStatus, result.id);
 

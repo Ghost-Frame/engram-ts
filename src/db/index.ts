@@ -65,22 +65,44 @@ export function writeVec(memoryId: number, embArray: Float32Array | null): void 
   }
 }
 
-/** Fast corruption probe - tries a no-op vector update in a transaction, rolls back. Returns true if healthy. */
+/** Corruption probe - writes a vector + ANN search in a savepoint, then rolls back. Returns true if healthy. */
 export function probeVectorHealth(): boolean {
   try {
-    const testRow = db.prepare(`SELECT id FROM memories WHERE ${VECTOR_COL} IS NOT NULL LIMIT 1`).get() as { id: number } | undefined;
-    if (!testRow) return true; // no vector data = nothing to corrupt
-    db.exec("BEGIN");
-    db.prepare(`UPDATE memories SET decay_score = decay_score WHERE id = ?`).run(testRow.id);
-    db.exec("ROLLBACK");
-    return true;
+    const testRow = db.prepare(
+      `SELECT id, embedding FROM memories WHERE embedding IS NOT NULL LIMIT 1`
+    ).get() as { id: number; embedding: Buffer } | undefined;
+    if (!testRow) return true; // no embedding data = nothing to probe
+
+    const buf = testRow.embedding instanceof Buffer
+      ? testRow.embedding : Buffer.from(testRow.embedding as any);
+    const f32 = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+    if (f32.length !== EMBEDDING_DIM) return true; // dimension mismatch, not corruption
+
+    const vecJson = embeddingToVectorJSON(f32);
+
+    db.exec("SAVEPOINT vec_health_probe");
+    try {
+      // Exercise the actual vector write path
+      updateMemoryVec.run(vecJson, testRow.id);
+
+      // Verify ANN search returns a result for the written vector
+      const annResult = db.prepare(
+        `SELECT id FROM memories WHERE ${VECTOR_COL} MATCH vector(?) LIMIT 1`
+      ).get(vecJson);
+      if (!annResult) {
+        log.error({ msg: "vector_health_probe_ann_miss" });
+        return false;
+      }
+      return true;
+    } finally {
+      try { db.exec("ROLLBACK TO vec_health_probe"); db.exec("RELEASE vec_health_probe"); } catch {}
+    }
   } catch (e: any) {
-    try { db.exec("ROLLBACK"); } catch {}
+    try { db.exec("ROLLBACK TO vec_health_probe"); db.exec("RELEASE vec_health_probe"); } catch {}
     if (e.code?.includes("CORRUPT") || e.message?.includes("malformed")) {
       log.error({ msg: "vector_health_probe_failed", error: e.message, code: e.code });
       return false;
     }
-    // Non-corruption error, still healthy
     return true;
   }
 }
@@ -142,12 +164,16 @@ export function rebuildVectorIndex(): { dropped: number; recreated: number; repo
     const BATCH = 100;
     let memoryErrors = 0, episodeErrors = 0;
 
-    // Repopulate memories
-    let offset = 0;
+    const expectedMemories = (db.prepare("SELECT COUNT(*) as count FROM memories WHERE embedding IS NOT NULL").get() as { count: number })?.count || 0;
+    const expectedEpisodes = (db.prepare("SELECT COUNT(*) as count FROM episodes WHERE embedding IS NOT NULL").get() as { count: number })?.count || 0;
+    const expectedTotal = expectedMemories + expectedEpisodes;
+
+    // Repopulate memories (cursor pagination -- no OFFSET, stable under concurrent writes)
+    let lastMemoryId = 0;
     while (true) {
       const rows = db.prepare(
-        `SELECT id, embedding FROM memories WHERE embedding IS NOT NULL ORDER BY id LIMIT ? OFFSET ?`
-      ).all(BATCH, offset) as Array<{ id: number; embedding: Buffer }>;
+        `SELECT id, embedding FROM memories WHERE embedding IS NOT NULL AND id > ? ORDER BY id LIMIT ?`
+      ).all(lastMemoryId, BATCH) as Array<{ id: number; embedding: Buffer }>;
       if (!rows || rows.length === 0) break;
       const batchWrite = db.transaction(() => {
         for (const row of rows) {
@@ -165,15 +191,15 @@ export function rebuildVectorIndex(): { dropped: number; recreated: number; repo
         }
       });
       batchWrite();
-      offset += BATCH;
+      lastMemoryId = rows[rows.length - 1].id;
     }
 
-    // Repopulate episodes
-    offset = 0;
+    // Repopulate episodes (cursor pagination)
+    let lastEpisodeId = 0;
     while (true) {
       const rows = db.prepare(
-        `SELECT id, embedding FROM episodes WHERE embedding IS NOT NULL ORDER BY id LIMIT ? OFFSET ?`
-      ).all(BATCH, offset) as Array<{ id: number; embedding: Buffer }>;
+        `SELECT id, embedding FROM episodes WHERE embedding IS NOT NULL AND id > ? ORDER BY id LIMIT ?`
+      ).all(lastEpisodeId, BATCH) as Array<{ id: number; embedding: Buffer }>;
       if (!rows || rows.length === 0) break;
       const batchWrite = db.transaction(() => {
         for (const row of rows) {
@@ -191,7 +217,14 @@ export function rebuildVectorIndex(): { dropped: number; recreated: number; repo
         }
       });
       batchWrite();
-      offset += BATCH;
+      lastEpisodeId = rows[rows.length - 1].id;
+    }
+
+    // Fail closed: if repopulation is incomplete, the index is untrustworthy
+    if (repopulated < expectedTotal) {
+      const msg = `Vector rebuild incomplete: repopulated ${repopulated}/${expectedTotal} (${expectedTotal - repopulated} mismatch)`;
+      log.error({ msg: "vector_rebuild_incomplete", repopulated, expected: expectedTotal });
+      throw new Error(msg);
     }
 
     log.warn({ msg: "vector_rebuild_complete", dropped, recreated, repopulated, memory_errors: memoryErrors, episode_errors: episodeErrors, ms: Date.now() - t0 });
