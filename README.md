@@ -1,6 +1,8 @@
 <div align="center">
 Annoucement: I am rewriting engram in rust, engram has been built upon many times over and is basically patchwork. This gives me a chance to start fresh with everything i've learned and make it right. If you've cloned or forked this repo, be aware it probably wont be updated anymore in its current state. It will be the same thing, but done right from the start. Highly recommend you backup your memories and clone/fork the new repo when its setup. It will be better, I will be consolidating engram+eidolon together in a better way than download both and smush em together. Feel free to send me an email at support@syntheos.dev if you have questions, or use the discussions panel if you have questions.
 
+https://github.com/Ghost-Frame/engram-rust
+
   
 # Engram
 
