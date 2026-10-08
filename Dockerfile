@@ -5,7 +5,7 @@ LABEL org.opencontainers.image.title="Engram" \
       org.opencontainers.image.url="https://github.com/Ghost-Frame/engram" \
       org.opencontainers.image.source="https://github.com/Ghost-Frame/engram" \
       org.opencontainers.image.documentation="https://github.com/Ghost-Frame/engram" \
-      org.opencontainers.image.licenses="Elastic-2.0" \
+      org.opencontainers.image.licenses="PolyForm-Noncommercial-1.0.0" \
       org.opencontainers.image.vendor="Syntheos"
 
 WORKDIR /app

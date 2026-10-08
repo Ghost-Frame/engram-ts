@@ -919,6 +919,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 Support: **support@syntheos.dev**
 
-Elastic License 2.0
+PolyForm Noncommercial License 1.0.0. Commercial use requires a separate written license.
 
 </div>

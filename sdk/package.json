@@ -11,8 +11,8 @@
     "prepublishOnly": "npm run build"
   },
   "keywords": ["engram", "memory", "ai", "agents", "semantic-search", "knowledge-graph", "llm"],
-  "author": "Zanverse",
-  "license": "Elastic-2.0",
+  "author": "Ghost-Frame",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "repository": {
     "type": "git",
     "url": "https://codeberg.org/GhostFrame/engram",

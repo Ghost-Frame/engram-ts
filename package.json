@@ -1,6 +1,7 @@
 {
   "name": "@ghost_frame/engram",
   "version": "6.5.3",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
   "repository": {
     "type": "git",
