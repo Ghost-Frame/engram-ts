@@ -10,7 +10,7 @@ https://github.com/Ghost-Frame/engram-rust
 
 **The cognitive layer for AI agents.**
 
-[![Version](https://img.shields.io/badge/version-6.5.3-gold.svg)](CHANGELOG.md) [![License](https://img.shields.io/badge/License-Elastic--2.0-blue.svg)](LICENSE) [![Node](https://img.shields.io/badge/node-%3E%3D22-green.svg)](https://nodejs.org) [![Docker](https://img.shields.io/badge/docker-compose-blue.svg)](docker-compose.yml)
+[![Version](https://img.shields.io/badge/version-6.5.3-gold.svg)](CHANGELOG.md) [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE) [![Node](https://img.shields.io/badge/node-%3E%3D22-green.svg)](https://nodejs.org) [![Docker](https://img.shields.io/badge/docker-compose-blue.svg)](docker-compose.yml)
 
 </div>
 
